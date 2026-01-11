@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
@@ -10,105 +11,113 @@ class ThemeProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Colori dinamici basati sul tema
+  // Risolvi il tema attuale basato su system
+  ThemeMode get resolvedThemeMode {
+    if (_themeMode == ThemeMode.system) {
+      final brightness = SchedulerBinding.instance.window.platformBrightness;
+      return brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light;
+    }
+    return _themeMode;
+  }
+
+  // Colori dinamici basati sul tema risolto
   Color get backgroundColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.white;
       case ThemeMode.dark:
         return const Color(0xFF121212);
-      case ThemeMode.system:
-        // Per system, usa il default dark per ora
-        return const Color(0xFF121212);
+      default:
+        return Colors.white;
     }
   }
 
   Color get surfaceColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.grey[100]!;
       case ThemeMode.dark:
         return const Color(0xFF1E1E1E);
-      case ThemeMode.system:
-        return const Color(0xFF1E1E1E);
+      default:
+        return Colors.grey[100]!;
     }
   }
 
   Color get primaryColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.blue.shade700;
       case ThemeMode.dark:
         return Colors.blueAccent;
-      case ThemeMode.system:
-        return Colors.blueAccent;
+      default:
+        return Colors.blue.shade700;
     }
   }
 
   Color get textColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.black;
       case ThemeMode.dark:
         return Colors.white;
-      case ThemeMode.system:
-        return Colors.white;
+      default:
+        return Colors.black;
     }
   }
 
   Color get secondaryTextColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.black54;
       case ThemeMode.dark:
         return Colors.white70;
-      case ThemeMode.system:
-        return Colors.white70;
+      default:
+        return Colors.black54;
     }
   }
 
   // Semantic colors
   Color get successColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.green.shade700;
       case ThemeMode.dark:
         return Colors.green;
-      case ThemeMode.system:
-        return Colors.green;
+      default:
+        return Colors.green.shade700;
     }
   }
 
   Color get warningColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.orange.shade700;
       case ThemeMode.dark:
         return Colors.orange;
-      case ThemeMode.system:
-        return Colors.orange;
+      default:
+        return Colors.orange.shade700;
     }
   }
 
   Color get errorColor {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return Colors.red.shade700;
       case ThemeMode.dark:
         return Colors.redAccent;
-      case ThemeMode.system:
-        return Colors.redAccent;
+      default:
+        return Colors.red.shade700;
     }
   }
 
   Gradient get progressGradient {
-    switch (_themeMode) {
+    switch (resolvedThemeMode) {
       case ThemeMode.light:
         return LinearGradient(colors: [Colors.blue.shade700, Colors.blue.shade400]);
       case ThemeMode.dark:
         return LinearGradient(colors: [Colors.blueAccent, Colors.cyanAccent]);
-      case ThemeMode.system:
-        return LinearGradient(colors: [Colors.blueAccent, Colors.cyanAccent]);
+      default:
+        return LinearGradient(colors: [Colors.blue.shade700, Colors.blue.shade400]);
     }
   }
 }

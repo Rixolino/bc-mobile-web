@@ -502,4 +502,16 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  Widget _buildPanelContent(Config config) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 16), // Aggiungi padding per evitare sovrapposizione con barra navigazione
+      child: Column(
+        children: [
+          _buildModeBar(),
+          Expanded(child: _buildDynamicList()),
+        ],
+      ),
+    );
+  }
 }

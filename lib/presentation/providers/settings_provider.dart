@@ -26,7 +26,7 @@ class SettingsProvider with ChangeNotifier {
     _busRefreshSeconds = prefs.getInt(keyBusInterval) ?? 0;
     _trainRefreshSeconds = prefs.getInt(keyTrainInterval) ?? 0;
     _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? 0;
-    final themeIndex = prefs.getInt(keyThemeMode) ?? 1; // 0: light, 1: dark, 2: system
+    final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
     notifyListeners();
   }
