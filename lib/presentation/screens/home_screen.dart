@@ -7,6 +7,7 @@ import '../../features/bus/presentation/providers/bus_provider.dart';
 import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
 import '../providers/map_state_provider.dart';
+import '../providers/theme_provider.dart';
 import '../../features/bus/presentation/widgets/bus_panel_content.dart';
 import '../../features/plane/presentation/widgets/plane_panel_content.dart';
 import '../../features/train/presentation/widgets/train_panel_content.dart';
@@ -83,20 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final configProvider = Provider.of<ConfigProvider>(context);
     final config = configProvider.config;
 
-    return Scaffold(
-      body: SlidingUpPanel(
-        controller: _panelController,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
-        ),
-        minHeight: 120, // Altezza quando collassato (dock)
-        maxHeight: MediaQuery.of(context).size.height * 0.7, // Altezza massima
-        color: const Color(0xFF1E1E1E).withOpacity(0.95), // Background scuro semitrasparente
+    return Consumer<ThemeProvider>(
+      builder: (context, theme, child) {
+        return Scaffold(
+          body: SlidingUpPanel(
+            controller: _panelController,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24.0),
+              topRight: Radius.circular(24.0),
+            ),
+            minHeight: 120, // Altezza quando collassato (dock)
+            maxHeight: MediaQuery.of(context).size.height * 0.7, // Altezza massima
+            color: theme.backgroundColor.withOpacity(0.95), // Background scuro semitrasparente
         boxShadow: [
           BoxShadow(
             blurRadius: 20.0,
-            color: Colors.black.withOpacity(0.2),
+            color: theme.textColor.withOpacity(0.12),
           ),
         ],
         // IL CONTENT DEL PANNELLO (SHEET)
@@ -124,18 +127,18 @@ class _HomeScreenState extends State<HomeScreen> {
                      child: Container(
                        padding: const EdgeInsets.all(12),
                        decoration: BoxDecoration(
-                         color: const Color(0xFF1E1E1E).withOpacity(0.9),
+                         color: theme.surfaceColor.withOpacity(0.9),
                          borderRadius: BorderRadius.circular(16),
-                         border: Border.all(color: Colors.white.withOpacity(0.1)),
+                         border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
                          boxShadow: [
                            BoxShadow(
-                             color: Colors.black.withOpacity(0.3),
+                             color: theme.textColor.withOpacity(0.18),
                              blurRadius: 10,
                              offset: const Offset(0, 4),
                            )
                          ]
                        ),
-                       child: const Icon(Icons.settings, color: Colors.white),
+                       child: Icon(Icons.settings, color: theme.textColor),
                      ),
                    )
                 ],
@@ -155,11 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
               right: 0,
               child: Container(
                 height: 20,
-                color: Colors.red.withOpacity(0.3),
+                color: theme.primaryColor.withOpacity(0.3),
                 child: Center(
                   child: Text(
                     'Scorri verso l\'alto',
-                    style: TextStyle(color: Colors.white, fontSize: 10),
+                    style: TextStyle(color: theme.textColor, fontSize: 10),
                   ),
                 ),
               ),
@@ -168,12 +171,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+      },
+    );
   }
-
-  // --- Widgets UI ---
 
   Widget _buildMapStyleButton() {
     final mapState = Provider.of<MapStateProvider>(context);
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     
     IconData styleIcon;
     String nextStyle;
@@ -208,23 +212,24 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E).withOpacity(0.9),
+          color: theme.surfaceColor.withOpacity(0.9),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: theme.textColor.withOpacity(0.18),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
           ]
         ),
-        child: Icon(styleIcon, color: Colors.white),
+        child: Icon(styleIcon, color: theme.textColor),
       ),
     );
   }
 
   Widget _buildSearchBar() {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     return GlassmorphicContainer(
       width: double.infinity,
       height: 60,
@@ -236,16 +241,16 @@ class _HomeScreenState extends State<HomeScreen> {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          const Color(0xFF1E1E1E).withOpacity(0.6),
-          const Color(0xFF1E1E1E).withOpacity(0.4),
+          theme.surfaceColor.withOpacity(0.6),
+          theme.surfaceColor.withOpacity(0.4),
         ],
       ),
       borderGradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Colors.white.withOpacity(0.3),
-          Colors.white.withOpacity(0.1),
+          theme.secondaryTextColor.withOpacity(0.3),
+          theme.secondaryTextColor.withOpacity(0.1),
         ],
       ),
       child: Padding(
@@ -256,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
               IconButton(
                 icon: Icon(
                   _searchByNumber ? Icons.pin : Icons.location_on,
-                  color: _searchByNumber ? Colors.blueAccent : Colors.white,
+                  color: _searchByNumber ? theme.primaryColor : theme.textColor,
                 ),
                 onPressed: () {
                   setState(() {
@@ -266,20 +271,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: _searchByNumber ? "Cerca per Numero" : "Cerca per Stazione",
               )
             else
-              const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: Icon(Icons.search, color: Colors.white),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Icon(Icons.search, color: theme.textColor),
               ),
             const SizedBox(width: 5),
             Expanded(
               child: TextField(
                 controller: _searchController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: theme.textColor),
                 onSubmitted: _onSearch,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   hintText: _getSearchHint(),
-                  hintStyle: const TextStyle(color: Colors.white70, fontSize: 14),
+                  hintStyle: TextStyle(color: theme.secondaryTextColor, fontSize: 14),
                   border: InputBorder.none,
                 ),
               ),
@@ -288,10 +293,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blueAccent.withOpacity(0.4),
+                color: theme.primaryColor.withOpacity(0.4),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.person, color: Colors.white),
+              child: Icon(Icons.person, color: theme.textColor),
             ),
           ],
         ),
@@ -310,6 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPanelContent(dynamic config) {
     if (config == null) return const SizedBox();
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     return Column(
       children: [
@@ -319,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen> {
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: Colors.grey[600],
+            color: theme.secondaryTextColor,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -335,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         
-        const Divider(color: Colors.white12, height: 40),
+        Divider(color: theme.secondaryTextColor.withOpacity(0.12), height: 40),
 
         // Contenuto dinamico in base alla selezione
         Expanded(
@@ -350,6 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildModeButton(int index, IconData icon, String label, bool enabled) {
     if (!enabled) return const SizedBox.shrink();
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     final isSelected = _selectedModeIndex == index;
 
     return GestureDetector(
@@ -375,24 +382,24 @@ class _HomeScreenState extends State<HomeScreen> {
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blueAccent.withOpacity(0.2) : Colors.transparent,
+          color: isSelected ? theme.primaryColor.withOpacity(0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? Colors.blueAccent : Colors.transparent,
+            color: isSelected ? theme.primaryColor : Colors.transparent,
           ),
         ),
         child: Column(
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.blueAccent : Colors.white54,
+              color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
               size: 28,
             ),
             const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white54,
+                color: isSelected ? theme.textColor : theme.secondaryTextColor,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 fontSize: 12,
               ),
@@ -404,6 +411,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDynamicList() {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+
     if (_selectedModeIndex == 0) {
       return const TrainPanelContent();
     }
@@ -427,7 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Text(
           "Recenti",
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: theme.textColor.withOpacity(0.8),
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -439,7 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Text(
           "Vicino a te",
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: theme.textColor.withOpacity(0.8),
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -452,6 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildListItem(IconData icon, String title, String subtitle) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -459,10 +469,10 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: theme.surfaceColor.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.white70),
+            child: Icon(icon, color: theme.secondaryTextColor),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -471,8 +481,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: theme.textColor,
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
                   ),
@@ -480,14 +490,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: theme.secondaryTextColor.withOpacity(0.5),
                     fontSize: 14,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.3)),
+          Icon(Icons.chevron_right, color: theme.secondaryTextColor.withOpacity(0.3)),
         ],
       ),
     );

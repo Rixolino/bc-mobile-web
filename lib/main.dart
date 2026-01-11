@@ -6,6 +6,7 @@ import 'features/plane/presentation/providers/plane_provider.dart';
 import 'features/train/presentation/providers/train_provider.dart';
 import 'presentation/providers/config_provider.dart';
 import 'presentation/providers/settings_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/map_state_provider.dart';
 import 'presentation/screens/home_screen.dart';
 
@@ -58,6 +59,13 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProxyProvider<SettingsProvider, ThemeProvider>(
+          create: (_) => ThemeProvider(),
+          update: (_, settings, theme) {
+            theme!.setThemeMode(settings.themeMode);
+            return theme;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
         ChangeNotifierProxyProvider<SettingsProvider, TrainProvider>(
           create: (_) => TrainProvider(),
@@ -82,11 +90,17 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
         ),
         ChangeNotifierProvider(create: (_) => MapStateProvider()),
       ],
-      child: MaterialApp(
-        title: 'BC Transporter',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme, 
-        home: const HomeScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, theme, child) {
+          return MaterialApp(
+            title: 'BC Transporter',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: theme.themeMode,
+            home: const HomeScreen(),
+          );
+        },
       ),
     );
   }

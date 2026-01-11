@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
+import '../../../../presentation/providers/theme_provider.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -127,14 +128,16 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     final int totalDelay = widget.departure.delayMinutes ?? 0;
     final String fullDisplayName = "$trainName";
 
-    return Container(
-      decoration: const BoxDecoration(color: Color(0xFF121212), borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
+    return Consumer<ThemeProvider>(
+      builder: (context, theme, child) {
+        return Container(
+          decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
       child: Column(
         children: [
-          _buildHeader(context, fullDisplayName, totalDelay),
+          _buildHeader(context, fullDisplayName, totalDelay, theme),
           Expanded(
             child: stops.isEmpty 
-              ? const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
+              ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   itemCount: stops.length,
@@ -151,6 +154,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       timeFormatter: _formatStationTime,
                       isFuture: isFuture,
                       totalDelay: totalDelay,
+                      theme: theme,
                     );
                   },
                 ),
@@ -158,15 +162,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         ],
       ),
     );
+      },
+    );
   }
 
-  Widget _buildHeader(BuildContext context, String displayName, int delay) {
+  Widget _buildHeader(BuildContext context, String displayName, int delay, ThemeProvider theme) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      decoration: const BoxDecoration(color: Color(0xFF1E1E1E), borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
+      decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
       child: Column(
         children: [
-          Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(2))),
+          Container(width: 36, height: 4, decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.1), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -174,15 +180,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
+                    Text(displayName, style: TextStyle(color: theme.textColor, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
                     const SizedBox(height: 4),
                     Text(widget.isArrivalMode ? "Origine: ${widget.departure.origin}" : "Destinazione: ${widget.departure.destination}", 
-                         style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500)),
+                         style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
-              IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.05), foregroundColor: Colors.blueAccent)),
-              IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? Colors.greenAccent : Colors.white54)),
+              IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
+              IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),
             ],
           ),
           const SizedBox(height: 16),
@@ -193,28 +199,29 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 
   Widget _buildDelayBadge(int delay) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     Color badgeColor;
     String statusText;
     IconData iconData;
 
     if (delay < 0) {
-      badgeColor = Colors.green;
+      badgeColor = theme.successColor;
       statusText = "In anticipo: $delay min";
       iconData = Icons.fast_forward_rounded;
     } else if (delay == 0) {
-      badgeColor = Colors.green;
+      badgeColor = theme.successColor;
       statusText = "In orario";
       iconData = Icons.check_circle_rounded;
     } else if (delay <= 5) {
-      badgeColor = Colors.amber;
+      badgeColor = theme.warningColor;
       statusText = "Lieve ritardo: +$delay min";
       iconData = Icons.bolt_rounded;
     } else if (delay <= 15) {
-      badgeColor = Colors.orange;
+      badgeColor = theme.warningColor;
       statusText = "Ritardo medio: +$delay min";
       iconData = Icons.warning_rounded;
     } else {
-      badgeColor = Colors.redAccent;
+      badgeColor = theme.errorColor;
       statusText = "Forte ritardo: +$delay min";
       iconData = Icons.error_rounded;
     }
@@ -248,12 +255,13 @@ class _TimelineRow extends StatelessWidget {
   final String Function(DateTime?, String) timeFormatter;
   final bool isFuture;
   final int totalDelay;
+  final ThemeProvider theme;
 
   const _TimelineRow({
     required this.stop, required this.index, required this.isLast, 
     required this.isCompleted, required this.isTraversing, 
     required this.isActiveStop, required this.progress, required this.timeFormatter,
-    required this.isFuture, required this.totalDelay,
+    required this.isFuture, required this.totalDelay, required this.theme,
   });
 
   @override
@@ -285,13 +293,13 @@ class _TimelineRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 12),
-                  Text(stop.stationName, style: TextStyle(color: isCompleted ? Colors.white38 : Colors.white, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
+                  Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
                   if (stop.arrival != null) 
                     Text(buildTimeString('Arrivo', stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : (stop.arrivalDelay ?? 0)),
-                        style: TextStyle(color: isCompleted ? Colors.white24 : Colors.white70, fontSize: 12)),
+                        style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor, fontSize: 12)),
                   if (stop.departure != null)
                     Text(buildTimeString('Partenza', stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : (stop.departureDelay ?? 0)),
-                        style: TextStyle(color: isCompleted ? Colors.white24 : Colors.white70, fontSize: 12)),
+                        style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor, fontSize: 12)),
                 ],
               ),
             ),
@@ -301,10 +309,10 @@ class _TimelineRow extends StatelessWidget {
               margin: const EdgeInsets.only(left: 12, bottom: 24),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.blueAccent.withOpacity(0.5), width: 1),
+                border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text("${stop.platform}", style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.w900)),
+              child: Text("${stop.platform}", style: TextStyle(color: theme.primaryColor, fontSize: 11, fontWeight: FontWeight.w900)),
             ),
         ],
       ),
@@ -317,16 +325,16 @@ class _TimelineRow extends StatelessWidget {
       child: Stack(
         alignment: Alignment.topCenter,
         children: [
-          if (index > 0) Positioned(top: 0, height: 17, width: 3, child: Container(color: highlighted ? Colors.blueAccent : Colors.white.withOpacity(0.05))),
+          if (index > 0) Positioned(top: 0, height: 17, width: 3, child: Container(color: highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.05))),
           if (!isLast) Positioned(top: 17, bottom: 0, width: 3, child: Stack(children: [
-            Container(color: Colors.white.withOpacity(0.05)),
-            if (isCompleted) Container(color: Colors.blueAccent),
-            if (isTraversing) LayoutBuilder(builder: (c, ct) => Container(height: ct.maxHeight * progress, color: Colors.blueAccent)),
+            Container(color: theme.surfaceColor.withOpacity(0.05)),
+            if (isCompleted) Container(color: theme.primaryColor),
+            if (isTraversing) LayoutBuilder(builder: (c, ct) => Container(height: ct.maxHeight * progress, decoration: BoxDecoration(gradient: theme.progressGradient))),
           ])),
-          Positioned(top: 17, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: highlighted ? Colors.blueAccent : const Color(0xFF1E1E1E), shape: BoxShape.circle, border: Border.all(color: highlighted ? Colors.blueAccent : Colors.white24, width: 2)))),
+          Positioned(top: 17, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.08), shape: BoxShape.circle, border: Border.all(color: highlighted ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.24), width: 2)))),
           if (isTraversing) Positioned.fill(child: LayoutBuilder(builder: (c, ct) => Stack(alignment: Alignment.topCenter, children: [
             Positioned(top: 17 + ((ct.maxHeight - 17) * progress) - 10, child: const _TrainIcon(size: 20))
-          ]))) else if (isActiveStop) const Positioned(top: 12, child: _TrainIcon(size: 20)),
+          ]))) else if (isActiveStop) Positioned(top: 12, child: _TrainIcon(size: 20)),
         ],
       ),
     );
@@ -338,10 +346,11 @@ class _TrainIcon extends StatelessWidget {
   const _TrainIcon({required this.size});
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.blueAccent.withOpacity(0.4), blurRadius: 10)]),
-      child: Icon(Icons.train, color: Colors.white, size: size - 8),
+      decoration: BoxDecoration(color: theme.primaryColor, shape: BoxShape.circle, boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.4), blurRadius: 10)]),
+      child: Icon(Icons.train, color: theme.textColor, size: size - 8),
     );
   }
 }

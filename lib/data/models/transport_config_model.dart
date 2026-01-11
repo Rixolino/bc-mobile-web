@@ -53,7 +53,7 @@ class TransportSource {
     this.parsing,
   });
 
-  String get apiUrl => endpoints['main'] ?? endpoints.values.first ?? '';
+  String get apiUrl => endpoints['main'] ?? (endpoints.isNotEmpty ? endpoints.values.first : '');
 
   factory TransportSource.fromJson(Map<String, dynamic> json) {
     return TransportSource(

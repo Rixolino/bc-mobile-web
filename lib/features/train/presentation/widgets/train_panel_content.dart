@@ -4,6 +4,7 @@ import '../providers/train_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import 'train_details_sheet.dart';
 import 'package:intl/intl.dart';
+import '../../../../presentation/providers/theme_provider.dart';
 
 class TrainPanelContent extends StatefulWidget {
   const TrainPanelContent({super.key});
@@ -45,6 +46,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   @override
   Widget build(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context);
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     // Dynamic country list based on service
     List<Map<String, String>> displayedCountries = _countries;
@@ -65,7 +67,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: Icon(Icons.arrow_back, color: theme.textColor),
                 onPressed: () {
                   trainProvider.clearSelection();
                 },
@@ -73,16 +75,16 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               Expanded(
                 child: Text(
                    "${station.name} (${trainProvider.isArrivalMode ? 'Arrivi' : 'Partenze'})",
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const Divider(color: Colors.white24),
+          Divider(color: theme.secondaryTextColor.withOpacity(0.14)),
           Expanded(
             child: trainProvider.isLoadingDepartures
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                 : ListView.builder(
                     itemCount: trainProvider.departures.length,
                     itemBuilder: (context, index) {
@@ -90,7 +92,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       final isArrival = trainProvider.isArrivalMode;
                       
                       return Card(
-                        color: Colors.white.withOpacity(0.05),
+                        color: theme.surfaceColor.withOpacity(0.05),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                         child: InkWell(
@@ -108,7 +110,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                context: context, 
                                isScrollControlled: true,
                                backgroundColor: Colors.transparent,
-                               barrierColor: Colors.black54,
+                               barrierColor: theme.textColor.withOpacity(0.5),
                                builder: (ctx) => Consumer<TrainProvider>(
                                  builder: (context, provider, child) {
                                    // Trova il treno aggiornato cercando per ID o numero treno
@@ -139,19 +141,19 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                   children: [
                                     Text(
                                       dep.scheduledTime != null ? _formatStationTime(dep.scheduledTime!, station.country) : '--:--',
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 18),
                                     ),
                                     if (dep.isDelayed)
                                       Container(
                                         margin: const EdgeInsets.only(top: 4),
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: Colors.redAccent.withOpacity(0.2),
+                                          color: theme.errorColor.withOpacity(0.12),
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           "+${dep.delayMinutes}'",
-                                          style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                   ],
@@ -165,17 +167,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                     children: [
                                       Text(
                                         "${dep.category ?? ''} ${dep.trainNumber ?? ''}",
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 14),
                                       ),
                                       const SizedBox(height: 2),
                                       Row(
                                         children: [
-                                          Icon(isArrival ? Icons.arrow_back : Icons.arrow_forward, color: Colors.white54, size: 12),
+                                          Icon(isArrival ? Icons.arrow_back : Icons.arrow_forward, color: theme.secondaryTextColor, size: 12),
                                           const SizedBox(width: 4),
                                           Expanded(
                                             child: Text(
                                               isArrival ? (dep.origin ?? '') : (dep.destination ?? ''),
-                                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                              style: TextStyle(color: theme.secondaryTextColor, fontSize: 13),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
@@ -184,14 +186,14 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                       const SizedBox(height: 4),
                                       Text(
                                         "Binario: ${dep.platform ?? '?'}",
-                                        style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                                        style: TextStyle(color: theme.warningColor, fontSize: 12),
                                       ),
                                     ],
                                   ),
                                 ),
                                 
                                 // Action Icon
-                                const Icon(Icons.info_outline, color: Colors.blueAccent),
+                                Icon(Icons.info_outline, color: theme.primaryColor),
                               ],
                             ),
                           ),
@@ -211,17 +213,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
+            Text(
               "Cerca Stazione",
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             // Selettore Servizio (Direct vs Trainboard)
             DropdownButton<String>(
               value: trainProvider.selectedService,
-              dropdownColor: Colors.black87,
-              icon: const Icon(Icons.settings, color: Colors.blueAccent, size: 20),
+              dropdownColor: theme.surfaceColor,
+              icon: Icon(Icons.settings, color: theme.primaryColor, size: 20),
               underline: const SizedBox(),
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 13),
+              style: TextStyle(color: theme.primaryColor, fontSize: 13),
               items: const [
                 DropdownMenuItem(value: 'direct', child: Text("BC. Transporter")),
                 DropdownMenuItem(value: 'trainboardeu', child: Text("Trainboard.eu (Beta)")),
@@ -245,8 +247,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         if (trainProvider.selectedService == 'trainboardeu' || _selectedCountry != 'IT')
           DropdownButton<String>(
             value: _selectedCountry,
-            dropdownColor: Colors.black87,
-            style: const TextStyle(color: Colors.white),
+            dropdownColor: theme.surfaceColor,
+            style: TextStyle(color: theme.textColor),
             items: displayedCountries.map((c) => DropdownMenuItem(
               value: c['code'],
               child: Text(c['name']!),
@@ -260,13 +262,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           controller: _searchController,
           decoration: InputDecoration(
             hintText: "Nome stazione...",
-            hintStyle: const TextStyle(color: Colors.white54),
-            prefixIcon: const Icon(Icons.search, color: Colors.white54),
+            hintStyle: TextStyle(color: theme.secondaryTextColor),
+            prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.1),
+            fillColor: theme.surfaceColor.withOpacity(0.06),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: theme.textColor),
           onChanged: (val) {
              if (_selectedCountry == 'EU') {
                trainProvider.searchTrainByNumber(val);
@@ -281,12 +283,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         else if (trainProvider.isLoadingSuggestions || trainProvider.stationSuggestions.isNotEmpty)
           _buildStationSuggestions(trainProvider)
         else
-          const Padding(
-            padding: EdgeInsets.only(top: 20),
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
             child: Center(
               child: Text(
                 "Inserisci almeno 2 caratteri per la ricerca",
-                style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic),
+                style: TextStyle(color: theme.secondaryTextColor, fontStyle: FontStyle.italic),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -296,18 +298,19 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Widget _buildModeToggle(BuildContext context, String label, bool active, VoidCallback onTap) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? Colors.blueAccent : Colors.white.withOpacity(0.1),
+          color: active ? theme.primaryColor : theme.surfaceColor.withOpacity(0.06),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.white : Colors.white70,
+            color: active ? theme.textColor : theme.secondaryTextColor,
             fontSize: 12,
             fontWeight: active ? FontWeight.bold : FontWeight.normal,
           ),
@@ -317,8 +320,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Widget _buildStationSuggestions(TrainProvider provider) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     if (provider.isLoadingSuggestions) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
     return Expanded(
       child: ListView.builder(
@@ -326,9 +330,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         itemBuilder: (context, index) {
           final s = provider.stationSuggestions[index];
           return ListTile(
-            leading: const Icon(Icons.location_city, color: Colors.blueAccent),
-            title: Text(s.name, style: const TextStyle(color: Colors.white)),
-            subtitle: Text(s.country, style: const TextStyle(color: Colors.white54)),
+            leading: Icon(Icons.location_city, color: theme.primaryColor),
+            title: Text(s.name, style: TextStyle(color: theme.textColor)),
+            subtitle: Text(s.country, style: TextStyle(color: theme.secondaryTextColor)),
             onTap: () => provider.selectStation(s),
           );
         },
@@ -337,8 +341,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Widget _buildNumberSearchResults(TrainProvider provider) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     if (provider.isSearchingByNumber) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
     return Expanded(
       child: ListView.builder(
@@ -347,10 +352,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           final m = provider.searchResults[index];
           final line = m['line'] ?? {};
           return ListTile(
-            leading: const Icon(Icons.speed, color: Colors.orangeAccent),
-            title: Text("${line['name'] ?? '?'}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: Text("Direzione: ${m['direction'] ?? 'N/A'}", style: const TextStyle(color: Colors.white70)),
-            trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+            leading: Icon(Icons.speed, color: theme.warningColor),
+            title: Text("${line['name'] ?? '?'}", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
+            subtitle: Text("Direzione: ${m['direction'] ?? 'N/A'}", style: TextStyle(color: theme.secondaryTextColor)),
+            trailing: Icon(Icons.chevron_right, color: theme.secondaryTextColor.withOpacity(0.6)),
             onTap: () {
                final mapState = Provider.of<MapStateProvider>(context, listen: false);
                final lat = m['latitude'];

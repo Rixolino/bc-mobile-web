@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
 import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../providers/map_state_provider.dart';
+import '../providers/theme_provider.dart';
 
 /// Widget che gestisce la visualizzazione della mappa con salvataggio automatico della posizione.
 ///
@@ -77,12 +78,13 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
       });
     }
 
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
         initialCenter: LatLng(mapState.lat, mapState.lng),
         initialZoom: mapState.zoom,
-        backgroundColor: const Color(0xFFF0F0F0),
+        backgroundColor: theme.surfaceColor,
         onPositionChanged: (position, hasGesture) {
           // Salva sempre la posizione, sia per gesture manuali che cambiamenti programmatici
           mapState.updatePosition(
@@ -110,19 +112,19 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                   decoration: BoxDecoration(
                     color: color,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                    border: Border.all(color: theme.surfaceColor, width: 2),
+                    boxShadow: [
+                      BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
                     ],
                   ),
                   child: Center(
                     child: Text(
                       v.line,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: theme.textColor,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black45, blurRadius: 1, offset: Offset(1, 1))],
+                        shadows: [Shadow(color: theme.textColor.withOpacity(0.18), blurRadius: 1, offset: Offset(1, 1))],
                       ),
                     ),
                   ),
@@ -143,15 +145,15 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                   angle: (heading * 3.14159265359 / 180), // Convert degrees to radians
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent,
+                      color: theme.primaryColor,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                      border: Border.all(color: theme.surfaceColor, width: 2),
+                      boxShadow: [
+                        BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
                       ],
                     ),
-                    child: const Center(
-                      child: Icon(Icons.flight, color: Colors.white, size: 18),
+                    child: Center(
+                      child: Icon(Icons.flight, color: theme.textColor, size: 18),
                     ),
                   ),
                 ),
