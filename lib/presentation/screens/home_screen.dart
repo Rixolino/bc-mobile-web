@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
               topLeft: Radius.circular(24.0),
               topRight: Radius.circular(24.0),
             ),
-            minHeight: 120, // Altezza quando collassato (dock)
+            minHeight: 148, // Altezza aumentata quando collassato (dock)
             maxHeight: MediaQuery.of(context).size.height * 0.7, // Altezza massima
             color: theme.backgroundColor.withOpacity(0.95), // Background scuro semitrasparente
         boxShadow: [
@@ -346,7 +346,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // Contenuto dinamico in base alla selezione
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              bottom: MediaQuery.of(context).padding.top + 36, // Padding per evitare sovrapposizione con barra navigazione
+            ),
             child: _buildDynamicList(),
           ),
         ),
@@ -498,18 +502,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Icon(Icons.chevron_right, color: theme.secondaryTextColor.withOpacity(0.3)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPanelContent(Config config) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 16), // Aggiungi padding per evitare sovrapposizione con barra navigazione
-      child: Column(
-        children: [
-          _buildModeBar(),
-          Expanded(child: _buildDynamicList()),
         ],
       ),
     );
