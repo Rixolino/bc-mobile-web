@@ -218,38 +218,66 @@ class _BusPanelContentState extends State<BusPanelContent> {
       busProvider.fetchBariStops();
     }
 
+    final TextEditingController searchController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) {
         final theme = Provider.of<ThemeProvider>(context, listen: false);
-        return AlertDialog(
-          backgroundColor: theme.surfaceColor,
-          title: Text("Seleziona fermata $label", style: TextStyle(color: theme.textColor)),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: busProvider.isLoadingStops
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: busProvider.bariStops.length,
-                    itemBuilder: (context, index) {
-                      final stop = busProvider.bariStops[index];
-                      return ListTile(
-                        title: Text(stop.stopName, style: TextStyle(color: theme.textColor)),
-                        onTap: () {
-                          onSelect(stop);
-                          Navigator.of(context).pop();
-                        },
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text("Annulla", style: TextStyle(color: theme.secondaryTextColor)),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final filteredStops = busProvider.bariStops.where((stop) =>
+                stop.stopName.toLowerCase().contains(searchController.text.toLowerCase())).toList();
+            return AlertDialog(
+              backgroundColor: theme.surfaceColor,
+              title: Text("Seleziona fermata $label", style: TextStyle(color: theme.textColor)),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: busProvider.isLoadingStops
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(
+                        children: [
+                          TextField(
+                            controller: searchController,
+                            decoration: InputDecoration(
+                              hintText: "Cerca fermata...",
+                              hintStyle: TextStyle(color: theme.secondaryTextColor),
+                              prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
+                              filled: true,
+                              fillColor: theme.surfaceColor.withOpacity(0.1),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            style: TextStyle(color: theme.textColor),
+                            onChanged: (value) => setState(() {}),
+                          ),
+                          const SizedBox(height: 10),
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: filteredStops.length,
+                              itemBuilder: (context, index) {
+                                final stop = filteredStops[index];
+                                return ListTile(
+                                  title: Text(stop.stopName, style: TextStyle(color: theme.textColor)),
+                                  onTap: () {
+                                    onSelect(stop);
+                                    Navigator.of(context).pop();
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text("Annulla", style: TextStyle(color: theme.secondaryTextColor)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -308,10 +336,13 @@ class _BusPanelContentState extends State<BusPanelContent> {
           title: Text("Linea ${v.line}", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
           subtitle: Text(v.destination ?? 'Destinazione non disponibile', style: TextStyle(color: theme.secondaryTextColor)),
           trailing: Icon(Icons.map, color: theme.secondaryTextColor.withOpacity(0.3)),
-          onTap: () {
+          onTap: () async {
             if (v.latitude != 0) {
               mapState.flyTo(v.latitude, v.longitude, zoom: 15);
             }
+            // Open bus details sheet
+            await busProvider.selectBus(v);
+            // No modal - the sheet will appear as overlay in the map
           },
         );
       },

@@ -7,7 +7,7 @@ class ApiConstants {
   
   // Endpoint specifici (verranno sovrascritti dalla config dinamica se presente)
   static const String defaultTrainEndpoint = "https://prod.cuzimmartin.dev";
-  static const String defaultAmtabEndpoint = "$baseUrl/api/bari-realtime";
+  static const String defaultAmtabEndpoint = "$baseUrl/api/it/bus/bari/bus-realtime";
   static const String defaultAtacEndpoint = "$baseUrl/api/rome-realtime";
   static const String defaultFlightRadarEndpoint = "$baseUrl/api/flightradar";
 }

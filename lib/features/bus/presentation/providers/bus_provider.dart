@@ -17,8 +17,14 @@ class BusProvider with ChangeNotifier {
   List<BariRouteSolution> _bariSolutions = [];
   BariStop? _selectedFromStop;
   BariStop? _selectedToStop;
+  BariStop? _selectedStop;
   bool _isLoadingStops = false;
   bool _isLoadingSolutions = false;
+
+  // Selected bus for details
+  BusVehicle? _selectedBus;
+  BusRoutePath? _selectedBusRoutePath;
+  bool _isLoadingRoutePath = false;
 
   List<BusVehicle> get vehicles => _vehicles;
   bool get isLoading => _isLoading;
@@ -29,8 +35,14 @@ class BusProvider with ChangeNotifier {
   List<BariRouteSolution> get bariSolutions => _bariSolutions;
   BariStop? get selectedFromStop => _selectedFromStop;
   BariStop? get selectedToStop => _selectedToStop;
+  BariStop? get selectedStop => _selectedStop;
   bool get isLoadingStops => _isLoadingStops;
   bool get isLoadingSolutions => _isLoadingSolutions;
+
+  // Selected bus getter
+  BusVehicle? get selectedBus => _selectedBus;
+  BusRoutePath? get selectedBusRoutePath => _selectedBusRoutePath;
+  bool get isLoadingRoutePath => _isLoadingRoutePath;
 
   @override
   void dispose() {
@@ -163,7 +175,95 @@ class BusProvider with ChangeNotifier {
     _bariSolutions = [];
     _selectedFromStop = null;
     _selectedToStop = null;
+    _selectedStop = null;
     _flixbusStations = [];
+    _selectedBus = null;
+    _selectedBusRoutePath = null;
+    _isLoadingRoutePath = false;
+    notifyListeners();
+  }
+
+  Future<void> selectBus(BusVehicle bus) async {
+    _selectedBus = bus;
+    // Load route path for Bari buses
+    if (_selectedCity == 'Bari' && bus.provider == 'Bari') {
+      _loadBusRoutePath(bus);
+      // Also fetch destination if not already present
+      if (bus.destination == null || bus.destination!.isEmpty) {
+        try {
+          final destination = await fetchBariVehicleDestination(bus.id, bus.line);
+          if (destination != null && destination.isNotEmpty) {
+            _selectedBus = bus.copyWith(destination: destination);
+          }
+        } catch (e) {
+          print("Error fetching bus destination: $e");
+        }
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> _loadBusRoutePath(BusVehicle bus) async {
+    _isLoadingRoutePath = true;
+    _selectedBusRoutePath = null;
+    notifyListeners();
+
+    try {
+      // Use the tripId directly from the bus data
+      final tripId = bus.tripId;
+
+      if (tripId != null && tripId.isNotEmpty) {
+        final routePath = await _repository.fetchBusRoutePath(tripId);
+        _selectedBusRoutePath = routePath;
+      } else {
+        print("No tripId available for bus ${bus.id}");
+        _selectedBusRoutePath = null;
+      }
+    } catch (e) {
+      print("Error loading bus route path: $e");
+      _selectedBusRoutePath = null;
+    } finally {
+      _isLoadingRoutePath = false;
+      notifyListeners();
+    }
+  }
+
+  void clearBusSelection() {
+    _selectedBus = null;
+    _selectedBusRoutePath = null;
+    _isLoadingRoutePath = false;
+    notifyListeners();
+  }
+
+  Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId) async {
+    try {
+      return await _repository.fetchBariTripUpdates(vehicleId, routeId);
+    } catch (e) {
+      print("Error fetching Bari trip updates: $e");
+      return [];
+    }
+  }
+
+  Future<List<StopDeparture>> fetchBariStopUpdates(String stopId) async {
+    try {
+      return await _repository.fetchBariStopUpdates(stopId);
+    } catch (e) {
+      print("Error fetching Bari stop updates: $e");
+      return [];
+    }
+  }
+
+  Future<String?> fetchBariVehicleDestination(String vehicleId, String routeId) async {
+    return await _repository.fetchBariVehicleDestination(vehicleId, routeId);
+  }
+
+  void selectStop(BariStop stop) {
+    _selectedStop = stop;
+    notifyListeners();
+  }
+
+  void clearStopSelection() {
+    _selectedStop = null;
     notifyListeners();
   }
 }

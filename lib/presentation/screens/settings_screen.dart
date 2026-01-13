@@ -68,6 +68,13 @@ class SettingsScreen extends StatelessWidget {
                 (val) => settings.setPlaneRefreshSeconds(val.toInt()),
                 theme
               ).animate().fadeIn(delay: 300.ms).slideX(),
+
+              const SizedBox(height: 32),
+              
+              _buildSectionTitle('Mappa', theme),
+              const SizedBox(height: 16),
+              
+              _buildClusteringToggle(context, settings, theme).animate().fadeIn(delay: 400.ms).slideX(),
             ],
           );
         },
@@ -213,7 +220,7 @@ class SettingsScreen extends StatelessWidget {
               value: currentValue.toDouble(),
               min: 0,
               max: 300,
-              divisions: 20, // 0, 15, 30... 300
+              divisions: 60, // 0, 5, 10... 300
               label: currentValue > 0 ? '$currentValue sec' : 'Disabilitato',
               onChanged: onChanged,
             ),
@@ -228,6 +235,46 @@ class SettingsScreen extends StatelessWidget {
                ],
              ),
           )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClusteringToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.group_work, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Clustering Autobus',
+                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              Switch(
+                value: settings.busClusteringEnabled,
+                onChanged: (value) => settings.setBusClusteringEnabled(value),
+                activeColor: theme.primaryColor,
+                activeTrackColor: theme.primaryColor.withOpacity(0.3),
+                inactiveThumbColor: theme.secondaryTextColor,
+                inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.2),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
         ],
       ),
     );

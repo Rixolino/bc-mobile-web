@@ -29,6 +29,8 @@ class BcTransporterApp extends StatefulWidget {
 }
 
 class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBindingObserver {
+  MapStateProvider? _mapStateProvider;
+  
   @override
   void initState() {
     super.initState();
@@ -46,11 +48,10 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
     super.didChangeAppLifecycleState(state);
     
     // Salva la posizione della mappa quando l'app viene messa in background o chiusa
-    if (state == AppLifecycleState.paused || 
+    if ((state == AppLifecycleState.paused || 
         state == AppLifecycleState.detached || 
-        state == AppLifecycleState.inactive) {
-      final mapStateProvider = Provider.of<MapStateProvider>(context, listen: false);
-      mapStateProvider.saveCurrentPosition();
+        state == AppLifecycleState.inactive) && _mapStateProvider != null) {
+      _mapStateProvider!.saveCurrentPosition();
     }
   }
 
@@ -92,6 +93,9 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, theme, child) {
+          // Salva riferimento al MapStateProvider per il lifecycle
+          _mapStateProvider = Provider.of<MapStateProvider>(context, listen: false);
+          
           return MaterialApp(
             title: 'BC Transporter',
             debugShowCheckedModeBanner: false,

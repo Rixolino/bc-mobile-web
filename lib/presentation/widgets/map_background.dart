@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
+import '../../features/bus/data/models/bus_model.dart';
+import '../../features/bus/presentation/widgets/bus_details_sheet.dart';
+import '../../features/bus/presentation/widgets/bus_stop_details_sheet.dart';
 import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../providers/map_state_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/settings_provider.dart';
 
 /// Widget che gestisce la visualizzazione della mappa con salvataggio automatico della posizione.
 ///
@@ -15,7 +20,9 @@ import '../providers/theme_provider.dart';
 /// - ✅ Marker dinamici per bus e aerei con colori e rotazione
 /// - ✅ Posizione caricata dall'ultimo accesso all'app
 class MapBackground extends StatefulWidget {
-  const MapBackground({super.key});
+  final BusVehicle? selectedBus; // Optional: show only this bus
+  
+  const MapBackground({super.key, this.selectedBus});
 
   @override
   State<MapBackground> createState() => _MapBackgroundState();
@@ -52,6 +59,11 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
     super.dispose();
   }
 
+  void _showStopInfo(BuildContext context, BariStop stop) {
+    final busProvider = Provider.of<BusProvider>(context, listen: false);
+    busProvider.selectStop(stop);
+  }
+
   Color _stringToColor(String str) {
     int hash = 0;
     for (int i = 0; i < str.length; i++) {
@@ -79,7 +91,9 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
     }
 
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return FlutterMap(
+    
+    // Build the map widget
+    final mapWidget = FlutterMap(
       mapController: _mapController,
       options: MapOptions(
         initialCenter: LatLng(mapState.lat, mapState.lng),
@@ -99,39 +113,145 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
           urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/${mapState.mapStyle}/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g',
           userAgentPackageName: 'dev.iscool.bctransporter',
         ),
+        // Bus Route Path - show when a bus is selected and route path is available
+        if (mapState.activeCategory == 1 && (widget.selectedBus != null || busProvider.selectedBus != null) && busProvider.selectedBusRoutePath != null)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: busProvider.selectedBusRoutePath!.pathCoordinates,
+                color: _stringToColor((widget.selectedBus ?? busProvider.selectedBus)!.line),
+                strokeWidth: 4.0,
+                borderColor: theme.surfaceColor,
+                borderStrokeWidth: 2.0,
+              ),
+            ],
+          ),
         // Bus Markers
-        if (mapState.activeCategory == 1)
-          MarkerLayer(
-            markers: busProvider.vehicles.map((v) {
-              final color = _stringToColor(v.line);
-              return Marker(
-                point: LatLng(v.latitude, v.longitude),
-                width: 32,
-                height: 32,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.surfaceColor, width: 2),
-                    boxShadow: [
-                      BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      v.line,
-                      style: TextStyle(
-                        color: theme.textColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: theme.textColor.withOpacity(0.18), blurRadius: 1, offset: Offset(1, 1))],
+        if (mapState.activeCategory == 1) ...[
+          Consumer<SettingsProvider>(
+            builder: (context, settings, child) {
+              // Create bus markers list
+              final busMarkers = busProvider.vehicles.where((v) {
+                final selectedBus = widget.selectedBus ?? busProvider.selectedBus;
+                return selectedBus == null || v.id == selectedBus.id;
+              }).map((v) {
+                final color = _stringToColor(v.line);
+                return Marker(
+                  point: LatLng(v.latitude, v.longitude),
+                  width: 32,
+                  height: 32,
+                  child: GestureDetector(
+                    onTap: () async {
+                      // Solo gli autobus live position possono essere selezionati per aprire i dettagli
+                      if (busProvider.selectedStop != null) {
+                        // Fly to bus location and select the bus
+                        final mapState = Provider.of<MapStateProvider>(context, listen: false);
+                        mapState.flyTo(v.latitude, v.longitude, zoom: 15);
+                        await busProvider.selectBus(v);
+                        // No modal - the sheet will appear as overlay
+                      }
+                      // Se non c'è fermata selezionata, non fare nulla (autobus non selezionabile)
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: theme.surfaceColor, width: 2),
+                        boxShadow: [
+                          BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          v.line,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            shadows: [Shadow(color: theme.textColor.withOpacity(0.18), blurRadius: 1, offset: Offset(1, 1))],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList();
+
+              // Create stop markers list (only for Bari)
+              final stopMarkers = busProvider.selectedCity == 'Bari' ? busProvider.bariStops.where((stop) {
+                // In focus mode (selected bus with route path), show only stops belonging to the route
+                final selectedBus = widget.selectedBus ?? busProvider.selectedBus;
+                if (selectedBus != null && busProvider.selectedBusRoutePath != null) {
+                  return busProvider.selectedBusRoutePath!.stopIds.contains(stop.stopId);
+                }
+                // Otherwise show all stops
+                return true;
+              }).map((stop) {
+                return Marker(
+                  point: LatLng(stop.latitude, stop.longitude),
+                  width: 24,
+                  height: 24,
+                  child: GestureDetector(
+                    onTap: () => _showStopInfo(context, stop),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.8),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: theme.surfaceColor, width: 2),
+                        boxShadow: [
+                          BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 2, offset: Offset(0, 1)),
+                        ],
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.location_on,
+                          color: theme.textColor,
+                          size: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList() : <Marker>[];
+
+              // Combine all markers
+              final allMarkers = [...busMarkers, ...stopMarkers];
+
+              // Use clustering if enabled
+              if (settings.busClusteringEnabled) {
+                return MarkerClusterLayerWidget(
+                  options: MarkerClusterLayerOptions(
+                    markers: allMarkers,
+                    builder: (context, markers) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.8),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: theme.surfaceColor, width: 2),
+                          boxShadow: [
+                            BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            markers.length.toString(),
+                            style: TextStyle(
+                              color: theme.textColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              } else {
+                return MarkerLayer(markers: allMarkers);
+              }
+            },
           ),
+        ],
         // Plane Markers
         if (mapState.activeCategory == 2)
           MarkerLayer(
@@ -159,6 +279,42 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                 ),
               );
             }).toList(),
+          ),
+      ],
+    );
+
+    // Return Stack with map and optional details sheet
+    return Stack(
+      children: [
+        // Map
+        mapWidget,
+        
+        // Bus Details Sheet - show when a bus is selected
+        if (busProvider.selectedBus != null)
+          Positioned.fill(
+            child: DraggableScrollableSheet(
+              initialChildSize: 0.5, // Inizia a metà schermo
+              minChildSize: 0.3, // Minimo 30% dello schermo
+              maxChildSize: 0.95, // Massimo 95% dello schermo
+              builder: (context, scrollController) => BusDetailsSheet(
+                bus: busProvider.selectedBus!, 
+                scrollController: scrollController
+              ),
+            ),
+          ),
+
+        // Stop Details Sheet - show when a stop is selected AND no bus is selected
+        if (busProvider.selectedStop != null && busProvider.selectedBus == null)
+          Positioned.fill(
+            child: DraggableScrollableSheet(
+              initialChildSize: 0.5, // Inizia a metà schermo
+              minChildSize: 0.3, // Minimo 30% dello schermo
+              maxChildSize: 0.95, // Massimo 95% dello schermo
+              builder: (context, scrollController) => BusStopDetailsSheet(
+                stop: busProvider.selectedStop!, 
+                scrollController: scrollController
+              ),
+            ),
           ),
       ],
     );

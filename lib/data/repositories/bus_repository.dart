@@ -204,5 +204,20 @@ class BusRepository {
       return null;
     }
   }
+
+  Future<List<StopDeparture>> fetchBariStopUpdates(String stopId) async {
+    try {
+      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/stops-updates?stopId=$stopId"));
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final List departures = json['departures'] ?? [];
+        return departures.map((d) => StopDeparture.fromJson(d)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching Bari stop updates: $e");
+      return [];
+    }
+  }
 }
 

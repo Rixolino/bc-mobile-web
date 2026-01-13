@@ -86,38 +86,47 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
-        return Scaffold(
-          body: SlidingUpPanel(
-            controller: _panelController,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(24.0),
-              topRight: Radius.circular(24.0),
-            ),
-            minHeight: 148, // Altezza aumentata quando collassato (dock)
-            maxHeight: MediaQuery.of(context).size.height * 0.7, // Altezza massima
-            color: theme.backgroundColor.withOpacity(0.95), // Background scuro semitrasparente
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 20.0,
-            color: theme.textColor.withOpacity(0.12),
-          ),
-        ],
-        // IL CONTENT DEL PANNELLO (SHEET)
-        panel: _buildPanelContent(config),
-        
-        // LA MAPPA E L'UI DI SFONDO
-        body: Stack(
-          children: [
-            // 1. Mappa a schermo intero
-            MapBackground(),
+        return Consumer<BusProvider>(
+          builder: (context, busProvider, child) {
+            // Quando c'è un bus o una fermata selezionati, nascondi il panel
+            final hasSelectedBus = busProvider.selectedBus != null;
+            final hasSelectedStop = busProvider.selectedStop != null;
+            final shouldHidePanel = hasSelectedBus || hasSelectedStop;
+            final panelMinHeight = shouldHidePanel ? 0.0 : 148.0;
+            final panelMaxHeight = shouldHidePanel ? 0.0 : MediaQuery.of(context).size.height * 0.7;
+            
+            return Scaffold(
+              body: SlidingUpPanel(
+                controller: _panelController,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24.0),
+                  topRight: Radius.circular(24.0),
+                ),
+                minHeight: panelMinHeight,
+                maxHeight: panelMaxHeight,
+                color: theme.backgroundColor.withOpacity(0.95),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 20.0,
+                    color: theme.textColor.withOpacity(0.12),
+                  ),
+                ],
+                // IL CONTENT DEL PANNELLO (SHEET)
+                panel: shouldHidePanel ? const SizedBox() : _buildPanelContent(config),
+                
+                // LA MAPPA E L'UI DI SFONDO
+                body: Stack(
+                  children: [
+                    // 1. Mappa a schermo intero
+                    MapBackground(),
 
-            // 2. Barra di ricerca Floating
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 16,
-              right: 16,
-              child: Row(
-                children: [
+                    // 2. Barra di ricerca Floating
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 10,
+                      left: 16,
+                      right: 16,
+                      child: Row(
+                        children: [
                    Expanded(child: _buildSearchBar()),
                    const SizedBox(width: 8),
                    _buildMapStyleButton(),
@@ -171,6 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+          },
+        );
       },
     );
   }
@@ -381,6 +392,14 @@ class _HomeScreenState extends State<HomeScreen> {
         
         // Notifichiamo il MapStateProvider per resettare la vista
         Provider.of<MapStateProvider>(context, listen: false).setCategory(index);
+        
+        // Carichiamo automaticamente le fermate quando si seleziona la categoria bus
+        if (index == 1) { // Bus category
+          final busProvider = Provider.of<BusProvider>(context, listen: false);
+          if (busProvider.bariStops.isEmpty && !busProvider.isLoadingStops) {
+            busProvider.fetchBariStops();
+          }
+        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),

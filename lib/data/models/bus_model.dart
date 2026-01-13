@@ -4,19 +4,21 @@ class BusVehicle {
   final String? destination;
   final double latitude;
   final double longitude;
-  final String? heading; 
+  final String? heading;
   final String? speed;
   final String? provider; // Bari, Roma, ER, Flixbus
-  
+  final bool isLivePosition; // Flag per indicare se è un autobus rilevato come live position
+
   BusVehicle({
-    required this.id, 
-    required this.line, 
+    required this.id,
+    required this.line,
     this.destination,
-    required this.latitude, 
+    required this.latitude,
     required this.longitude,
     this.heading,
     this.speed,
-    this.provider
+    this.provider,
+    this.isLivePosition = false, // Default false
   });
 
   factory BusVehicle.fromRomeJson(Map<String, dynamic> json) {
@@ -214,6 +216,61 @@ class BariRouteSolution {
       price: json['Prezzo']?['Valore']?.toString(),
       currency: json['Prezzo']?['Valuta'],
     );
+  }
+}
+
+class StopDeparture {
+  final String line;
+  final String tripId;
+  final String vehicleId;
+  final String vehicleLabel;
+  final double time; // timestamp (cambiato da int a double per supportare decimali)
+  final bool isRealtime;
+  final bool isScheduled;
+  final bool isLivePosition; // nuovo campo per indicare se è basato su posizione GPS
+  final int delay;
+  final String destination;
+  final double? distance; // nuovo campo per la distanza in km (solo per live position)
+
+  StopDeparture({
+    required this.line,
+    required this.tripId,
+    required this.vehicleId,
+    required this.vehicleLabel,
+    required this.time,
+    required this.isRealtime,
+    required this.isScheduled,
+    required this.isLivePosition,
+    required this.delay,
+    required this.destination,
+    this.distance,
+  });
+
+  factory StopDeparture.fromJson(Map<String, dynamic> json) {
+    return StopDeparture(
+      line: json['line']?.toString() ?? '',
+      tripId: json['tripId']?.toString() ?? '',
+      vehicleId: json['vehicleId']?.toString() ?? '',
+      vehicleLabel: json['vehicleLabel']?.toString() ?? '',
+      time: (json['time'] as num?)?.toDouble() ?? 0.0, // cambiato da int a double
+      isRealtime: json['isRealtime'] ?? false,
+      isScheduled: json['isScheduled'] ?? false,
+      isLivePosition: json['isLivePosition'] ?? false, // nuovo campo
+      delay: json['delay'] ?? 0,
+      destination: json['destination'] ?? '',
+      distance: (json['distance'] as num?)?.toDouble(), // nuovo campo
+    );
+  }
+
+  String get formattedTime {
+    final dateTime = DateTime.fromMillisecondsSinceEpoch((time * 1000).toInt()); // convertito a int per fromMillisecondsSinceEpoch
+    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String get delayText {
+    if (delay == 0) return '';
+    if (delay > 0) return ' (+${delay}min)';
+    return ' (${delay}min)';
   }
 }
 

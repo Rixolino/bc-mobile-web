@@ -6,16 +6,19 @@ class SettingsProvider with ChangeNotifier {
   static const String keyTrainInterval = 'train_refresh_interval';
   static const String keyPlaneInterval = 'plane_refresh_interval';
   static const String keyThemeMode = 'theme_mode';
+  static const String keyBusClustering = 'bus_clustering_enabled';
 
   int _busRefreshSeconds = 0; // 0 means disabled
   int _trainRefreshSeconds = 0;
   int _planeRefreshSeconds = 0;
   ThemeMode _themeMode = ThemeMode.dark;
+  bool _busClusteringEnabled = false;
 
   int get busRefreshSeconds => _busRefreshSeconds;
   int get trainRefreshSeconds => _trainRefreshSeconds;
   int get planeRefreshSeconds => _planeRefreshSeconds;
   ThemeMode get themeMode => _themeMode;
+  bool get busClusteringEnabled => _busClusteringEnabled;
 
   SettingsProvider() {
     _loadSettings();
@@ -28,6 +31,7 @@ class SettingsProvider with ChangeNotifier {
     _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? 0;
     final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
+    _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     notifyListeners();
   }
 
@@ -57,5 +61,12 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(keyThemeMode, mode.index);
+  }
+
+  Future<void> setBusClusteringEnabled(bool enabled) async {
+    _busClusteringEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyBusClustering, enabled);
   }
 }
