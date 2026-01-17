@@ -79,7 +79,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     }
     try {
       final provider = Provider.of<BusProvider>(context, listen: false);
-      final departures = await provider.fetchBariStopUpdates(widget.stop.stopId);
+      final departures = await provider.fetchStopUpdates(widget.stop.stopId);
       print('Fetched ${departures.length} departures for stop ${widget.stop.stopId}');
       if (departures.isNotEmpty) {
         print('First departure: ${departures[0].toString()}');
@@ -186,7 +186,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text('Fermata Bus Bari', style: TextStyle(color: theme.secondaryTextColor)),
+                      Text('Fermata Bus ${provider.selectedProvider?.name ?? 'N/A'}', style: TextStyle(color: theme.secondaryTextColor)),
                       const SizedBox(height: 18),
 
                       // Basic info

@@ -36,26 +36,21 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 onExpanded: (value) => setState(() => _expandedCitySelector = value),
                 child: Wrap(
                   spacing: 8,
-                  children: [
-                    _buildCityChip(context, "Roma", busProvider),
-                    _buildCityChip(context, "Bari", busProvider),
-                    _buildCityChip(context, "Emilia-Romagna", busProvider),
-                    _buildCityChip(context, "Flixbus", busProvider),
-                  ],
+                  children: busProvider.providers.map((provider) => _buildCityChip(context, provider.name, busProvider)).toList(),
                 ),
               ),
               const SizedBox(height: 8),
 
               // Options Section - Expandable
               _buildExpandableSection(
-                title: busProvider.selectedCity == "Bari" ? "Pianifica Viaggio" : "Opzioni",
+                title: _getSelectedProvider(busProvider)?.supportsSolutions == true ? "Pianifica Viaggio" : "Opzioni",
                 expanded: _expandedOptions,
                 onExpanded: (value) => setState(() => _expandedOptions = value),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (busProvider.selectedCity == "Flixbus") _buildFlixbusSearch(busProvider),
-                if (busProvider.selectedCity == "Bari") _buildBariRouting(busProvider),
+                if (_getSelectedProvider(busProvider)?.supportsSolutions == true) _buildBariRouting(busProvider),
                 if (busProvider.selectedCity != "Flixbus") ...[
                   const SizedBox(height: 10),
                   SizedBox(
@@ -214,8 +209,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
   }
 
   void _showStopSelectionDialog(BuildContext context, String label, BusProvider busProvider, Function(BariStop?) onSelect) {
-    if (busProvider.bariStops.isEmpty && !busProvider.isLoadingStops) {
-      busProvider.fetchBariStops();
+    if (busProvider.stops.isEmpty && !busProvider.isLoadingStops) {
+      busProvider.fetchStops();
     }
 
     final TextEditingController searchController = TextEditingController();
@@ -226,7 +221,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
         final theme = Provider.of<ThemeProvider>(context, listen: false);
         return StatefulBuilder(
           builder: (context, setState) {
-            final filteredStops = busProvider.bariStops.where((stop) =>
+            final filteredStops = busProvider.stops.where((stop) =>
                 stop.stopName.toLowerCase().contains(searchController.text.toLowerCase())).toList();
             return AlertDialog(
               backgroundColor: theme.surfaceColor,
@@ -392,15 +387,47 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
   Widget _buildCityChip(BuildContext context, String city, BusProvider provider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
+    final mapState = Provider.of<MapStateProvider>(context, listen: false);
     final isSelected = provider.selectedCity == city;
+
     return FilterChip(
       label: Text(city),
       selected: isSelected,
-      onSelected: (_) => provider.selectCity(city),
+      onSelected: (_) {
+        provider.selectCity(city);
+        // Sposta la mappa alle coordinate della città selezionata
+        final selectedProvider = provider.providers.firstWhere(
+          (p) => p.name == city,
+          orElse: () => BusProviderConfig(
+            name: city,
+            provider: '',
+            endpoints: {},
+          ),
+        );
+        if (selectedProvider.latitude != null && selectedProvider.longitude != null) {
+          mapState.flyTo(
+            selectedProvider.latitude!,
+            selectedProvider.longitude!,
+            zoom: selectedProvider.zoom ?? 12.0,
+          );
+        }
+      },
       backgroundColor: theme.surfaceColor.withOpacity(0.1),
       selectedColor: theme.primaryColor.withOpacity(0.5),
       labelStyle: TextStyle(color: theme.textColor),
       checkmarkColor: theme.textColor,
+    );
+  }
+
+  BusProviderConfig? _getSelectedProvider(BusProvider busProvider) {
+    return busProvider.providers.firstWhere(
+      (p) => p.name == busProvider.selectedCity,
+      orElse: () => BusProviderConfig(
+        name: busProvider.selectedCity,
+        provider: '',
+        solutionsUrl: null,
+        endpoints: {},
+      ),
     );
   }
 }

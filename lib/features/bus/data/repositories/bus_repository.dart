@@ -7,28 +7,72 @@ import '../models/bus_model.dart';
 class BusRepository {
   static const String flixbusBase = "https://prod.cuzimmartin.dev/api/flixbus";
 
-  Future<List<BusVehicle>> fetchRomeVehicles() async {
-    try {
-      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/rome-realtime"));
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        final List entities = json['entities'] ?? [];
-        return entities.map((e) => BusVehicle.fromRomeJson(e)).toList();
-      }
-      return [];
-    } catch (e) {
-      print("Error fetching Rome buses: $e");
-      return [];
+  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+    const earthRadiusKm = 6371.0;
+    
+    // Convert to radians
+    final lat1Rad = _degreesToRadians(lat1);
+    final lng1Rad = _degreesToRadians(lng1);
+    final lat2Rad = _degreesToRadians(lat2);
+    final lng2Rad = _degreesToRadians(lng2);
+    
+    final dLat = lat2Rad - lat1Rad;
+    final dLng = lng2Rad - lng1Rad;
+    
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+             cos(lat1Rad) * cos(lat2Rad) * sin(dLng / 2) * sin(dLng / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    
+    return earthRadiusKm * c;
+  }
+  
+  double _degreesToRadians(double degrees) => degrees * pi / 180;
+  
+  String? _calculateArrivalEstimate(double busLat, double busLng, double stopLat, double stopLng, double currentSpeed) {
+    // Validate coordinates
+    if (busLat == 0.0 && busLng == 0.0) return null;
+    if (stopLat == 0.0 && stopLng == 0.0) return null;
+    
+    final distance = _calculateDistance(busLat, busLng, stopLat, stopLng);
+    
+    // More precise "In arrivo" logic: within 100m OR within 200m and moving slowly (< 10 km/h)
+    if (distance < 0.1 || (distance < 0.2 && currentSpeed < 10)) {
+      return 'In arrivo';
     }
+    
+    const commercialSpeedKmh = 20.0;
+    var speedToUse = commercialSpeedKmh;
+    
+    // If bus is moving, use weighted average
+    if (currentSpeed > 2) {
+      speedToUse = (commercialSpeedKmh * 0.6) + (currentSpeed * 0.4);
+    }
+    
+    // Ensure minimum speed
+    speedToUse = speedToUse.clamp(5.0, 60.0);
+    
+    final timeHours = distance / speedToUse;
+    final timeMinutes = (timeHours * 60).ceil();
+    
+    // Limit to reasonable range
+    if (timeMinutes > 60) return null; // Too far, don't show estimate
+    if (timeMinutes < 1) return 'In arrivo';
+    
+    return '~${timeMinutes} min';
   }
 
-  Future<List<BusVehicle>> fetchBariVehicles() async {
+  Future<List<BusVehicle>> fetchVehicles(BusProviderConfig provider) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/bari/bus-realtime";
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(provider.gpsUrl ?? ''));
       
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
+        
+        // Special handling for Emilia-Romagna (TperHellobus format)
+        if (provider.name == 'Emilia-Romagna') {
+          final List<dynamic> data = json is List ? json : [];
+          return data.map((e) => BusVehicle.fromERJson(e)).toList();
+        }
         
         List rawList = [];
         if (json is Map) {
@@ -54,25 +98,11 @@ class BusRepository {
            }
         }
         
-        return rawList.map((e) => BusVehicle.fromBariJson(e)).toList();
+        return rawList.map((e) => BusVehicle.fromGtfsRtJson(e, provider.name)).toList();
       }
       return [];
     } catch (e) {
-      print("Error fetching Bari buses: $e");
-      return [];
-    }
-  }
-
-  Future<List<BusVehicle>> fetchERVehicles() async {
-    try {
-      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/it/bus/emilia-romagna/tper/realtime"));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((e) => BusVehicle.fromERJson(e)).toList();
-      }
-      return [];
-    } catch (e) {
-      print("Error fetching ER buses: $e");
+      print("Error fetching vehicles for ${provider.name}: $e");
       return [];
     }
   }
@@ -106,18 +136,27 @@ class BusRepository {
     }
   }
 
-  Future<List<BariStop>> fetchBariStops() async {
+  Future<List<BariStop>> fetchStops(BusProviderConfig provider) async {
     try {
-      final response = await http.get(Uri.parse("https://betacloud-transporter.is-cool.dev/api/it/bus/bari/stops"));
+      final response = await http.get(Uri.parse("https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.name}/stops"));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((e) => BariStop.fromJson(e)).toList();
       }
       return [];
     } catch (e) {
-      print("Error fetching Bari stops: $e");
+      print("Error fetching stops for ${provider.name}: $e");
       return [];
     }
+  }
+
+  Future<List<BariStop>> fetchBariStops() async {
+    final provider = BusProviderConfig(
+      name: 'bari',
+      provider: 'amtab',
+      endpoints: {'stops': true},
+    );
+    return fetchStops(provider);
   }
 
   Future<List<BariRouteSolution>> fetchBariSolutions({
@@ -266,60 +305,6 @@ class BusRepository {
     }
   }
   
-  String? _calculateArrivalEstimate(double busLat, double busLng, double stopLat, double stopLng, double currentSpeed) {
-    // Validate coordinates
-    if (busLat == 0.0 && busLng == 0.0) return null;
-    if (stopLat == 0.0 && stopLng == 0.0) return null;
-    
-    final distance = _calculateDistance(busLat, busLng, stopLat, stopLng);
-    
-    // More precise "In arrivo" logic: within 100m OR within 200m and moving slowly (< 10 km/h)
-    if (distance < 0.1 || (distance < 0.2 && currentSpeed < 10)) {
-      return 'In arrivo';
-    }
-    
-    const commercialSpeedKmh = 20.0;
-    var speedToUse = commercialSpeedKmh;
-    
-    // If bus is moving, use weighted average
-    if (currentSpeed > 2) {
-      speedToUse = (commercialSpeedKmh * 0.6) + (currentSpeed * 0.4);
-    }
-    
-    // Ensure minimum speed
-    speedToUse = speedToUse.clamp(5.0, 60.0);
-    
-    final timeHours = distance / speedToUse;
-    final timeMinutes = (timeHours * 60).ceil();
-    
-    // Limit to reasonable range
-    if (timeMinutes > 60) return null; // Too far, don't show estimate
-    if (timeMinutes < 1) return 'In arrivo';
-    
-    return '~${timeMinutes} min';
-  }
-  
-  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
-    const earthRadiusKm = 6371.0;
-    
-    // Convert to radians
-    final lat1Rad = _degreesToRadians(lat1);
-    final lng1Rad = _degreesToRadians(lng1);
-    final lat2Rad = _degreesToRadians(lat2);
-    final lng2Rad = _degreesToRadians(lng2);
-    
-    final dLat = lat2Rad - lat1Rad;
-    final dLng = lng2Rad - lng1Rad;
-    
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-             cos(lat1Rad) * cos(lat2Rad) * sin(dLng / 2) * sin(dLng / 2);
-    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    
-    return earthRadiusKm * c;
-  }
-  
-  double _degreesToRadians(double degrees) => degrees * pi / 180;
-
   Future<BusRoutePath?> fetchBusRoutePath(String tripId) async {
     try {
       final url = "${ApiConstants.baseUrl}/api/it/bus/bari/route-path?tripId=$tripId";
@@ -338,9 +323,9 @@ class BusRepository {
     }
   }
 
-  Future<List<StopDeparture>> fetchBariStopUpdates(String stopId) async {
+  Future<List<StopDeparture>> fetchStopUpdates(String provider, String stopId) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/bari/stops-updates?stopId=$stopId";
+      final url = "${ApiConstants.baseUrl}/api/it/bus/$provider/stops-updates?stopId=$stopId";
       print('Fetching stop updates from: $url');
       final response = await http.get(Uri.parse(url));
       print('Response status: ${response.statusCode}');
@@ -360,6 +345,24 @@ class BusRepository {
     }
   }
 
+  Future<TripStopsData?> fetchTripStops(String tripId) async {
+    try {
+      final url = "${ApiConstants.baseUrl}/api/it/bus/bari/trip-stops?tripId=$tripId";
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        return TripStopsData.fromJson(json);
+      } else {
+        print("Error fetching trip stops: ${response.statusCode} - ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      print("Error fetching trip stops: $e");
+      return null;
+    }
+  }
+
   Future<String?> fetchBariVehicleDestination(String vehicleId, String routeId) async {
     try {
       final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
@@ -375,6 +378,21 @@ class BusRepository {
     } catch (e) {
       print("Error fetching Bari vehicle destination: $e");
       return null;
+    }
+  }
+
+  Future<List<BusProviderConfig>> fetchBusProviders() async {
+    try {
+      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/config/bus_providers.json"));
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final List providers = json['providers'] ?? [];
+        return providers.map((p) => BusProviderConfig.fromJson(p)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching bus providers: $e");
+      return [];
     }
   }
 }

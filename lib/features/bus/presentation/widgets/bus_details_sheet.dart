@@ -134,6 +134,10 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     final BusVehicle bus = provider.selectedBus ?? widget.bus;
 
+    // Use trip stops data if available, otherwise fall back to trip updates
+    final tripStopsData = provider.selectedTripStops;
+    final hasTripStopsData = tripStopsData != null && tripStopsData.stops.isNotEmpty;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -327,18 +331,24 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                         SizedBox(
                           height:
                               300, // Fixed height for timeline in bottom section
-                          child: _isLoadingUpdates
+                          child: provider.isLoadingTripStops
                               ? Center(
                                   child: CircularProgressIndicator(
                                       color: theme.primaryColor))
-                              : _tripUpdates.isEmpty
-                                  ? Center(
-                                      child: Text(
-                                          "Nessun aggiornamento disponibile",
-                                          style: TextStyle(
-                                              color: theme.secondaryTextColor)),
-                                    )
-                                  : _buildBusTimeline(_tripUpdates, theme),
+                              : hasTripStopsData
+                                  ? _buildTripStopsTimeline(tripStopsData.stops, theme)
+                                  : _isLoadingUpdates
+                                      ? Center(
+                                          child: CircularProgressIndicator(
+                                              color: theme.primaryColor))
+                                      : _tripUpdates.isEmpty
+                                          ? Center(
+                                              child: Text(
+                                                  "Nessun aggiornamento disponibile",
+                                                  style: TextStyle(
+                                                      color: theme.secondaryTextColor)),
+                                            )
+                                          : _buildBusTimeline(_tripUpdates, theme),
                         ),
                       ] else ...[
                         // For other providers, show a message
@@ -498,6 +508,139 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
         ],
       ),
     );
+  }
+
+  Widget _buildTripStopsTimeline(List<TripStop> stops, ThemeProvider theme) {
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: stops.length,
+      itemBuilder: (context, index) {
+        final stop = stops[index];
+        final isLast = index == stops.length - 1;
+        final isCompleted = stop.status == 'passed';
+        final isActive = stop.status == 'current';
+
+        // Scroll to current stop on first load
+        if (isActive && !_hasScrolledToCurrent) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToCurrentStopFromTripStops(stops);
+            _hasScrolledToCurrent = true;
+          });
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTripStopVisualTimeline(stop, isLast, index, theme),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      Text(stop.stopName,
+                          style: TextStyle(
+                              color: isCompleted
+                                  ? theme.secondaryTextColor.withOpacity(0.6)
+                                  : theme.textColor,
+                              fontSize: 16,
+                              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600)),
+                      Text(stop.scheduledTime + stop.delayText,
+                          style: TextStyle(
+                              color: isCompleted
+                                  ? theme.secondaryTextColor.withOpacity(0.4)
+                                  : theme.secondaryTextColor,
+                              fontSize: 12)),
+                      if (stop.isRealtime)
+                        Text("Tempo reale",
+                            style: TextStyle(
+                                color: theme.successColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTripStopVisualTimeline(TripStop stop, bool isLast, int index, ThemeProvider theme) {
+    final isCompleted = stop.status == 'passed';
+    final isActive = stop.status == 'current';
+    final highlighted = isActive || (!isCompleted && stop.status == 'future');
+
+    return SizedBox(
+      width: 30,
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          if (index > 0)
+            Positioned(
+                top: 0,
+                height: 17,
+                width: 3,
+                child: Container(
+                    color: highlighted
+                        ? theme.primaryColor
+                        : theme.surfaceColor.withOpacity(0.05))),
+          if (!isLast)
+            Positioned(
+                top: 17,
+                bottom: 0,
+                width: 3,
+                child: Container(
+                    color: isCompleted
+                        ? theme.primaryColor
+                        : theme.surfaceColor.withOpacity(0.05))),
+          Positioned(
+              top: 17,
+              child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                      color: isCompleted
+                          ? theme.primaryColor
+                          : isActive
+                              ? theme.primaryColor
+                              : theme.surfaceColor.withOpacity(0.08),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: highlighted
+                              ? theme.primaryColor
+                              : theme.secondaryTextColor.withOpacity(0.24),
+                          width: 2)))),
+          if (isActive)
+            Positioned(top: 12, child: _BusIcon(size: 20)),
+        ],
+      ),
+    );
+  }
+
+  void _scrollToCurrentStopFromTripStops(List<TripStop> stops) {
+    final currentStopIndex = stops.indexWhere((stop) => stop.status == 'current');
+
+    if (currentStopIndex != -1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          final itemHeight = 80.0;
+          final targetOffset = currentStopIndex * itemHeight;
+
+          _scrollController.animateTo(
+            targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
   }
 }
 

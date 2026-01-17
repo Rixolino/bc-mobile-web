@@ -25,24 +25,7 @@ class BusVehicle {
     this.isLivePosition = false, // Default false
   });
 
-  factory BusVehicle.fromRomeJson(Map<String, dynamic> json) {
-    final vehicle = json['vehicle'] ?? {};
-    final position = vehicle['position'] ?? {};
-    final trip = vehicle['trip'] ?? {};
-    
-    return BusVehicle(
-      id: vehicle['id']?.toString() ?? json['id']?.toString() ?? '?',
-      line: trip['routeId']?.toString() ?? '?',
-      latitude: position['latitude']?.toDouble() ?? 0.0,
-      longitude: position['longitude']?.toDouble() ?? 0.0,
-      heading: position['bearing']?.toString(),
-      speed: position['speed']?.toString(),
-      provider: 'Roma',
-      tripId: trip['tripId']?.toString(),
-    );
-  }
-
-  factory BusVehicle.fromBariJson(Map<String, dynamic> json) {
+  factory BusVehicle.fromGtfsRtJson(Map<String, dynamic> json, String providerName) {
     // Handle direct format: fields directly in json (from realtime API)
     if (json['position'] != null) {
       final pos = json['position'];
@@ -54,13 +37,13 @@ class BusVehicle {
         longitude: pos['lng']?.toDouble() ?? 0.0,
         heading: pos['bearing']?.toString(),
         speed: pos['speed']?.toString(),
-        provider: 'Bari',
+        provider: providerName,
         tripId: json['tripId']?.toString(),
         isLivePosition: true, // This is from realtime API
       );
     }
 
-    // Handle new format: {"id": "3202", "vehicle": {...}}
+    // Handle new format: {"id": "3204", "vehicle": {...}} (GTFS-RT format)
     if (json['vehicle'] != null) {
       final v = json['vehicle'];
       final pos = v['position'] ?? {};
@@ -77,6 +60,7 @@ class BusVehicle {
         speed: pos['speed']?.toString(),
         provider: 'Bari',
         tripId: trip['tripId']?.toString(),
+        isLivePosition: true, // GTFS-RT is realtime
       );
     }
     
@@ -386,4 +370,138 @@ class StopDeparture {
     if (delay > 0) return ' (+${delay}min)';
     return ' (${delay}min)';
   }
+}
+
+/// Modello per i dati delle fermate di un trip specifico
+class TripStopsData {
+  final String tripId;
+  final BusVehicle vehicle;
+  final Map<String, dynamic> filter;
+  final List<TripStop> stops;
+
+  TripStopsData({
+    required this.tripId,
+    required this.vehicle,
+    required this.filter,
+    required this.stops,
+  });
+
+  factory TripStopsData.fromJson(Map<String, dynamic> json) {
+    final vehicleJson = json['vehicle'] ?? {};
+    final stopsJson = json['stops'] as List<dynamic>? ?? [];
+
+    return TripStopsData(
+      tripId: json['tripId']?.toString() ?? '',
+      vehicle: BusVehicle(
+        id: vehicleJson['id']?.toString() ?? '',
+        line: '', // Will be filled from trip data
+        latitude: (vehicleJson['lat'] as num?)?.toDouble() ?? 0.0,
+        longitude: (vehicleJson['lng'] as num?)?.toDouble() ?? 0.0,
+        heading: vehicleJson['bearing']?.toString(),
+        speed: vehicleJson['speed']?.toString(),
+        provider: 'Bari',
+        tripId: json['tripId']?.toString(),
+        isLivePosition: vehicleJson['isRealtime'] ?? false,
+      ),
+      filter: json['filter'] ?? {},
+      stops: stopsJson.map((s) => TripStop.fromJson(s)).toList(),
+    );
+  }
+}
+
+/// Modello per una singola fermata in un trip
+class TripStop {
+  final String stopId;
+  final String stopName;
+  final int sequence;
+  final String status; // 'passed', 'current', 'future'
+  final String scheduledTime;
+  final int? estimatedArrivalUnix;
+  final int delay;
+  final bool isRealtime;
+
+  TripStop({
+    required this.stopId,
+    required this.stopName,
+    required this.sequence,
+    required this.status,
+    required this.scheduledTime,
+    this.estimatedArrivalUnix,
+    required this.delay,
+    required this.isRealtime,
+  });
+
+  factory TripStop.fromJson(Map<String, dynamic> json) {
+    return TripStop(
+      stopId: json['stopId']?.toString() ?? '',
+      stopName: json['stopName'] ?? '',
+      sequence: json['sequence'] ?? 0,
+      status: json['status'] ?? 'future',
+      scheduledTime: json['scheduledTime'] ?? '',
+      estimatedArrivalUnix: json['estimatedArrivalUnix'],
+      delay: json['delay'] ?? 0,
+      isRealtime: json['isRealtime'] ?? false,
+    );
+  }
+
+  String get delayText {
+    if (delay == 0) return '';
+    if (delay > 0) return ' (+${delay}min)';
+    return ' (${delay}min)';
+  }
+
+  DateTime? get estimatedArrivalTime {
+    if (estimatedArrivalUnix == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(estimatedArrivalUnix! * 1000);
+  }
+}
+
+class BusProviderConfig {
+  final String name;
+  final String provider;
+  final String? solutionsUrl;
+  final String? gpsUrl;
+  final String? tripsUrl;
+  final String? gtfsUrl;
+  final String? dataPath;
+  final String? apiPrefix;
+  final Map<String, bool> endpoints;
+  final double? latitude;
+  final double? longitude;
+  final double? zoom;
+
+  BusProviderConfig({
+    required this.name,
+    required this.provider,
+    this.solutionsUrl,
+    this.gpsUrl,
+    this.tripsUrl,
+    this.gtfsUrl,
+    this.dataPath,
+    this.apiPrefix,
+    required this.endpoints,
+    this.latitude,
+    this.longitude,
+    this.zoom,
+  });
+
+  factory BusProviderConfig.fromJson(Map<String, dynamic> json) {
+    final coordinates = json['coordinates'] as Map<String, dynamic>?;
+    return BusProviderConfig(
+      name: json['name'],
+      provider: json['provider'],
+      solutionsUrl: json['solutions_url'],
+      gpsUrl: json['gps_url'],
+      tripsUrl: json['trips_url'],
+      gtfsUrl: json['gtfs_url'],
+      dataPath: json['data_path'],
+      apiPrefix: json['api_prefix'],
+      endpoints: Map<String, bool>.from(json['endpoints'] ?? {}),
+      latitude: coordinates?['latitude']?.toDouble(),
+      longitude: coordinates?['longitude']?.toDouble(),
+      zoom: coordinates?['zoom']?.toDouble(),
+    );
+  }
+
+  bool get supportsSolutions => endpoints['solutions'] == true;
 }

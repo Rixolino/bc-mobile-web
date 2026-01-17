@@ -29,6 +29,27 @@ class _HomeScreenState extends State<HomeScreen> {
   // 0: Trains, 1: Buses, 2: Planes
   int _selectedModeIndex = 0; 
   bool _searchByNumber = false;
+  bool _showStopDropdown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<BusProvider>(context, listen: false).loadProviders();
+    });
+  }
+
+  void _onSearchChanged() {
+    if (_selectedModeIndex == 1) {
+      final busProvider = Provider.of<BusProvider>(context, listen: false);
+      final query = _searchController.text;
+      busProvider.searchStops(query);
+      setState(() {
+        _showStopDropdown = query.isNotEmpty && busProvider.stopSearchResults.isNotEmpty;
+      });
+    }
+  }
 
   void _openSettings() {
     Navigator.of(context).push(
@@ -52,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -67,7 +89,11 @@ class _HomeScreenState extends State<HomeScreen> {
         trainProvider.searchStations(query);
       }
     } else if (_selectedModeIndex == 1) {
-      // Implement bus search if needed
+      final busProvider = Provider.of<BusProvider>(context, listen: false);
+      busProvider.searchStops(query);
+      setState(() {
+        _showStopDropdown = query.isNotEmpty && busProvider.stopSearchResults.isNotEmpty;
+      });
     } else if (_selectedModeIndex == 2) {
       final planeProvider = Provider.of<PlaneProvider>(context, listen: false);
       planeProvider.searchAirports(query);
@@ -241,7 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSearchBar() {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return GlassmorphicContainer(
+    final searchBar = GlassmorphicContainer(
       width: double.infinity,
       height: 60,
       borderRadius: 20,
@@ -313,6 +339,69 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    // Add dropdown for bus stops if visible
+    if (_showStopDropdown && _selectedModeIndex == 1) {
+      final busProvider = Provider.of<BusProvider>(context);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          searchBar,
+          const SizedBox(height: 4),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.2)),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.textColor.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: busProvider.stopSearchResults.length,
+              itemBuilder: (context, index) {
+                final stop = busProvider.stopSearchResults[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    stop.stopName,
+                    style: TextStyle(color: theme.textColor, fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    'ID: ${stop.stopId}',
+                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                  ),
+                  onTap: () {
+                    // Center map on selected stop
+                    final mapState = Provider.of<MapStateProvider>(context, listen: false);
+                    mapState.flyTo(
+                      stop.latitude,
+                      stop.longitude,
+                      zoom: 16.0,
+                    );
+                    // Clear search and hide dropdown
+                    _searchController.clear();
+                    setState(() {
+                      _showStopDropdown = false;
+                    });
+                    busProvider.clearStopSearch();
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    return searchBar;
   }
 
   String _getSearchHint() {
@@ -382,6 +471,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Provider.of<BusProvider>(context, listen: false).clearAll();
           Provider.of<PlaneProvider>(context, listen: false).clearAll();
           _searchController.clear();
+          // Nasconde il dropdown delle fermate quando si cambia modalità
+          _showStopDropdown = false;
         }
 
         setState(() {
@@ -396,8 +487,8 @@ class _HomeScreenState extends State<HomeScreen> {
         // Carichiamo automaticamente le fermate quando si seleziona la categoria bus
         if (index == 1) { // Bus category
           final busProvider = Provider.of<BusProvider>(context, listen: false);
-          if (busProvider.bariStops.isEmpty && !busProvider.isLoadingStops) {
-            busProvider.fetchBariStops();
+          if (busProvider.stops.isEmpty && !busProvider.isLoadingStops) {
+            busProvider.fetchStops();
           }
         }
       },

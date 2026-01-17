@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
+import '../../features/bus/presentation/providers/bus_provider.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -23,8 +24,8 @@ class SettingsScreen extends StatelessWidget {
           style: TextStyle(color: Provider.of<ThemeProvider>(context).textColor, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Consumer2<SettingsProvider, ThemeProvider>(
-        builder: (context, settings, theme, child) {
+      body: Consumer3<SettingsProvider, ThemeProvider, BusProvider>(
+        builder: (context, settings, theme, busProvider, child) {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
@@ -71,10 +72,21 @@ class SettingsScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
               
+              _buildSectionTitle('Configurazione', theme),
+              const SizedBox(height: 16),
+              
+              _buildConfigUpdateSection(context, busProvider, theme).animate().fadeIn(delay: 350.ms).slideX(),
+
+              const SizedBox(height: 32),
+              
               _buildSectionTitle('Mappa', theme),
               const SizedBox(height: 16),
               
               _buildClusteringToggle(context, settings, theme).animate().fadeIn(delay: 400.ms).slideX(),
+
+              const SizedBox(height: 16),
+
+              _buildStopsClusteringToggle(context, settings, theme).animate().fadeIn(delay: 500.ms).slideX(),
             ],
           );
         },
@@ -275,6 +287,118 @@ class SettingsScreen extends StatelessWidget {
             'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara',
             style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStopsClusteringToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Clustering Fermate',
+                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              Switch(
+                value: settings.stopsClusteringEnabled,
+                onChanged: (value) => settings.setStopsClusteringEnabled(value),
+                activeColor: theme.primaryColor,
+                activeTrackColor: theme.primaryColor.withOpacity(0.3),
+                inactiveThumbColor: theme.secondaryTextColor,
+                inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.2),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Raggruppa le fermate vicine in cluster per una visualizzazione più chiara',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfigUpdateSection(BuildContext context, BusProvider busProvider, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_download, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Aggiorna Configurazione',
+                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              if (busProvider.isUpdatingConfig)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                  ),
+                )
+              else
+                IconButton(
+                  onPressed: () async {
+                    await busProvider.updateConfiguration();
+                    if (busProvider.configUpdateError != null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(busProvider.configUpdateError!),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    } else if (busProvider.configUpdateError == null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Configurazione aggiornata con successo'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                  icon: Icon(Icons.refresh, color: theme.primaryColor),
+                  tooltip: 'Aggiorna configurazione provider',
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Scarica l\'ultima configurazione dei provider di autobus dal server',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
+          if (busProvider.configUpdateError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                busProvider.configUpdateError!,
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
         ],
       ),
     );

@@ -7,13 +7,19 @@ class BusProvider with ChangeNotifier {
   final BusRepository _repository = BusRepository();
   List<BusVehicle> _vehicles = [];
   bool _isLoading = false;
-  String _selectedCity = 'Roma'; // Default
+  String _selectedCity = ''; // Default empty, set after loading providers
+  List<BusProviderConfig> _providers = [];
+  BusProviderConfig? _selectedProvider;
   
   Timer? _refreshTimer;
   int _autoRefreshSeconds = 0;
 
+  // Configuration update state
+  bool _isUpdatingConfig = false;
+  String? _configUpdateError;
+
   // Bari routing
-  List<BariStop> _bariStops = [];
+  List<BariStop> _stops = [];
   List<BariRouteSolution> _bariSolutions = [];
   BariStop? _selectedFromStop;
   BariStop? _selectedToStop;
@@ -26,12 +32,22 @@ class BusProvider with ChangeNotifier {
   BusRoutePath? _selectedBusRoutePath;
   bool _isLoadingRoutePath = false;
 
+  // Stop search results
+  List<BariStop> _stopSearchResults = [];
+
   List<BusVehicle> get vehicles => _vehicles;
   bool get isLoading => _isLoading;
   String get selectedCity => _selectedCity;
+  List<BusProviderConfig> get providers => _providers;
+  BusProviderConfig? get selectedProvider => _selectedProvider;
+
+  // Configuration update getters
+  bool get isUpdatingConfig => _isUpdatingConfig;
+  String? get configUpdateError => _configUpdateError;
 
   // Bari getters
-  List<BariStop> get bariStops => _bariStops;
+  List<BariStop> get stops => _stops;
+  List<BariStop> get bariStops => _stops; // Alias for backward compatibility
   List<BariRouteSolution> get bariSolutions => _bariSolutions;
   BariStop? get selectedFromStop => _selectedFromStop;
   BariStop? get selectedToStop => _selectedToStop;
@@ -44,10 +60,114 @@ class BusProvider with ChangeNotifier {
   BusRoutePath? get selectedBusRoutePath => _selectedBusRoutePath;
   bool get isLoadingRoutePath => _isLoadingRoutePath;
 
+  // Stop search getter
+  List<BariStop> get stopSearchResults => _stopSearchResults;
+
+  // Trip stops data
+  TripStopsData? _selectedTripStops;
+  bool _isLoadingTripStops = false;
+
+  TripStopsData? get selectedTripStops => _selectedTripStops;
+  bool get isLoadingTripStops => _isLoadingTripStops;
+
   @override
   void dispose() {
     _stopTimer();
     super.dispose();
+  }
+
+  Future<void> loadProviders() async {
+    try {
+      _providers = await _repository.fetchBusProviders();
+      // Add Flixbus if not present
+      if (!_providers.any((p) => p.name == 'Flixbus')) {
+        _providers.add(BusProviderConfig(
+          name: 'Flixbus',
+          provider: 'flixbus',
+          solutionsUrl: null,
+          endpoints: {
+            'stops': false,
+            'trip_stops': false,
+            'bus_realtime': false,
+            'trips': false,
+            'stops_updates': false,
+            'realtime': false,
+            'route_path': false,
+            'solutions': false,
+          },
+        ));
+      }
+      // Set default city to first provider if not set
+      if (_selectedCity.isEmpty && _providers.isNotEmpty) {
+        _selectedCity = _providers.first.name;
+        _selectedProvider = _providers.first;
+        print('Default city set to: $_selectedCity');
+      }
+      notifyListeners();
+    } catch (e) {
+      print("Error loading providers: $e");
+      // Only Flixbus as fallback
+      _providers = [
+        BusProviderConfig(
+          name: 'Flixbus',
+          provider: 'flixbus',
+          solutionsUrl: null,
+          endpoints: {
+            'stops': false,
+            'trip_stops': false,
+            'bus_realtime': false,
+            'trips': false,
+            'stops_updates': false,
+            'realtime': false,
+            'route_path': false,
+            'solutions': false,
+          },
+        ),
+      ];
+      // Set default to Flixbus
+      _selectedCity = 'Flixbus';
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateConfiguration() async {
+    if (_isUpdatingConfig) return; // Prevent multiple simultaneous updates
+
+    _isUpdatingConfig = true;
+    _configUpdateError = null;
+    notifyListeners();
+
+    // Store current configuration for rollback on error
+    final oldProviders = List<BusProviderConfig>.from(_providers);
+    final oldSelectedCity = _selectedCity;
+    final oldSelectedProvider = _selectedProvider;
+
+    try {
+      // Reload providers from remote
+      await loadProviders();
+
+      // Check if current selected city still exists, otherwise reset to first available
+      if (_selectedCity.isNotEmpty && !_providers.any((p) => p.name == _selectedCity)) {
+        if (_providers.isNotEmpty) {
+          _selectedCity = _providers.first.name;
+          _selectedProvider = _providers.first;
+        } else {
+          _selectedCity = '';
+          _selectedProvider = null;
+        }
+      }
+
+      _configUpdateError = null; // Success
+    } catch (e) {
+      _configUpdateError = 'Errore durante l\'aggiornamento: $e';
+      // Restore old configuration on error
+      _providers = List<BusProviderConfig>.from(oldProviders);
+      _selectedCity = oldSelectedCity;
+      _selectedProvider = oldSelectedProvider;
+    } finally {
+      _isUpdatingConfig = false;
+      notifyListeners();
+    }
   }
 
   void updateAutoRefresh(int seconds) {
@@ -73,8 +193,13 @@ class BusProvider with ChangeNotifier {
 
   void selectCity(String city) {
     _selectedCity = city;
-    if (city == 'Bari') {
-      fetchBariStops();
+    _selectedProvider = _providers.firstWhere(
+      (p) => p.name == city,
+      orElse: () => BusProviderConfig(name: '', provider: '', endpoints: {}),
+    );
+    print('Selected city: $city, provider: ${_selectedProvider?.name}');
+    if (_selectedProvider?.endpoints['stops'] == true) {
+      fetchStops();
     }
     fetchVehicles();
     notifyListeners();
@@ -87,12 +212,20 @@ class BusProvider with ChangeNotifier {
     }
     
     try {
-      if (_selectedCity == 'Roma') {
-        _vehicles = await _repository.fetchRomeVehicles();
-      } else if (_selectedCity == 'Bari') {
-        _vehicles = await _repository.fetchBariVehicles();
-      } else if (_selectedCity == 'Emilia-Romagna') {
-        _vehicles = await _repository.fetchERVehicles();
+      print("BusProvider: Fetching vehicles for city: $_selectedCity");
+      // For dynamic providers, use generic endpoint if supported
+      BusProviderConfig? provider;
+      try {
+        provider = _providers.firstWhere((p) => p.name == _selectedCity);
+      } catch (e) {
+        provider = null;
+      }
+      if (provider != null && provider.gpsUrl != null && provider.gpsUrl!.isNotEmpty) {
+        print("BusProvider: Using GPS URL: ${provider.gpsUrl}");
+        _vehicles = await _repository.fetchVehicles(provider);
+      } else {
+        print("BusProvider: Provider ${provider?.name} does not have GPS URL or not found");
+        _vehicles = [];
       }
     } catch (e) {
       print("Provider Error: $e");
@@ -117,16 +250,20 @@ class BusProvider with ChangeNotifier {
   
   List<dynamic> get flixbusStations => _flixbusStations;
 
-  // Bari routing methods
-  Future<void> fetchBariStops() async {
+  // Dynamic routing methods
+  Future<void> fetchStops() async {
     _isLoadingStops = true;
     notifyListeners();
 
     try {
-      _bariStops = await _repository.fetchBariStops();
+      if (_selectedProvider != null) {
+        _stops = await _repository.fetchStops(_selectedProvider!);
+      } else {
+        _stops = [];
+      }
     } catch (e) {
-      print("Error fetching Bari stops: $e");
-      _bariStops = [];
+      print("Error fetching stops for $_selectedCity: $e");
+      _stops = [];
     } finally {
       _isLoadingStops = false;
       notifyListeners();
@@ -171,7 +308,7 @@ class BusProvider with ChangeNotifier {
 
   void clearAll() {
     _vehicles = [];
-    _bariStops = [];
+    _stops = [];
     _bariSolutions = [];
     _selectedFromStop = null;
     _selectedToStop = null;
@@ -180,6 +317,8 @@ class BusProvider with ChangeNotifier {
     _selectedBus = null;
     _selectedBusRoutePath = null;
     _isLoadingRoutePath = false;
+    _selectedTripStops = null;
+    _isLoadingTripStops = false;
     notifyListeners();
   }
 
@@ -188,6 +327,7 @@ class BusProvider with ChangeNotifier {
     // Load route path for Bari buses
     if (_selectedCity == 'Bari' && bus.provider == 'Bari') {
       _loadBusRoutePath(bus);
+      _loadTripStops(bus);
       // Also fetch destination if not already present
       if (bus.destination == null || bus.destination!.isEmpty) {
         try {
@@ -228,10 +368,35 @@ class BusProvider with ChangeNotifier {
     }
   }
 
+  Future<void> _loadTripStops(BusVehicle bus) async {
+    _isLoadingTripStops = true;
+    _selectedTripStops = null;
+    notifyListeners();
+
+    try {
+      final tripId = bus.tripId;
+      if (tripId != null && tripId.isNotEmpty) {
+        final tripStops = await _repository.fetchTripStops(tripId);
+        _selectedTripStops = tripStops;
+      } else {
+        print("No tripId available for bus ${bus.id}");
+        _selectedTripStops = null;
+      }
+    } catch (e) {
+      print("Error loading trip stops: $e");
+      _selectedTripStops = null;
+    } finally {
+      _isLoadingTripStops = false;
+      notifyListeners();
+    }
+  }
+
   void clearBusSelection() {
     _selectedBus = null;
     _selectedBusRoutePath = null;
     _isLoadingRoutePath = false;
+    _selectedTripStops = null;
+    _isLoadingTripStops = false;
     notifyListeners();
   }
 
@@ -244,9 +409,9 @@ class BusProvider with ChangeNotifier {
     }
   }
 
-  Future<List<StopDeparture>> fetchBariStopUpdates(String stopId) async {
+  Future<List<StopDeparture>> fetchStopUpdates(String stopId) async {
     try {
-      return await _repository.fetchBariStopUpdates(stopId);
+      return await _repository.fetchStopUpdates(_selectedProvider?.name ?? 'bari', stopId);
     } catch (e) {
       print("Error fetching Bari stop updates: $e");
       return [];
@@ -264,6 +429,23 @@ class BusProvider with ChangeNotifier {
 
   void clearStopSelection() {
     _selectedStop = null;
+    notifyListeners();
+  }
+
+  void searchStops(String query) {
+    if (query.isEmpty) {
+      _stopSearchResults = [];
+    } else {
+      _stopSearchResults = _stops.where((stop) =>
+        stop.stopName.toLowerCase().contains(query.toLowerCase()) ||
+        stop.stopId.toLowerCase().contains(query.toLowerCase())
+      ).toList();
+    }
+    notifyListeners();
+  }
+
+  void clearStopSearch() {
+    _stopSearchResults = [];
     notifyListeners();
   }
 }

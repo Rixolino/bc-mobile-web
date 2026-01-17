@@ -90,6 +90,18 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
       });
     }
 
+    // Gestione flyTo quando richiesto
+    if (mapState.shouldFlyTo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mapController.move(
+          LatLng(mapState.lat, mapState.lng),
+          mapState.zoom
+        );
+        // Reset the flyTo flag
+        mapState.resetFlyTo();
+      });
+    }
+
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     
     // Build the map widget
@@ -177,8 +189,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                 );
               }).toList();
 
-              // Create stop markers list (only for Bari)
-              final stopMarkers = busProvider.selectedCity == 'Bari' ? busProvider.bariStops.where((stop) {
+              // Create stop markers list (for all providers that support stops)
+              final stopMarkers = busProvider.stops.where((stop) {
                 // In focus mode (selected bus with route path), show only stops belonging to the route
                 final selectedBus = widget.selectedBus ?? busProvider.selectedBus;
                 if (selectedBus != null && busProvider.selectedBusRoutePath != null) {
@@ -212,43 +224,82 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                     ),
                   ),
                 );
-              }).toList() : <Marker>[];
+              }).toList();
 
-              // Combine all markers
-              final allMarkers = [...busMarkers, ...stopMarkers];
+              // Create separate layers for buses and stops with independent clustering
+              final layers = <Widget>[];
 
-              // Use clustering if enabled
-              if (settings.busClusteringEnabled) {
-                return MarkerClusterLayerWidget(
-                  options: MarkerClusterLayerOptions(
-                    markers: allMarkers,
-                    builder: (context, markers) {
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.8),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: theme.surfaceColor, width: 2),
-                          boxShadow: [
-                            BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            markers.length.toString(),
-                            style: TextStyle(
-                              color: theme.textColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+              // Stop markers layer (added first, rendered below)
+              if (stopMarkers.isNotEmpty) {
+                if (settings.stopsClusteringEnabled) {
+                  layers.add(MarkerClusterLayerWidget(
+                    options: MarkerClusterLayerOptions(
+                      markers: stopMarkers,
+                      builder: (context, markers) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.8),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.surfaceColor, width: 2),
+                            boxShadow: [
+                              BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              markers.length.toString(),
+                              style: TextStyle(
+                                color: theme.textColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              } else {
-                return MarkerLayer(markers: allMarkers);
+                        );
+                      },
+                    ),
+                  ));
+                } else {
+                  layers.add(MarkerLayer(markers: stopMarkers));
+                }
               }
+
+              // Bus markers layer (added last, rendered on top)
+              if (busMarkers.isNotEmpty) {
+                if (settings.busClusteringEnabled) {
+                  layers.add(MarkerClusterLayerWidget(
+                    options: MarkerClusterLayerOptions(
+                      markers: busMarkers,
+                      builder: (context, markers) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor.withOpacity(0.8),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.surfaceColor, width: 2),
+                            boxShadow: [
+                              BoxShadow(color: theme.textColor.withOpacity(0.12), blurRadius: 4, offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              markers.length.toString(),
+                              style: TextStyle(
+                                color: theme.textColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ));
+                } else {
+                  layers.add(MarkerLayer(markers: busMarkers));
+                }
+              }
+
+              return Stack(children: layers);
             },
           ),
         ],
