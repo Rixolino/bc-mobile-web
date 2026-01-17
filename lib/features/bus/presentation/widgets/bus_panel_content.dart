@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -335,9 +338,51 @@ class _BusPanelContentState extends State<BusPanelContent> {
             if (v.latitude != 0) {
               mapState.flyTo(v.latitude, v.longitude, zoom: 15);
             }
-            // Open bus details sheet
-            await busProvider.selectBus(v);
-            // No modal - the sheet will appear as overlay in the map
+            // Fetch bus details from API and show details sheet
+            try {
+              final tripId = v.tripId ?? '';
+              final lineCode = v.line;
+              final provider = busProvider.selectedProvider!.name.toLowerCase();
+              final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/$provider/realtime?tripId=$tripId&lineCode=$lineCode';
+              print('Fetching bus details from URL: $url');
+
+              final response = await http.get(Uri.parse(url));
+              if (response.statusCode == 200) {
+                final jsonData = jsonDecode(response.body);
+                if (jsonData['vehicles'] != null && jsonData['vehicles'].isNotEmpty) {
+                  final vehicleData = jsonData['vehicles'][0];
+                  final stops = vehicleData['stops'] as List<dynamic>? ?? [];
+
+                  // Update bus destination if available
+                  final destination = vehicleData['destination'] as String?;
+                  if (destination != null && destination.isNotEmpty) {
+                    busProvider.updateBusDestination(v.id, destination);
+                  }
+
+                  // Convert stops to BusTripUpdate
+                  final tripUpdates = stops.map((stop) {
+                    return BusTripUpdate(
+                      stopId: stop['stopId']?.toString() ?? '',
+                      stopName: stop['stopName'] ?? '',
+                      expectedTime: stop['scheduledTime'] ?? '',
+                      delay: stop['delay'] ?? 0,
+                      isRealtime: stop['isRealtime'] ?? false,
+                      status: stop['status'] ?? 'future',
+                      arrivalEstimate: stop['estimatedArrivalUnix']?.toString(),
+                    );
+                  }).toList();
+
+                  // Set the trip updates in the provider
+                  busProvider.setApiTripUpdates(tripUpdates);
+                }
+              }
+              // Select the bus to show details sheet
+              await busProvider.selectBus(v);
+            } catch (e) {
+              print('Error fetching bus details: $e');
+              // On error, fallback to just selecting the bus
+              await busProvider.selectBus(v);
+            }
           },
         );
       },

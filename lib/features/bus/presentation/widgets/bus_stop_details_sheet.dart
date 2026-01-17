@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -266,16 +268,56 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
           color: theme.surfaceColor.withOpacity(0.05),
           child: ListTile(
             onTap: () async {
-              // Apri i dettagli del bus se è disponibile il vehicleId
-              if (departure.vehicleId != null && departure.vehicleId!.isNotEmpty && departure.vehicleId != 'scheduled-' + departure.tripId) {
-                final provider = Provider.of<BusProvider>(context, listen: false);
-                // Cerca il bus nella lista dei veicoli attivi
-                try {
-                  final bus = provider.vehicles.firstWhere((v) => v.id == departure.vehicleId);
-                  await provider.selectBus(bus);
-                } catch (e) {
-                  // Bus non trovato, ignora
+              final provider = Provider.of<BusProvider>(context, listen: false);
+              if (provider.selectedProvider == null) return;
+
+              // Controlla se tripId e line sono disponibili
+              if (departure.tripId == null || departure.tripId!.isEmpty || departure.line == null || departure.line!.isEmpty) {
+                print('TripId o lineCode mancanti per la partenza');
+                return;
+              }
+
+              try {
+                final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.selectedProvider!.name.toLowerCase()}/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
+                print('Richiamando URL: $url');
+                final response = await http.get(Uri.parse(url));
+                if (response.statusCode == 200) {
+                  final data = json.decode(response.body);
+                  final destination = data['destination'] as String?;
+                  final stops = (data['stops'] as List<dynamic>?)?.map((stop) => BusTripUpdate.fromJson(stop)).toList() ?? [];
+
+                  // Cerca il bus esistente
+                  BusVehicle? existingBus;
+                  try {
+                    existingBus = provider.vehicles.firstWhere((v) => v.id == departure.vehicleId);
+                  } catch (e) {
+                    // Bus non trovato
+                  }
+
+                  if (existingBus != null) {
+                    // Aggiorna il bus esistente
+                    provider.updateBusDestination(existingBus.id, destination ?? '');
+                    provider.setApiTripUpdates(stops);
+                    await provider.selectBus(existingBus);
+                  } else if (departure.vehicleId != null && departure.vehicleId!.isNotEmpty) {
+                    // Crea un nuovo bus temporaneo con coordinate dal provider
+                    final newBus = BusVehicle(
+                      id: departure.vehicleId!,
+                      line: departure.line!,
+                      destination: destination ?? departure.destination ?? '',
+                      latitude: provider.selectedProvider!.latitude ?? 0.0,
+                      longitude: provider.selectedProvider!.longitude ?? 0.0,
+                      tripId: departure.tripId,
+                      provider: provider.selectedProvider!.provider,
+                    );
+                    provider.setApiTripUpdates(stops);
+                    await provider.selectBus(newBus);
+                  }
+                } else {
+                  print('Errore nel recupero dei dettagli del bus: ${response.statusCode}');
                 }
+              } catch (e) {
+                print('Errore nel recupero dei dettagli del bus: $e');
               }
             },
             leading: Container(

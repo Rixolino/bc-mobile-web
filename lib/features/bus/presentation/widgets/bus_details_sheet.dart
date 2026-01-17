@@ -45,6 +45,9 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   void dispose() {
     _stopAutoRefresh();
     _scrollController.dispose();
+    // Clear API trip updates when closing the sheet
+    final provider = Provider.of<BusProvider>(context, listen: false);
+    provider.clearApiTripUpdates();
     super.dispose();
   }
 
@@ -102,14 +105,28 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   }
 
   Future<void> _fetchTripUpdates({bool showLoading = false}) async {
-    if (widget.bus.provider != 'Bari') return;
+    final provider = Provider.of<BusProvider>(context, listen: false);
+    if (provider.selectedProvider?.name != 'bari') return;
 
     if (showLoading) {
       setState(() => _isLoadingUpdates = true);
     }
     try {
-      // Fetch trip updates for this specific bus using the provider method
-      final provider = Provider.of<BusProvider>(context, listen: false);
+
+      // Check if we have API trip updates available
+      if (provider.apiTripUpdates.isNotEmpty) {
+        setState(() => _tripUpdates = provider.apiTripUpdates);
+
+        // Scroll alla fermata corrente solo al primo caricamento
+        if (showLoading && !_hasScrolledToCurrent && _tripUpdates.isNotEmpty) {
+          _scrollToCurrentStop(_tripUpdates);
+          _hasScrolledToCurrent = true;
+        }
+        return;
+      }
+
+      // Fallback to fetching trip updates for this specific bus using the provider method
+      print('Fetching trip updates for bus ${widget.bus.id}, line ${widget.bus.line}');
       final updates =
           await provider.fetchBariTripUpdates(widget.bus.id, widget.bus.line);
       setState(() => _tripUpdates = updates);
@@ -321,7 +338,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                       const SizedBox(height: 20),
 
                       // Trip updates for Bari buses
-                      if (bus.provider == 'Bari') ...[
+                      if (provider.selectedProvider?.name == 'bari') ...[
                         Text("Fermate del Viaggio",
                             style: TextStyle(
                                 color: theme.textColor,
@@ -356,7 +373,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                           height: 200,
                           child: Center(
                             child: Text(
-                              "Dettagli aggiuntivi non disponibili per ${bus.provider}",
+                              "Dettagli aggiuntivi non disponibili per ${provider.selectedProvider?.name ?? 'provider sconosciuto'}",
                               style: TextStyle(color: theme.secondaryTextColor),
                               textAlign: TextAlign.center,
                             ),

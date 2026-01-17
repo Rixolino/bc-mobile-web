@@ -67,8 +67,31 @@ class BusProvider with ChangeNotifier {
   TripStopsData? _selectedTripStops;
   bool _isLoadingTripStops = false;
 
+  // Trip updates from API endpoint
+  List<BusTripUpdate> _apiTripUpdates = [];
+
   TripStopsData? get selectedTripStops => _selectedTripStops;
   bool get isLoadingTripStops => _isLoadingTripStops;
+
+  List<BusTripUpdate> get apiTripUpdates => _apiTripUpdates;
+
+  void setApiTripUpdates(List<BusTripUpdate> updates) {
+    _apiTripUpdates = updates;
+    notifyListeners();
+  }
+
+  void clearApiTripUpdates() {
+    _apiTripUpdates = [];
+    notifyListeners();
+  }
+
+  void updateBusDestination(String vehicleId, String newDestination) {
+    final index = _vehicles.indexWhere((bus) => bus.id == vehicleId);
+    if (index != -1) {
+      _vehicles[index] = _vehicles[index].copyWith(destination: newDestination);
+      notifyListeners();
+    }
+  }
 
   @override
   void dispose() {
