@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/app_theme.dart';
+import 'features/auth/providers/auth_provider.dart';
 import 'features/bus/presentation/providers/bus_provider.dart';
 import 'features/plane/presentation/providers/plane_provider.dart';
 import 'features/train/presentation/providers/train_provider.dart';
@@ -59,6 +60,7 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProxyProvider<SettingsProvider, ThemeProvider>(
           create: (_) => ThemeProvider(),

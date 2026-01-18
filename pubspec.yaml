@@ -27,7 +27,13 @@ dependencies:
   google_fonts: ^6.1.0
   flutter_animate: ^4.2.0
   cupertino_icons: ^1.0.2
+
+  # Persistence & DB
   shared_preferences: ^2.5.4
+  libsql_dart: ^0.8.0
+  bcrypt: ^1.1.3
+
+  # Map
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   flutter_map_marker_cluster: ^8.0.1

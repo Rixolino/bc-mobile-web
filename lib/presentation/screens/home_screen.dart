@@ -3,6 +3,9 @@ import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:provider/provider.dart';
 import '../providers/config_provider.dart';
+import '../../features/auth/providers/auth_provider.dart';
+import '../../features/auth/screens/login_page.dart';
+import '../../features/auth/screens/dashboard_page.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
 import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
@@ -333,7 +336,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: theme.primaryColor.withOpacity(0.4),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.person, color: theme.textColor),
+              child: InkWell(
+                onTap: () {
+                  final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                  if (authProvider.isAuthenticated) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const DashboardPage()),
+                    );
+                  } else {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                    );
+                  }
+                },
+                child: Icon(Icons.person, color: theme.textColor),
+              ),
             ),
           ],
         ),
