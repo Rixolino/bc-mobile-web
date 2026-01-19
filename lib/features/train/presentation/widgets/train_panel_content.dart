@@ -5,9 +5,13 @@ import '../../../../presentation/providers/map_state_provider.dart';
 import 'train_details_sheet.dart';
 import 'package:intl/intl.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../favorites/providers/favorites_provider.dart';
+import '../../../favorites/models/favorite_stop.dart';
+import '../../../auth/providers/auth_provider.dart';
 
 class TrainPanelContent extends StatefulWidget {
-  const TrainPanelContent({super.key});
+  final bool showModeToggle; // Show Partenze / Arrivi toggle when used as modal from Favorites
+  const TrainPanelContent({super.key, this.showModeToggle = false});
 
   @override
   State<TrainPanelContent> createState() => _TrainPanelContentState();
@@ -79,8 +83,57 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+
+              // Favorite station button (only if authenticated)
+              Consumer2<FavoritesProvider, AuthProvider>(
+                builder: (context, favoritesProvider, authProvider, child) {
+                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                  final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation);
+                  return IconButton.filledTonal(
+                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                    onPressed: () async {
+                      try {
+                        if (isFavorite) {
+                          await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione rimossa dai preferiti')));
+                        } else {
+                          final fav = favoritesProvider.createFavoriteStop(
+                            userId: userId,
+                            name: station.name,
+                            code: station.id,
+                            stopType: StopType.trainStation,
+                            latitude: null,
+                            longitude: null,
+                            city: null,
+                            region: null,
+                            provider: null,
+                          );
+                          await favoritesProvider.addStopFavorite(fav);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
+                      }
+                    },
+                    style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor),
+                  );
+                },
+              ),
+
             ],
           ),
+          if (widget.showModeToggle) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _buildModeToggle(context, "Partenze", !trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(false)),
+                const SizedBox(width: 8),
+                _buildModeToggle(context, "Arrivi", trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(true)),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
           Divider(color: theme.secondaryTextColor.withOpacity(0.14)),
           Expanded(
             child: trainProvider.isLoadingDepartures
@@ -334,6 +387,35 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             title: Text(s.name, style: TextStyle(color: theme.textColor)),
             subtitle: Text(s.country, style: TextStyle(color: theme.secondaryTextColor)),
             onTap: () => provider.selectStation(s),
+            trailing: Consumer2<FavoritesProvider, AuthProvider>(
+              builder: (context, favoritesProvider, authProvider, child) {
+                if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                final isFavorite = favoritesProvider.isStopFavorite(s.id, StopType.trainStation);
+                return IconButton(
+                  icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : theme.secondaryTextColor),
+                  onPressed: () async {
+                    try {
+                      if (isFavorite) {
+                        await favoritesProvider.removeStopFavorite(s.id, StopType.trainStation);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione rimossa dai preferiti')));
+                      } else {
+                        final fav = favoritesProvider.createFavoriteStop(
+                          userId: userId,
+                          name: s.name,
+                          code: s.id,
+                          stopType: StopType.trainStation,
+                        );
+                        await favoritesProvider.addStopFavorite(fav);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
+                    }
+                  },
+                );
+              },
+            ),
           );
         },
       ),

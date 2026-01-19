@@ -6,6 +6,7 @@ import '../../../features/auth/providers/auth_provider.dart';
 import '../../../features/train/presentation/providers/train_provider.dart';
 import '../../../features/bus/presentation/providers/bus_provider.dart';
 import '../../../features/train/presentation/widgets/train_details_sheet.dart';
+import '../../../features/train/presentation/widgets/train_panel_content.dart';
 import '../../../features/bus/presentation/widgets/bus_details_sheet.dart';
 import '../../../features/bus/presentation/widgets/bus_stop_details_sheet.dart';
 import '../../../features/train/data/models/train_model.dart';
@@ -89,16 +90,24 @@ class _FavoritesPageState extends State<FavoritesPage> {
         }
       }
 
-      // Carica dati per fermate preferite
+      // Carica dati per fermate preferite (differenziamo tra fermate bus e stazioni treno)
       for (final stop in favoritesProvider.favoriteStops) {
         try {
-          await busProvider.fetchStops();
-          final matchingStop = busProvider.stops
-              .where((s) => s.stopName.toLowerCase().contains(stop.name.toLowerCase()) ||
-                           s.stopId == stop.code)
-              .toList();
-          if (matchingStop.isNotEmpty) {
-            _realTimeData[stop.id] = matchingStop.first;
+          if (stop.stopType == StopType.busStop) {
+            await busProvider.fetchStops();
+            final matchingStop = busProvider.stops
+                .where((s) => s.stopName.toLowerCase().contains(stop.name.toLowerCase()) ||
+                             s.stopId == stop.code)
+                .toList();
+            if (matchingStop.isNotEmpty) {
+              _realTimeData[stop.id] = matchingStop.first;
+            }
+          } else if (stop.stopType == StopType.trainStation) {
+            // Cerca la stazione treno
+            await trainProvider.searchStations(stop.name);
+            if (trainProvider.stationSuggestions.isNotEmpty) {
+              _realTimeData[stop.id] = trainProvider.stationSuggestions.first;
+            }
           }
         } catch (e) {
           print('Errore caricamento fermata ${stop.name}: $e');
@@ -119,12 +128,18 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
     // Uniamo tutte le liste in base al filtro per creare un unico Feed
     List<FavoriteItem> feedItems = [];
+    // Aggiungi fermate e stazioni in base al filtro
     if (_selectedFilter == 'Tutti' || _selectedFilter == 'Fermate') {
-      feedItems.addAll(favoritesProvider.favoriteStops);
+      // Solo fermate bus
+      feedItems.addAll(favoritesProvider.favoriteStops.where((s) => s.stopType == StopType.busStop));
     }
+
     if (_selectedFilter == 'Tutti' || _selectedFilter == 'Treni') {
+      // Treni e stazioni (stazioni salvate come FavoriteStop con StopType.trainStation)
       feedItems.addAll(favoritesProvider.favoriteTrains);
+      feedItems.addAll(favoritesProvider.favoriteStops.where((s) => s.stopType == StopType.trainStation));
     }
+
     if (_selectedFilter == 'Tutti' || _selectedFilter == 'Bus') {
       feedItems.addAll(favoritesProvider.favoriteBusLines);
     }
@@ -571,7 +586,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        stop.city ?? 'Città',
+                        stop.stopType == StopType.trainStation
+                          ? 'Stazione' : (stop.city ?? 'Città'),
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.disabledColor),
                       ),
                     ],
@@ -584,9 +600,29 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ],
             ),
             const SizedBox(height: 16),
-            // Partenze reali dalla fermata
-            if (realTimeData is BariStop)
+            // Partenze reali dalla fermata o stazione
+            if (stop.stopType == StopType.busStop && realTimeData is BariStop)
               _buildRealDepartures(context, realTimeData)
+            else if (stop.stopType == StopType.trainStation && realTimeData is TrainStation)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.train, color: theme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Tocca per vedere arrivi/partenze della stazione',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              )
             else
               Container(
                 padding: const EdgeInsets.all(12),
@@ -775,7 +811,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   // --- INTERAZIONI BOTTOM SHEET (Il "Details Sheet") ---
 
-  void _showDetailSheet(BuildContext context, dynamic item) {
+  Future<void> _showDetailSheet(BuildContext context, dynamic item) async {
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
 
     if (item is FavoriteTrain) {
@@ -813,18 +849,36 @@ class _FavoritesPageState extends State<FavoritesPage> {
         _showBusSearchSheet(context, item);
       }
     } else if (item is FavoriteStop) {
-      // Usa il detail sheet della fermata con dati reali
+      // Differenzia tra fermata bus e stazione treno
       final realTimeData = _realTimeData[item.id];
-      if (realTimeData is BariStop) {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => BusStopDetailsSheet(stop: realTimeData),
-        );
+      if (item.stopType == StopType.trainStation) {
+        // Apri il pannello stazione treni
+        if (realTimeData is TrainStation) {
+          // Se abbiamo la stazione, la selezioniamo e mostriamo il pannello treni
+          trainProvider.selectStation(realTimeData);
+          await showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (ctx) => FractionallySizedBox(heightFactor: 0.85, child: TrainPanelContent(showModeToggle: true)),
+          );
+        } else {
+          // Fallback: mostra ricerca stazioni treno
+          _showTrainStationSearchSheet(context, item);
+        }
       } else {
-        // Fallback: cerca la fermata
-        _showStopSearchSheet(context, item);
+        // Fermata bus
+        if (realTimeData is BariStop) {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => BusStopDetailsSheet(stop: realTimeData),
+          );
+        } else {
+          // Fallback: cerca la fermata
+          _showStopSearchSheet(context, item);
+        }
       }
     }
   }
@@ -1137,6 +1191,95 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
     // Carica le fermate
     busProvider.fetchStops();
+  }
+
+  void _showTrainStationSearchSheet(BuildContext context, FavoriteStop stop) async {
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+
+    // Cerca le stazioni basate sul nome e mostra i suggerimenti
+    await trainProvider.searchStations(stop.name);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (_, controller) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Consumer<TrainProvider>(
+                  builder: (context, provider, child) {
+                    if (provider.stationSuggestions.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.location_city, size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Stazione "${stop.name}" non trovata',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: controller,
+                      padding: const EdgeInsets.all(24),
+                      itemCount: provider.stationSuggestions.length,
+                      itemBuilder: (context, index) {
+                        final s = provider.stationSuggestions[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            leading: const Icon(Icons.location_city, color: Colors.blue),
+                            title: Text(s.name),
+                            subtitle: Text(s.country),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              trainProvider.selectStation(s);
+                              await showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (ctx) => FractionallySizedBox(heightFactor: 0.85, child: TrainPanelContent(showModeToggle: true)),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showOptions(BuildContext context, FavoriteItem item, FavoritesProvider provider) {
