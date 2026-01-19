@@ -7,6 +7,10 @@ import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
+import '../../../favorites/providers/favorites_provider.dart';
+import '../../../favorites/models/favorite_stop.dart';
+import '../../../auth/providers/auth_provider.dart';
+import 'bus_details_sheet.dart';
 
 class BusStopDetailsSheet extends StatefulWidget {
   final BariStop stop;
@@ -163,6 +167,41 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                             ),
                             Row(
                               children: [
+                                Consumer2<FavoritesProvider, AuthProvider>(
+                                  builder: (context, favoritesProvider, authProvider, child) {
+                                    if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                                    
+                                    final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                                    final isFavorite = favoritesProvider.isStopFavorite(widget.stop.stopId, StopType.busStop);
+                                    return IconButton.filledTonal(
+                                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                                      onPressed: () async {
+                                        if (isFavorite) {
+                                          await favoritesProvider.removeStopFavorite(widget.stop.stopId, StopType.busStop);
+                                        } else {
+                                          final favoriteStop = FavoriteStop(
+                                            id: '${userId}_${StopType.busStop.name}_${widget.stop.stopId}',
+                                            addedAt: DateTime.now(),
+                                            userId: userId,
+                                            name: widget.stop.stopName,
+                                            code: widget.stop.stopId,
+                                            stopType: StopType.busStop,
+                                            latitude: widget.stop.latitude,
+                                            longitude: widget.stop.longitude,
+                                            city: null, // Non disponibile nel BariStop
+                                            region: null, // Non disponibile nel BariStop
+                                            provider: provider.selectedProvider?.name?.toString(),
+                                          );
+                                          await favoritesProvider.addStopFavorite(favoriteStop);
+                                        }
+                                      },
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                                        foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor,
+                                      ),
+                                    );
+                                  },
+                                ),
                                 Consumer<SettingsProvider>(
                                   builder: (context, settings, child) {
                                     final canAutoRefresh = settings.busRefreshSeconds > 0;
@@ -179,7 +218,13 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                 IconButton(
                                   icon: Icon(Icons.close, color: theme.secondaryTextColor),
                                   onPressed: () {
-                                    provider.clearStopSelection();
+                                    if (widget.scrollController == null) {
+                                      // If opened as modal, close the modal sheet
+                                      Navigator.of(context).pop();
+                                    } else {
+                                      // If embedded in map, just clear the selection
+                                      provider.clearStopSelection();
+                                    }
                                   },
                                 ),
                               ],
@@ -269,16 +314,17 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
           child: ListTile(
             onTap: () async {
               final provider = Provider.of<BusProvider>(context, listen: false);
-              if (provider.selectedProvider == null) return;
+              final selectedProvider = provider.selectedProvider;
+              if (selectedProvider == null) return;
 
               // Controlla se tripId e line sono disponibili
-              if (departure.tripId == null || departure.tripId!.isEmpty || departure.line == null || departure.line!.isEmpty) {
+              if (departure.tripId == null || departure.tripId.isEmpty || departure.line == null || departure.line.isEmpty) {
                 print('TripId o lineCode mancanti per la partenza');
                 return;
               }
 
               try {
-                final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.selectedProvider!.name.toLowerCase()}/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
+                final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${selectedProvider.name.toLowerCase()}/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
                 print('Richiamando URL: $url');
                 final response = await http.get(Uri.parse(url));
                 if (response.statusCode == 200) {
@@ -299,19 +345,44 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                     provider.updateBusDestination(existingBus.id, destination ?? '');
                     provider.setApiTripUpdates(stops);
                     await provider.selectBus(existingBus);
-                  } else if (departure.vehicleId != null && departure.vehicleId!.isNotEmpty) {
+
+                    // Se questo sheet è stato aperto come modal (es. dai Preferiti), chiudi il modal della fermata e apri il dettaglio bus come modal
+                    if (widget.scrollController == null) {
+                      if (!mounted) return;
+                      Navigator.of(context).pop();
+                      if (!mounted) return;
+                      await showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => BusDetailsSheet(bus: existingBus!, page: 'favorites'),
+                      );
+                    }
+                  } else if (departure.vehicleId != null && departure.vehicleId.isNotEmpty) {
                     // Crea un nuovo bus temporaneo con coordinate dal provider
                     final newBus = BusVehicle(
-                      id: departure.vehicleId!,
-                      line: departure.line!,
+                      id: departure.vehicleId,
+                      line: departure.line,
                       destination: destination ?? departure.destination ?? '',
-                      latitude: provider.selectedProvider!.latitude ?? 0.0,
-                      longitude: provider.selectedProvider!.longitude ?? 0.0,
+                      latitude: selectedProvider.latitude ?? 0.0,
+                      longitude: selectedProvider.longitude ?? 0.0,
                       tripId: departure.tripId,
-                      provider: provider.selectedProvider!.provider,
+                      provider: selectedProvider.provider,
                     );
                     provider.setApiTripUpdates(stops);
                     await provider.selectBus(newBus);
+
+                    if (widget.scrollController == null) {
+                      if (!mounted) return;
+                      Navigator.of(context).pop();
+                      if (!mounted) return;
+                      await showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => BusDetailsSheet(bus: newBus, page: 'favorites'),
+                      );
+                    }
                   }
                 } else {
                   print('Errore nel recupero dei dettagli del bus: ${response.statusCode}');

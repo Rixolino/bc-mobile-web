@@ -5,11 +5,15 @@ import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
+import '../../../favorites/providers/favorites_provider.dart';
+import '../../../favorites/models/favorite_bus_line.dart';
+import '../../../auth/providers/auth_provider.dart';
 
 class BusDetailsSheet extends StatefulWidget {
   final BusVehicle bus;
   final ScrollController? scrollController;
-  const BusDetailsSheet({super.key, required this.bus, this.scrollController});
+  final String? page; // 'home', 'favorites', etc. Used to adjust closing behavior
+  const BusDetailsSheet({super.key, required this.bus, this.scrollController, this.page});
 
   @override
   State<BusDetailsSheet> createState() => _BusDetailsSheetState();
@@ -199,8 +203,11 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                                     // Se c'è una fermata selezionata, deseleziona solo il bus per tornare alla vista fermata
                                     provider.clearBusSelection();
                                   } else {
-                                    // Altrimenti chiudi tutto
+                                    // Altrimenti deseleziona il bus e chiudi il modal solo se questo sheet è stato aperto come modal
                                     provider.clearBusSelection();
+                                    if (widget.scrollController == null) {
+                                      Navigator.of(context).pop();
+                                    }
                                   }
                                 },
                               ),
@@ -248,6 +255,38 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                           ),
                           // Spacer to push timer to the right
                           const Spacer(),
+                          // Favorites button (only if authenticated)
+                          Consumer2<FavoritesProvider, AuthProvider>(
+                            builder: (context, favoritesProvider, authProvider, child) {
+                              if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                              
+                              final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                              final isFavorite = favoritesProvider.isBusLineFavorite(bus.line, bus.provider ?? '');
+                              return IconButton.filledTonal(
+                                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                                onPressed: () async {
+                                  if (isFavorite) {
+                                    await favoritesProvider.removeBusLineFavorite(bus.line, bus.provider?.toString() ?? '');
+                                  } else {
+                                    final favoriteBusLine = FavoriteBusLine(
+                                      id: '${bus.provider}_${bus.line}',
+                                      addedAt: DateTime.now(),
+                                      userId: userId,
+                                      lineCode: bus.line,
+                                      lineName: bus.destination ?? bus.line,
+                                      provider: bus.provider?.toString() ?? '',
+                                      routeId: bus.tripId?.toString(),
+                                    );
+                                    await favoritesProvider.addBusLineFavorite(favoriteBusLine);
+                                  }
+                                },
+                                style: IconButton.styleFrom(
+                                  backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                                  foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor,
+                                ),
+                              );
+                            },
+                          ),
                           // Auto-refresh toggle button
                           Consumer<SettingsProvider>(
                             builder: (context, settings, child) {

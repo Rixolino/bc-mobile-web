@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../../favorites/screens/favorites_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -99,17 +100,21 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     actions: [
                       IconButton(
                         onPressed: () {
-                          Navigator.of(context).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const FavoritesPage(),
+                            ),
+                          );
                         },
                         icon: Icon(
-                          Icons.arrow_back,
+                          Icons.favorite,
                           color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                         style: IconButton.styleFrom(
                           backgroundColor: theme.colorScheme.surface.withOpacity(0.8),
                           padding: const EdgeInsets.all(12),
                         ),
-                        tooltip: 'Torna indietro',
+                        tooltip: 'Preferiti',
                       ),
                       const SizedBox(width: 8),
                       IconButton(

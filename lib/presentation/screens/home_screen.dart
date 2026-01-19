@@ -330,27 +330,48 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              child: InkWell(
-                onTap: () {
-                  final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                  if (authProvider.isAuthenticated) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const DashboardPage()),
-                    );
-                  } else {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const LoginPage()),
-                    );
-                  }
-                },
-                child: Icon(Icons.person, color: theme.textColor),
-              ),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, child) {
+                final hasNickname = authProvider.isAuthenticated && authProvider.currentUser?.nickname != null;
+                
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(hasNickname ? 20 : 50),
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      if (authProvider.isAuthenticated) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const DashboardPage()),
+                        );
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const LoginPage()),
+                        );
+                      }
+                    },
+                    child: hasNickname
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              authProvider.currentUser!.nickname!,
+                              style: TextStyle(
+                                color: theme.textColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.person, color: theme.textColor, size: 20),
+                          ],
+                        )
+                      : Icon(Icons.person, color: theme.textColor),
+                  ),
+                );
+              },
             ),
           ],
         ),

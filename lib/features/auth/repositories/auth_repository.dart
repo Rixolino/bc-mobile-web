@@ -157,4 +157,36 @@ class AuthRepository {
       return false;
     }
   }
+
+  Future<User?> getUserById(int id) async {
+    try {
+      print('Getting user by ID: $id');
+      final client = await _getClient();
+
+      final result = await client.query(
+        'SELECT * FROM users WHERE id = ?',
+        positional: [id],
+      );
+
+      if (result.isNotEmpty) {
+        final row = result.first;
+        final user = User(
+          id: row['id'] as int,
+          email: row['email'] as String,
+          password: row['password'] as String,
+          nickname: row['nickname'] as String?,
+          createdAt: DateTime.parse(row['created_at'] as String),
+        );
+
+        print('User found: ${user.email}');
+        return user;
+      }
+
+      print('User not found with ID: $id');
+      return null;
+    } catch (e) {
+      print('Get user by ID error: $e');
+      return null;
+    }
+  }
 }

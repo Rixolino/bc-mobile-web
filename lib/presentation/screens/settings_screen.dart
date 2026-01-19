@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
@@ -32,7 +31,7 @@ class SettingsScreen extends StatelessWidget {
               _buildSectionTitle('Tema', theme),
               const SizedBox(height: 16),
               
-              _buildThemeSelector(context, settings, theme).animate().fadeIn().slideX(),
+              _buildThemeSelector(context, settings, theme),
               
               const SizedBox(height: 32),
               
@@ -46,7 +45,7 @@ class SettingsScreen extends StatelessWidget {
                 settings.trainRefreshSeconds,
                 (val) => settings.setTrainRefreshSeconds(val.toInt()),
                 theme
-              ).animate().fadeIn(delay: 100.ms).slideX(),
+              ),
 
               const SizedBox(height: 24),
               
@@ -57,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
                 settings.busRefreshSeconds,
                 (val) => settings.setBusRefreshSeconds(val.toInt()),
                 theme
-              ).animate().fadeIn(delay: 200.ms).slideX(),
+              ),
 
               const SizedBox(height: 24),
               
@@ -68,25 +67,25 @@ class SettingsScreen extends StatelessWidget {
                 settings.planeRefreshSeconds,
                 (val) => settings.setPlaneRefreshSeconds(val.toInt()),
                 theme
-              ).animate().fadeIn(delay: 300.ms).slideX(),
+              ),
 
               const SizedBox(height: 32),
               
               _buildSectionTitle('Configurazione', theme),
               const SizedBox(height: 16),
               
-              _buildConfigUpdateSection(context, busProvider, theme).animate().fadeIn(delay: 350.ms).slideX(),
+              _buildConfigUpdateSection(context, busProvider, theme),
 
               const SizedBox(height: 32),
               
               _buildSectionTitle('Mappa', theme),
               const SizedBox(height: 16),
               
-              _buildClusteringToggle(context, settings, theme).animate().fadeIn(delay: 400.ms).slideX(),
+              _buildClusteringToggle(context, settings, theme),
 
               const SizedBox(height: 16),
 
-              _buildStopsClusteringToggle(context, settings, theme).animate().fadeIn(delay: 500.ms).slideX(),
+              _buildStopsClusteringToggle(context, settings, theme),
             ],
           );
         },

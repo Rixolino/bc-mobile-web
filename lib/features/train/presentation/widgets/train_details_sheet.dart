@@ -7,6 +7,9 @@ import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../favorites/providers/favorites_provider.dart';
+import '../../../favorites/models/favorite_train.dart';
+import '../../../auth/providers/auth_provider.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -186,6 +189,50 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                          style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w500)),
                   ],
                 ),
+              ),
+              Consumer2<FavoritesProvider, AuthProvider>(
+                builder: (context, favoritesProvider, authProvider, child) {
+                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                  
+                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                  final isFavorite = favoritesProvider.isTrainFavorite(
+                    widget.departure.trainNumber ?? '',
+                    widget.departure.origin ?? '',
+                    widget.departure.destination ?? '',
+                  );
+                  return IconButton.filledTonal(
+                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                    onPressed: () async {
+                      if (isFavorite) {
+                        await favoritesProvider.removeTrainFavorite(
+                          widget.departure.trainNumber ?? '',
+                          widget.departure.origin ?? '',
+                          widget.departure.destination ?? '',
+                        );
+                      } else {
+                        final favoriteTrain = FavoriteTrain(
+                          id: '${userId}_train_${widget.departure.trainNumber}_${widget.departure.origin}_${widget.departure.destination}',
+                          addedAt: DateTime.now(),
+                          userId: userId,
+                          trainNumber: widget.departure.trainNumber ?? '',
+                          departureStation: widget.departure.origin ?? '',
+                          arrivalStation: widget.departure.destination ?? '',
+                          departureTime: widget.departure.scheduledTime?.toIso8601String() ?? '',
+                          arrivalTime: '', // Non disponibile
+                          operator: null, // Non disponibile
+                          category: widget.departure.category,
+                          routeId: widget.departure.tripId,
+                          provider: null, // Non disponibile
+                        );
+                        await favoritesProvider.addTrainFavorite(favoriteTrain);
+                      }
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                      foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor,
+                    ),
+                  );
+                },
               ),
               IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
               IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),

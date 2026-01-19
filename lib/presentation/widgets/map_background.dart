@@ -349,7 +349,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
               maxChildSize: 0.95, // Massimo 95% dello schermo
               builder: (context, scrollController) => BusDetailsSheet(
                 bus: busProvider.selectedBus!, 
-                scrollController: scrollController
+                scrollController: scrollController,
+                page: 'home',
               ),
             ),
           ),

@@ -5,6 +5,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/bus/presentation/providers/bus_provider.dart';
 import 'features/plane/presentation/providers/plane_provider.dart';
 import 'features/train/presentation/providers/train_provider.dart';
+import 'features/favorites/providers/favorites_provider.dart';
 import 'presentation/providers/config_provider.dart';
 import 'presentation/providers/settings_provider.dart';
 import 'presentation/providers/theme_provider.dart';
@@ -92,19 +93,24 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
           },
         ),
         ChangeNotifierProvider(create: (_) => MapStateProvider()),
+        ChangeNotifierProvider(create: (_) => FavoritesProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, theme, child) {
           // Salva riferimento al MapStateProvider per il lifecycle
           _mapStateProvider = Provider.of<MapStateProvider>(context, listen: false);
           
-          return MaterialApp(
-            title: 'BC Transporter',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode: theme.themeMode,
-            home: const HomeScreen(),
+          return Consumer<AuthProvider>(
+            builder: (context, auth, child) {
+              return MaterialApp(
+                title: 'BC Transporter',
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.lightTheme,
+                darkTheme: AppTheme.darkTheme,
+                themeMode: theme.themeMode,
+                home: const HomeScreen(),
+              );
+            },
           );
         },
       ),

@@ -100,6 +100,19 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
     final theme = Theme.of(context);
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: theme.primaryColor),
+          onPressed: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+            );
+          },
+          tooltip: 'Torna indietro',
+        ),
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -112,48 +125,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
             ],
           ),
         ),
-        child: Stack(
-          children: [
-            // Back Button
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              left: 16,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: IconButton(
-                  onPressed: () {
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    } else {
-                      // Se non può tornare indietro, torna alla home
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const HomeScreen()),
-                      );
-                    }
-                  },
-                  icon: Icon(
-                    Icons.arrow_back,
-                    color: theme.primaryColor,
-                  ),
-                  tooltip: 'Torna indietro',
-                  padding: const EdgeInsets.all(12),
-                  constraints: const BoxConstraints(),
-                ),
-              ),
-            ),
-
-            // Main Content
-            SafeArea(
+        child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: SingleChildScrollView(
@@ -161,23 +133,6 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 40),
-                  // Back Button
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        padding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   // Logo/Icon Section
                   Center(
@@ -444,8 +399,8 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
               ),
             ),
           ),
-        )],
+        ),
       ),
-    ));
+    );
   }
 }

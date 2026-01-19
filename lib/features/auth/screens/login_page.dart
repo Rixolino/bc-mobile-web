@@ -62,6 +62,19 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final theme = Theme.of(context);
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: theme.primaryColor),
+          onPressed: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+            );
+          },
+          tooltip: 'Torna indietro',
+        ),
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -74,48 +87,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             ],
           ),
         ),
-        child: Stack(
-          children: [
-            // Back Button
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              left: 16,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: IconButton(
-                  onPressed: () {
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    } else {
-                      // Se non può tornare indietro, torna alla home
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const HomeScreen()),
-                      );
-                    }
-                  },
-                  icon: Icon(
-                    Icons.arrow_back,
-                    color: theme.primaryColor,
-                  ),
-                  tooltip: 'Torna indietro',
-                  padding: const EdgeInsets.all(12),
-                  constraints: const BoxConstraints(),
-                ),
-              ),
-            ),
-
-            // Main Content
-            SafeArea(
+        child: SafeArea(
               child: FadeTransition(
                 opacity: _fadeAnimation,
                 child: SingleChildScrollView(
@@ -123,7 +95,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 60),
+                      const SizedBox(height: 20),
                   // Logo/Icon Section
                   Center(
                     child: Container(
@@ -349,8 +321,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ),
           ),
-        )],
+        ),
       ),
-    ));
+    );
   }
 }
