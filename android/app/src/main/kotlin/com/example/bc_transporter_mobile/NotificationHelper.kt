@@ -47,7 +47,13 @@ object NotificationHelper {
         }
     }
 
-    fun showNotification(context: Context, channelId: String, title: String, body: String) {
+    fun getIdForKey(key: String): Int {
+        var h = key.hashCode()
+        if (h == Int.MIN_VALUE) h = 0
+        return kotlin.math.abs(h) % Int.MAX_VALUE
+    }
+
+    fun showNotification(context: Context, channelId: String, title: String, body: String, notificationId: Int? = null) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val builder = NotificationCompat.Builder(context, channelId)
@@ -57,6 +63,13 @@ object NotificationHelper {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
-        nm.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), builder.build())
+        val id = notificationId ?: ((System.currentTimeMillis() % Int.MAX_VALUE).toInt())
+        nm.notify(id, builder.build())
+    }
+
+    fun cancelNotificationByKey(context: Context, key: String) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val id = getIdForKey(key)
+        nm.cancel(id)
     }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/android_background_service.dart';
 
 class SettingsProvider with ChangeNotifier {
   static const String keyBusInterval = 'bus_refresh_interval';
@@ -80,6 +81,15 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(keyBusInterval, seconds);
+
+    // If buses worker is enabled, reschedule with new interval
+    if (_busesWorkerEnabled) {
+      try {
+        await AndroidBackgroundService.scheduleBusesWorker(provider: _busProvider, baseUrl: _busBaseUrl, enableNotifications: true, intervalSeconds: seconds);
+      } catch (e) {
+        print('Error rescheduling buses worker: $e');
+      }
+    }
   }
 
   Future<void> setTrainRefreshSeconds(int seconds) async {
@@ -87,6 +97,15 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(keyTrainInterval, seconds);
+
+    // If trains worker is enabled, reschedule with new interval
+    if (_trainsWorkerEnabled) {
+      try {
+        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: seconds);
+      } catch (e) {
+        print('Error rescheduling trains worker: $e');
+      }
+    }
   }
 
   Future<void> setPlaneRefreshSeconds(int seconds) async {

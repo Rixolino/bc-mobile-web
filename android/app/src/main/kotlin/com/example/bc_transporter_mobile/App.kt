@@ -5,8 +5,9 @@ import android.app.Application
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Inizializza canali di notifica e schedulazione background
+        // Inizializza canali di notifica
         NotificationHelper.createChannels(this)
-        BackgroundScheduler.schedulePeriodicWorkers(this)
+        // Functions worker (periodic long-running tasks) stays scheduled here if needed
+        BackgroundScheduler.scheduleFunctionsWorker(this)
     }
 }

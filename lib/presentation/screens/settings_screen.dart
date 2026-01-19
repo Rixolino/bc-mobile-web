@@ -377,6 +377,7 @@ class SettingsScreen extends StatelessWidget {
                       stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null,
                       service: settings.trainService,
                       enableNotifications: v,
+                      intervalSeconds: settings.trainRefreshSeconds,
                     );
                   } else {
                     await AndroidBackgroundService.cancelTrainsWorker();
@@ -411,7 +412,7 @@ class SettingsScreen extends StatelessWidget {
                 onChanged: (v) async {
                   await settings.setBusesWorkerEnabled(v);
                   if (v) {
-                    await AndroidBackgroundService.scheduleBusesWorker(provider: settings.busProvider, baseUrl: settings.busBaseUrl, enableNotifications: v);
+                    await AndroidBackgroundService.scheduleBusesWorker(provider: settings.busProvider, baseUrl: settings.busBaseUrl, enableNotifications: v, intervalSeconds: settings.busRefreshSeconds);
                   } else {
                     await AndroidBackgroundService.cancelBusesWorker();
                   }

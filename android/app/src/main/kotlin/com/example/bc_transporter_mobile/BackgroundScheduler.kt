@@ -23,7 +23,8 @@ object BackgroundScheduler {
         country: String? = null,
         service: String? = null,
         enableNotifications: Boolean = true,
-        endpoint: String? = null
+        endpoint: String? = null,
+        intervalMinutes: Long = 15
     ) {
         val dataBuilder = androidx.work.Data.Builder()
         dataBuilder.putBoolean("enableNotifications", enableNotifications)
@@ -32,7 +33,8 @@ object BackgroundScheduler {
         service?.let { dataBuilder.putString("service", it) }
         endpoint?.let { dataBuilder.putString("endpoint", it) }
 
-        val trainsRequest = PeriodicWorkRequestBuilder<TrainsWorker>(15, TimeUnit.MINUTES)
+        val period = if (intervalMinutes < 15) 15L else intervalMinutes
+        val trainsRequest = PeriodicWorkRequestBuilder<TrainsWorker>(period, TimeUnit.MINUTES)
             .setInputData(dataBuilder.build())
             .build()
         val wm = WorkManager.getInstance(context.applicationContext)
@@ -44,7 +46,8 @@ object BackgroundScheduler {
         provider: String? = null,
         baseUrl: String? = null,
         enableNotifications: Boolean = true,
-        endpoint: String? = null
+        endpoint: String? = null,
+        intervalMinutes: Long = 15
     ) {
         val dataBuilder = androidx.work.Data.Builder()
         dataBuilder.putBoolean("enableNotifications", enableNotifications)
@@ -52,7 +55,8 @@ object BackgroundScheduler {
         baseUrl?.let { dataBuilder.putString("baseUrl", it) }
         endpoint?.let { dataBuilder.putString("endpoint", it) }
 
-        val busesRequest = PeriodicWorkRequestBuilder<BusesWorker>(15, TimeUnit.MINUTES)
+        val period = if (intervalMinutes < 15) 15L else intervalMinutes
+        val busesRequest = PeriodicWorkRequestBuilder<BusesWorker>(period, TimeUnit.MINUTES)
             .setInputData(dataBuilder.build())
             .build()
         val wm = WorkManager.getInstance(context.applicationContext)

@@ -502,6 +502,15 @@ class _BusNotificationsButton extends StatefulWidget {
 class _BusNotificationsButtonState extends State<_BusNotificationsButton> {
   bool _enabled = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Initialize enabled state based on monitored stops stored in native prefs
+    AndroidBackgroundService.isStopMonitored(widget.stop.stopId).then((v) {
+      if (mounted) setState(() => _enabled = v);
+    });
+  }
+
   Future<void> _toggle() async {
     final providerName = Provider.of<BusProvider>(context, listen: false).selectedProvider?.name ?? '';
     final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
@@ -509,12 +518,36 @@ class _BusNotificationsButtonState extends State<_BusNotificationsButton> {
     try {
       await AndroidBackgroundService.requestPermission();
       if (!_enabled) {
-        await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam);
+        // Fetch immediate data for this stop and notify user with summary
+        final provider = Provider.of<BusProvider>(context, listen: false);
+        List<StopDeparture> departures = [];
+        try {
+          departures = await provider.fetchStopUpdates(widget.stop.stopId);
+        } catch (e) {
+          print('Errore fetching stop updates on enable: $e');
+        }
+
+        String body;
+        if (departures.isEmpty) {
+          body = 'Nessuna partenza disponibile al momento per la fermata ${widget.stop.stopId}';
+        } else {
+          final items = departures.take(3).map((d) => '${d.line} ${d.formattedTime}').join(', ');
+          body = 'Prossime partenze: $items';
+        }
+
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+        await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds, stopId: widget.stop.stopId, stopName: widget.stop.stopName);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche autobus attivate per ${providerName.isNotEmpty ? providerName : 'provider'}')));
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche bus attivate', body: 'Riceverai aggiornamenti per questa fermata');
+        // Use stop name and id as notification title when enabling notifications for this stop
+        final title = '${widget.stop.stopName} (${widget.stop.stopId})';
+        final key = 'stop:${widget.stop.stopId}';
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: title, body: body, key: key);
       } else {
-        await AndroidBackgroundService.cancelBusesWorker();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche autobus disattivate')));
+        // Remove only this monitored stop instead of cancelling all bus monitoring
+        await AndroidBackgroundService.removeMonitoredStop(widget.stop.stopId);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche autobus disattivate per questa fermata')));
+        final key = 'stop:${widget.stop.stopId}';
+        await AndroidBackgroundService.cancelNotification(key: key);
         await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche bus disattivate', body: 'Hai disattivato le notifiche per questa fermata');
       }
       setState(() => _enabled = !_enabled);

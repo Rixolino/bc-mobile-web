@@ -45,8 +45,8 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
       try {
         await AndroidBackgroundService.requestPermission();
         final settings = Provider.of<SettingsProvider>(context, listen: false);
-        if (settings.trainsWorkerEnabled) await AndroidBackgroundService.scheduleTrainsWorker();
-        if (settings.busesWorkerEnabled) await AndroidBackgroundService.scheduleBusesWorker();
+        if (settings.trainsWorkerEnabled) await AndroidBackgroundService.scheduleTrainsWorker(intervalSeconds: settings.trainRefreshSeconds, stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null, service: settings.trainService);
+        if (settings.busesWorkerEnabled) await AndroidBackgroundService.scheduleBusesWorker(intervalSeconds: settings.busRefreshSeconds, provider: settings.busProvider, baseUrl: settings.busBaseUrl);
         if (settings.functionsWorkerEnabled) await AndroidBackgroundService.scheduleFunctionsWorker();
       } catch (_) {}
     });

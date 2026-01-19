@@ -11,6 +11,7 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
+import '../../data/repositories/train_repository.dart';
 import '../../../../presentation/constants/notification_channels.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
@@ -56,13 +57,41 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     if (!_enabled) {
       // Request permission (Android 13+), then schedule worker and show a confirmation notification
       await AndroidBackgroundService.requestPermission();
-      await AndroidBackgroundService.scheduleTrainsWorker(endpoint: endpoint);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
-      // Immediate confirmation notification
-      await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: 'Riceverai aggiornamenti su questo treno');
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      await AndroidBackgroundService.scheduleTrainsWorker(endpoint: endpoint, intervalSeconds: settings.trainRefreshSeconds);
+
+      // Fetch immediate trip details if available and send a summary notification
+      try {
+        final repo = TrainRepository();
+        TrainDeparture? details;
+        if (tripId.isNotEmpty) {
+          details = await repo.fetchTrip(tripId, country: country);
+        } else if (widget.departure.trainNumber != null) {
+          details = await repo.fetchTrainDetails(widget.departure.trainNumber ?? '', '');
+        }
+
+        String body;
+        if (details != null) {
+          final status = details.status ?? (details.delayMinutes != null && details.delayMinutes! > 0 ? 'Ritardo ${details.delayMinutes}min' : 'In orario');
+          final dest = details.destination ?? widget.departure.destination ?? '';
+          final scheduled = details.scheduledTime != null ? DateFormat('HH:mm').format(details.scheduledTime!.toLocal()) : '';
+          body = '${widget.departure.trainNumber ?? ''} → $dest • $status ${scheduled.isNotEmpty ? '($scheduled)' : ''}';
+        } else {
+          body = 'Riceverai aggiornamenti su questo treno';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: body);
+      } catch (e) {
+        print('Errore fetching trip details on enable: $e');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: 'Riceverai aggiornamenti su questo treno');
+      }
     } else {
       await AndroidBackgroundService.cancelTrainsWorker();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate')));
+        final key = 'train:${tripId.isNotEmpty ? tripId : (widget.departure.trainNumber ?? '')}';
+      await AndroidBackgroundService.cancelNotification(key: key);
       await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno disattivate', body: 'Hai disattivato le notifiche per questo treno');
     }
 

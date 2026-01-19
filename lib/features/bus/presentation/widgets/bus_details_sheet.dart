@@ -903,14 +903,60 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
     try {
       await AndroidBackgroundService.requestPermission();
       if (!_enabled) {
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
         if (tripId != null && tripId.isNotEmpty) {
           final endpoint = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${providerParam ?? 'bari'}/realtime?tripId=${Uri.encodeComponent(tripId)}';
-          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, endpoint: endpoint);
+          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, endpoint: endpoint, intervalSeconds: settings.busRefreshSeconds);
         } else {
-          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam);
+          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds);
         }
+
+        // Try to fetch next stop and ETA for immediate summary notification
+        String body = 'Riceverai aggiornamenti per la linea ${widget.bus.line}';
+        try {
+          final provider = Provider.of<BusProvider>(context, listen: false);
+          final List<BusTripUpdate> updates = await provider.fetchBariTripUpdates(widget.bus.id, widget.bus.line);
+
+          if (updates.isNotEmpty) {
+            final now = DateTime.now();
+            final next = updates.firstWhere((u) => u.status != 'passed', orElse: () => updates.first);
+            final nextStop = next.stopName ?? 'Fermata';
+
+            int? minutes;
+            final eta = (next.arrivalEstimate ?? '').trim();
+            if (eta.isNotEmpty) {
+              if (eta.toLowerCase().contains('arriv')) {
+                minutes = 0;
+              } else {
+                final m = RegExp(r'~?(\d+)').firstMatch(eta);
+                if (m != null) minutes = int.tryParse(m.group(1)!);
+              }
+            }
+
+            // If we still don't have minutes, try to parse expectedTime as HH:mm
+            if (minutes == null && next.expectedTime != null && next.expectedTime!.contains(':')) {
+              try {
+                final parts = next.expectedTime!.split(':');
+                final h = int.tryParse(parts[0]) ?? 0;
+                final mm = int.tryParse(parts[1]) ?? 0;
+                var dt = DateTime(now.year, now.month, now.day, h, mm);
+                // if time already passed, assume next day
+                if (dt.isBefore(now.subtract(const Duration(hours: 1)))) dt = dt.add(const Duration(days: 1));
+                minutes = dt.difference(now).inMinutes;
+              } catch (e) {
+                // ignore parse errors
+              }
+            }
+
+            final etaText = minutes == null ? (eta.isNotEmpty ? eta : '') : (minutes <= 0 ? 'In arrivo' : '${minutes} min');
+            body = 'Prossima fermata: $nextStop — $etaText';
+          }
+        } catch (e) {
+          print('Errore fetching trip updates for notification: $e');
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche linea ${widget.bus.line} attivate')));
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche linea attivate', body: 'Riceverai aggiornamenti per la linea ${widget.bus.line}');
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche linea attivate', body: body);
       } else {
         await AndroidBackgroundService.cancelBusesWorker();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche linea ${widget.bus.line} disattivate')));
