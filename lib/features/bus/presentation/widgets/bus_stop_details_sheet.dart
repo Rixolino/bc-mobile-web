@@ -8,6 +8,8 @@ import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
+import '../../../../core/services/android_background_service.dart';
+import '../../../../presentation/constants/notification_channels.dart';
 import '../../../favorites/models/favorite_stop.dart';
 import '../../../auth/providers/auth_provider.dart';
 import 'bus_details_sheet.dart';
@@ -205,13 +207,20 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                 Consumer<SettingsProvider>(
                                   builder: (context, settings, child) {
                                     final canAutoRefresh = settings.busRefreshSeconds > 0;
-                                    return IconButton.filledTonal(
-                                      icon: Icon(_timer != null ? Icons.timer : Icons.timer_off),
-                                      onPressed: canAutoRefresh ? _toggleAutoRefresh : null,
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: theme.surfaceColor.withOpacity(0.05),
-                                        foregroundColor: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
-                                      ),
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton.filledTonal(
+                                          icon: Icon(_timer != null ? Icons.timer : Icons.timer_off),
+                                          onPressed: canAutoRefresh ? _toggleAutoRefresh : null,
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                                            foregroundColor: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _BusNotificationsButton(stop: widget.stop),
+                                      ],
                                     );
                                   },
                                 ),
@@ -477,6 +486,48 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
           Expanded(child: Text(value, style: TextStyle(color: theme.textColor, fontSize: 14, fontWeight: FontWeight.w500))),
         ],
       ),
+    );
+  }
+}
+
+// Notifications button for a specific bus stop/trip
+class _BusNotificationsButton extends StatefulWidget {
+  final BariStop stop;
+  const _BusNotificationsButton({required this.stop});
+
+  @override
+  State<_BusNotificationsButton> createState() => _BusNotificationsButtonState();
+}
+
+class _BusNotificationsButtonState extends State<_BusNotificationsButton> {
+  bool _enabled = false;
+
+  Future<void> _toggle() async {
+    final providerName = Provider.of<BusProvider>(context, listen: false).selectedProvider?.name ?? '';
+    final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
+
+    try {
+      await AndroidBackgroundService.requestPermission();
+      if (!_enabled) {
+        await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche autobus attivate per ${providerName.isNotEmpty ? providerName : 'provider'}')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche bus attivate', body: 'Riceverai aggiornamenti per questa fermata');
+      } else {
+        await AndroidBackgroundService.cancelBusesWorker();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche autobus disattivate')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche bus disattivate', body: 'Hai disattivato le notifiche per questa fermata');
+      }
+      setState(() => _enabled = !_enabled);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore notifiche: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
+      onPressed: _toggle,
     );
   }
 }

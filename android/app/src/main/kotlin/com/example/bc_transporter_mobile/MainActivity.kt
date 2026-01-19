@@ -25,9 +25,10 @@ class MainActivity: FlutterActivity() {
                 "showNotification" -> {
                     val title = call.argument<String>("title")
                     val body = call.argument<String>("body")
+                    val channel = call.argument<String>("channel") ?: "trains_updates_channel"
                     
                     if (canPostNotifications()) {
-                        showNotification(title, body)
+                        showNotification(channel, title, body)
                         result.success(null)
                     } else {
                         requestNotificationPermission()
@@ -36,6 +37,54 @@ class MainActivity: FlutterActivity() {
                 }
                 "requestPermission" -> {
                     requestNotificationPermission()
+                    result.success(null)
+                }
+                "hasNotificationPermission" -> {
+                    result.success(canPostNotifications())
+                }
+                "scheduleBackgroundWorkers" -> {
+                    BackgroundScheduler.schedulePeriodicWorkers(this@MainActivity)
+                    result.success(null)
+                }
+                "cancelBackgroundWorkers" -> {
+                    BackgroundScheduler.cancelAll(this@MainActivity)
+                    result.success(null)
+                }
+                "scheduleTrainsWorker" -> {
+                    val stationId = call.argument<String>("stationId")
+                    val country = call.argument<String>("country")
+                    val service = call.argument<String>("service")
+                    val enable = call.argument<Boolean>("enableNotifications") ?: true
+                    val endpoint = call.argument<String>("endpoint")
+                    BackgroundScheduler.scheduleTrainsWorker(this@MainActivity, stationId, country, service, enable, endpoint)
+                    result.success(null)
+                }
+                "cancelTrainsWorker" -> {
+                    BackgroundScheduler.cancelTrainsWorker(this@MainActivity)
+                    result.success(null)
+                }
+                "scheduleBusesWorker" -> {
+                    val provider = call.argument<String>("provider")
+                    val baseUrl = call.argument<String>("baseUrl")
+                    val enable = call.argument<Boolean>("enableNotifications") ?: true
+                    val endpoint = call.argument<String>("endpoint")
+                    BackgroundScheduler.scheduleBusesWorker(this@MainActivity, provider, baseUrl, enable, endpoint)
+                    result.success(null)
+                }
+                "cancelBusesWorker" -> {
+                    BackgroundScheduler.cancelBusesWorker(this@MainActivity)
+                    result.success(null)
+                }
+                "scheduleFunctionsWorker" -> {
+                    val metric = call.argument<String>("metric")
+                    val baseUrl = call.argument<String>("baseUrl")
+                    val enable = call.argument<Boolean>("enableNotifications") ?: true
+                    val endpoint = call.argument<String>("endpoint")
+                    BackgroundScheduler.scheduleFunctionsWorker(this@MainActivity, metric, baseUrl, enable, endpoint)
+                    result.success(null)
+                }
+                "cancelFunctionsWorker" -> {
+                    BackgroundScheduler.cancelFunctionsWorker(this@MainActivity)
                     result.success(null)
                 }
                 else -> {
@@ -58,21 +107,10 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun showNotification(title: String?, body: String?) {
-        val channelId = "train_updates_channel"
+    private fun showNotification(channelId: String, title: String?, body: String?) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Aggiornamenti Treni",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifiche sullo stato dei treni"
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-
+        // We assume channels were created in App.onCreate
         val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -80,7 +118,7 @@ class MainActivity: FlutterActivity() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), builder.build())
+        notificationManager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), builder.build())
     }
 }
 

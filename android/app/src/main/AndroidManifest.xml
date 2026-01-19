@@ -7,7 +7,7 @@
 
     <application
         android:label="bc_transporter_mobile"
-        android:name="${applicationName}"
+        android:name=".App"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

@@ -10,6 +10,8 @@ import '../../../../presentation/providers/theme_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../../core/services/android_background_service.dart';
+import '../../../../presentation/constants/notification_channels.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -31,6 +33,51 @@ class TrainDetailsSheet extends StatefulWidget {
 
   @override
   State<TrainDetailsSheet> createState() => _TrainDetailsSheetState();
+}
+
+// Small widget to manage notifications toggle for a specific train
+class _TrainNotificationsButton extends StatefulWidget {
+  final TrainDeparture departure;
+  const _TrainNotificationsButton({required this.departure});
+
+  @override
+  State<_TrainNotificationsButton> createState() => __TrainNotificationsButtonState();
+}
+
+class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
+  bool _enabled = false;
+
+  Future<void> _toggle() async {
+    final tripId = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
+    final country = widget.departure.metadata?['country'] ?? 'IT';
+    final prodBase = 'https://prod.cuzimmartin.dev/api';
+    final endpoint = ifNotEmpty(tripId) ? '$prodBase/$country/trip?tripId=${Uri.encodeComponent(tripId)}' : null;
+
+    if (!_enabled) {
+      // Request permission (Android 13+), then schedule worker and show a confirmation notification
+      await AndroidBackgroundService.requestPermission();
+      await AndroidBackgroundService.scheduleTrainsWorker(endpoint: endpoint);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
+      // Immediate confirmation notification
+      await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: 'Riceverai aggiornamenti su questo treno');
+    } else {
+      await AndroidBackgroundService.cancelTrainsWorker();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate')));
+      await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno disattivate', body: 'Hai disattivato le notifiche per questo treno');
+    }
+
+    setState(() => _enabled = !_enabled);
+  }
+
+  bool ifNotEmpty(String? v) => v != null && v.isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
+      onPressed: _toggle,
+    );
+  }
 }
 
 class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
@@ -234,6 +281,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   );
                 },
               ),
+              // Notifications button
+              Builder(builder: (ctx) {
+                return _TrainNotificationsButton(departure: widget.departure);
+              }),
               IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
               IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),
             ],

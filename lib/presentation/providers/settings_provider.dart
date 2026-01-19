@@ -8,6 +8,15 @@ class SettingsProvider with ChangeNotifier {
   static const String keyThemeMode = 'theme_mode';
   static const String keyBusClustering = 'bus_clustering_enabled';
   static const String keyStopsClustering = 'stops_clustering_enabled';
+  static const String keyTrainsWorker = 'trains_worker_enabled';
+  static const String keyBusesWorker = 'buses_worker_enabled';
+  static const String keyFunctionsWorker = 'functions_worker_enabled';
+
+  // Configurable parameters for background workers
+  static const String keyTrainStationId = 'train_station_id';
+  static const String keyTrainService = 'train_service';
+  static const String keyBusProvider = 'bus_provider';
+  static const String keyBusBaseUrl = 'bus_base_url';
 
   int _busRefreshSeconds = 0; // 0 means disabled
   int _trainRefreshSeconds = 0;
@@ -15,6 +24,15 @@ class SettingsProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   bool _busClusteringEnabled = false;
   bool _stopsClusteringEnabled = false;
+  bool _trainsWorkerEnabled = false;
+  bool _busesWorkerEnabled = false;
+  bool _functionsWorkerEnabled = false;
+
+  // Worker params
+  String _trainStationId = '';
+  String _trainService = 'trainboardeu';
+  String _busProvider = 'bari';
+  String _busBaseUrl = 'https://betacloud-transporter.is-cool.dev';
 
   int get busRefreshSeconds => _busRefreshSeconds;
   int get trainRefreshSeconds => _trainRefreshSeconds;
@@ -22,6 +40,14 @@ class SettingsProvider with ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   bool get busClusteringEnabled => _busClusteringEnabled;
   bool get stopsClusteringEnabled => _stopsClusteringEnabled;
+  bool get trainsWorkerEnabled => _trainsWorkerEnabled;
+  bool get busesWorkerEnabled => _busesWorkerEnabled;
+  bool get functionsWorkerEnabled => _functionsWorkerEnabled;
+
+  String get trainStationId => _trainStationId;
+  String get trainService => _trainService;
+  String get busProvider => _busProvider;
+  String get busBaseUrl => _busBaseUrl;
 
   SettingsProvider() {
     _loadSettings();
@@ -36,6 +62,16 @@ class SettingsProvider with ChangeNotifier {
     _themeMode = ThemeMode.values[themeIndex];
     _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     _stopsClusteringEnabled = prefs.getBool(keyStopsClustering) ?? false;
+    _trainsWorkerEnabled = prefs.getBool(keyTrainsWorker) ?? false;
+    _busesWorkerEnabled = prefs.getBool(keyBusesWorker) ?? false;
+    _functionsWorkerEnabled = prefs.getBool(keyFunctionsWorker) ?? false;
+
+    // Load worker params
+    _trainStationId = prefs.getString(keyTrainStationId) ?? '';
+    _trainService = prefs.getString(keyTrainService) ?? 'trainboardeu';
+    _busProvider = prefs.getString(keyBusProvider) ?? 'bari';
+    _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
+
     notifyListeners();
   }
 
@@ -80,4 +116,56 @@ class SettingsProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyStopsClustering, enabled);
   }
+
+  Future<void> setTrainsWorkerEnabled(bool enabled) async {
+    _trainsWorkerEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyTrainsWorker, enabled);
+  }
+
+  Future<void> setBusesWorkerEnabled(bool enabled) async {
+    _busesWorkerEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyBusesWorker, enabled);
+  }
+
+  Future<void> setFunctionsWorkerEnabled(bool enabled) async {
+    _functionsWorkerEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyFunctionsWorker, enabled);
+  }
+
+  // Train worker config
+  Future<void> setTrainStationId(String id) async {
+    _trainStationId = id;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyTrainStationId, id);
+  }
+
+  Future<void> setTrainService(String service) async {
+    _trainService = service;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyTrainService, service);
+  }
+
+  // Bus worker config
+  Future<void> setBusProvider(String provider) async {
+    _busProvider = provider;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyBusProvider, provider);
+  }
+
+  Future<void> setBusBaseUrl(String baseUrl) async {
+    _busBaseUrl = baseUrl;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyBusBaseUrl, baseUrl);
+  }
 }
+

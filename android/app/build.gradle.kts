@@ -39,6 +39,12 @@ android {
     }
 }
 
+// Dipendenze aggiuntive per WorkManager + OkHttp
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.8.1")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+}
+
 flutter {
     source = "../.."
 }

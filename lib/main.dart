@@ -11,6 +11,7 @@ import 'presentation/providers/settings_provider.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/map_state_provider.dart';
 import 'presentation/screens/home_screen.dart';
+import 'core/services/android_background_service.dart';
 
 void main() {
   runApp(const BcTransporterApp());
@@ -37,6 +38,18 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Android: richiedi permessi notifiche e pianifica i worker nativi
+    // (Usiamo chiamate native via MethodChannel)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await AndroidBackgroundService.requestPermission();
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+        if (settings.trainsWorkerEnabled) await AndroidBackgroundService.scheduleTrainsWorker();
+        if (settings.busesWorkerEnabled) await AndroidBackgroundService.scheduleBusesWorker();
+        if (settings.functionsWorkerEnabled) await AndroidBackgroundService.scheduleFunctionsWorker();
+      } catch (_) {}
+    });
   }
 
   @override

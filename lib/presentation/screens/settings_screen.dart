@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
+import '../../core/services/android_background_service.dart';
+import '../../core/notification_channels.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -75,6 +77,12 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 16),
               
               _buildConfigUpdateSection(context, busProvider, theme),
+
+              const SizedBox(height: 32),
+
+              _buildSectionTitle('Notifiche & Background', theme),
+              const SizedBox(height: 16),
+              _buildBackgroundNotificationControls(context, settings, theme),
 
               const SizedBox(height: 32),
               
@@ -328,6 +336,228 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBackgroundNotificationControls(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Notifiche Background',
+                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Text('Treni', style: TextStyle(color: theme.textColor))),
+              IconButton(
+                icon: Icon(Icons.settings, color: theme.secondaryTextColor),
+                onPressed: () => _showTrainConfigDialog(context, settings),
+              ),
+              Switch(
+                value: settings.trainsWorkerEnabled,
+                onChanged: (v) async {
+                  await settings.setTrainsWorkerEnabled(v);
+                  if (v) {
+                    await AndroidBackgroundService.scheduleTrainsWorker(
+                      stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null,
+                      service: settings.trainService,
+                      enableNotifications: v,
+                    );
+                  } else {
+                    await AndroidBackgroundService.cancelTrainsWorker();
+                  }
+                },
+                activeColor: theme.primaryColor,
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Test Treni', body: 'Questo è un test notifica treni');
+                },
+                child: const Text('Test'),
+              )
+            ],
+          ),
+          if (settings.trainStationId.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Stazione: ${settings.trainStationId} · Servizio: ${settings.trainService}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text('Autobus', style: TextStyle(color: theme.textColor))),
+              IconButton(
+                icon: Icon(Icons.settings, color: theme.secondaryTextColor),
+                onPressed: () => _showBusConfigDialog(context, settings),
+              ),
+              Switch(
+                value: settings.busesWorkerEnabled,
+                onChanged: (v) async {
+                  await settings.setBusesWorkerEnabled(v);
+                  if (v) {
+                    await AndroidBackgroundService.scheduleBusesWorker(provider: settings.busProvider, baseUrl: settings.busBaseUrl, enableNotifications: v);
+                  } else {
+                    await AndroidBackgroundService.cancelBusesWorker();
+                  }
+                },
+                activeColor: theme.primaryColor,
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Test Bus', body: 'Questo è un test notifica bus');
+                },
+                child: const Text('Test'),
+              )
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Provider: ${settings.busProvider} · Base URL: ${settings.busBaseUrl}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text('Funzioni', style: TextStyle(color: theme.textColor))),
+              Switch(
+                value: settings.functionsWorkerEnabled,
+                onChanged: (v) async {
+                  await settings.setFunctionsWorkerEnabled(v);
+                  if (v) {
+                    await AndroidBackgroundService.scheduleFunctionsWorker();
+                  } else {
+                    await AndroidBackgroundService.cancelFunctionsWorker();
+                  }
+                },
+                activeColor: theme.primaryColor,
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  await AndroidBackgroundService.showNotification(channel: NotificationChannels.functions, title: 'Test Funzioni', body: 'Questo è un test notifica funzioni');
+                },
+                child: const Text('Test'),
+              )
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTrainConfigDialog(BuildContext context, SettingsProvider settings) {
+    final stationController = TextEditingController(text: settings.trainStationId);
+    String selectedService = settings.trainService;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Configura notifiche treni'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: stationController,
+                decoration: const InputDecoration(labelText: 'Station ID (es. S01700)'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButton<String>(
+                value: selectedService,
+                items: const [
+                  DropdownMenuItem(value: 'trainboardeu', child: Text('Trainboard (prod)')),
+                  DropdownMenuItem(value: 'direct', child: Text('Direct (RFI)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    selectedService = v;
+                  }
+                },
+              )
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annulla')),
+            ElevatedButton(
+              onPressed: () async {
+                await settings.setTrainStationId(stationController.text.trim());
+                await settings.setTrainService(selectedService);
+                Navigator.of(ctx).pop();
+                if (settings.trainsWorkerEnabled) {
+                  await AndroidBackgroundService.scheduleTrainsWorker(
+                    stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null,
+                    service: settings.trainService,
+                    enableNotifications: true,
+                  );
+                }
+              },
+              child: const Text('Salva'),
+            )
+          ],
+        );
+      },
+    );
+  }
+
+  void _showBusConfigDialog(BuildContext context, SettingsProvider settings) {
+    final providerController = TextEditingController(text: settings.busProvider);
+    final baseController = TextEditingController(text: settings.busBaseUrl);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Configura notifiche autobus'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: providerController,
+                decoration: const InputDecoration(labelText: 'Provider (es. bari)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: baseController,
+                decoration: const InputDecoration(labelText: 'Base URL (opzionale)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annulla')),
+            ElevatedButton(
+              onPressed: () async {
+                await settings.setBusProvider(providerController.text.trim());
+                await settings.setBusBaseUrl(baseController.text.trim());
+                Navigator.of(ctx).pop();
+                if (settings.busesWorkerEnabled) {
+                  await AndroidBackgroundService.scheduleBusesWorker(
+                    provider: settings.busProvider,
+                    baseUrl: settings.busBaseUrl,
+                    enableNotifications: true,
+                  );
+                }
+              },
+              child: const Text('Salva'),
+            )
+          ],
+        );
+      },
     );
   }
 

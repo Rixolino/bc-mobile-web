@@ -8,6 +8,9 @@ import '../../../../presentation/providers/settings_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_bus_line.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../../core/services/android_background_service.dart';
+import '../../../../presentation/constants/notification_channels.dart';
+import '../../../../core/services/android_background_service.dart';
 
 class BusDetailsSheet extends StatefulWidget {
   final BusVehicle bus;
@@ -292,20 +295,20 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                             builder: (context, settings, child) {
                               final canAutoRefresh =
                                   settings.busRefreshSeconds > 0;
-                              return IconButton.filledTonal(
-                                icon: Icon(_timer != null
-                                    ? Icons.timer
-                                    : Icons.timer_off),
-                                onPressed: canAutoRefresh
-                                    ? _toggleAutoRefresh
-                                    : null,
-                                style: IconButton.styleFrom(
-                                  backgroundColor:
-                                      theme.surfaceColor.withOpacity(0.05),
-                                  foregroundColor: _timer != null
-                                      ? theme.primaryColor
-                                      : theme.secondaryTextColor,
-                                ),
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton.filledTonal(
+                                    icon: Icon(_timer != null ? Icons.timer : Icons.timer_off),
+                                    onPressed: canAutoRefresh ? _toggleAutoRefresh : null,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                                      foregroundColor: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _BusLineNotificationsButton(bus: bus),
+                                ],
                               );
                             },
                           ),
@@ -877,6 +880,58 @@ class _BusIcon extends StatelessWidget {
                 color: theme.primaryColor.withOpacity(0.4), blurRadius: 10)
           ]),
       child: Icon(Icons.directions_bus, color: theme.textColor, size: size - 8),
+    );
+  }
+}
+
+class _BusLineNotificationsButton extends StatefulWidget {
+  final BusVehicle bus;
+  const _BusLineNotificationsButton({required this.bus});
+
+  @override
+  State<_BusLineNotificationsButton> createState() => _BusLineNotificationsButtonState();
+}
+
+class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton> {
+  bool _enabled = false;
+
+  Future<void> _toggle() async {
+    final providerName = widget.bus.provider ?? '';
+    final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
+    final tripId = widget.bus.tripId;
+
+    try {
+      await AndroidBackgroundService.requestPermission();
+      if (!_enabled) {
+        if (tripId != null && tripId.isNotEmpty) {
+          final endpoint = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${providerParam ?? 'bari'}/realtime?tripId=${Uri.encodeComponent(tripId)}';
+          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, endpoint: endpoint);
+        } else {
+          await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche linea ${widget.bus.line} attivate')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche linea attivate', body: 'Riceverai aggiornamenti per la linea ${widget.bus.line}');
+      } else {
+        await AndroidBackgroundService.cancelBusesWorker();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche linea ${widget.bus.line} disattivate')));
+        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche linea disattivate', body: 'Hai disattivato le notifiche per la linea ${widget.bus.line}');
+      }
+      setState(() => _enabled = !_enabled);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore notifiche: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    return IconButton.filledTonal(
+      icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
+      onPressed: _toggle,
+      style: IconButton.styleFrom(
+        backgroundColor: theme.surfaceColor.withOpacity(0.05),
+        foregroundColor: theme.secondaryTextColor,
+      ),
     );
   }
 }
