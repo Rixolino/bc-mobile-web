@@ -195,23 +195,26 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final theme = Theme.of(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userName = authProvider.currentUser?.nickname ?? 'Viaggiatore';
-
+    
     return SliverAppBar(
-      expandedHeight: 140.0,
+      expandedHeight: 200.0,
       floating: false,
       pinned: true,
+      centerTitle: false,
+      titleSpacing: 8.0,
+      title: Text(
+        'Preferiti',
+        style: TextStyle(
+          color: theme.colorScheme.onSurface,
+          fontWeight: FontWeight.bold,
+          fontSize: 20,
+        ),
+      ),
       backgroundColor: theme.scaffoldBackgroundColor,
       elevation: 0,
       flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-        title: Text(
-          'I tuoi viaggi',
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
+        titlePadding: const EdgeInsets.only(left: kToolbarHeight, top: 0),
+        title: null,
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -229,6 +232,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 50), // Spazio tra titolo (toolbar) e saluto (min 30px)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -251,10 +255,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
                           ),
                         ],
                       ),
-                      CircleAvatar(
-                        backgroundColor: theme.primaryColor.withOpacity(0.1),
-                        child: Icon(Icons.person, color: theme.primaryColor),
-                      )
                     ],
                   ),
                 ],
