@@ -190,7 +190,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                             longitude: widget.stop.longitude,
                                             city: null, // Non disponibile nel BariStop
                                             region: null, // Non disponibile nel BariStop
-                                            provider: provider.selectedProvider?.name?.toString(),
+                                            provider: provider.selectedProvider?.name,
                                             country: null,
                                           );
                                           await favoritesProvider.addStopFavorite(favoriteStop);
@@ -326,7 +326,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
               if (selectedProvider == null) return;
 
               // Controlla se tripId e line sono disponibili
-              if (departure.tripId == null || departure.tripId.isEmpty || departure.line == null || departure.line.isEmpty) {
+              if (departure.tripId.isEmpty || departure.line.isEmpty) {
                 print('TripId o lineCode mancanti per la partenza');
                 return;
               }

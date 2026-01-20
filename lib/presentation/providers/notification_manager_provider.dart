@@ -12,11 +12,45 @@ class MonitoredStop {
   MonitoredStop({required this.id, required this.name, this.rawPayload});
 }
 
+class MonitoredTrip {
+  final String tripId;
+  final String? metaJson;
+  String? rawPayload;
+
+  MonitoredTrip({required this.tripId, this.metaJson, this.rawPayload});
+
+  String? get endpoint {
+    if (metaJson == null) return null;
+    try {
+      final m = jsonDecode(metaJson!);
+      if (m is Map && m.containsKey('endpoint')) return m['endpoint']?.toString();
+    } catch (e) {}
+    return null;
+  }
+
+  String? get country {
+    if (metaJson == null) return null;
+    try {
+      final m = jsonDecode(metaJson!);
+      if (m is Map && m.containsKey('country')) return m['country']?.toString();
+    } catch (e) {}
+    return null;
+  }
+}
+
 class NotificationManagerProvider extends ChangeNotifier {
   final List<MonitoredStop> stops = [];
   final List<String> stations = [];
   final Map<String, String?> stationPreviews = {};
   final Map<String, String> stationLastUpdated = {};
+
+  // Monitored trips
+  final List<MonitoredTrip> trips = [];
+  final Map<String, String?> tripPreviews = {};
+  final Map<String, String> tripLastUpdated = {};
+  // Human-friendly titles extracted from payload (category + number / name)
+  final Map<String, String> tripTitles = {}; 
+
   bool loading = false;
 
   Future<void> loadAll() async {
@@ -34,6 +68,13 @@ class NotificationManagerProvider extends ChangeNotifier {
       stations.clear();
       stations.addAll(stationList);
 
+      // Monitored trips
+      final tripMap = await AndroidBackgroundService.getMonitoredTrips();
+      trips.clear();
+      tripMap.forEach((tId, meta) {
+        trips.add(MonitoredTrip(tripId: tId, metaJson: meta));
+      });
+
       // Load cached payloads for preview and timestamps
       for (final s in stops) {
         final payload = await AndroidBackgroundService.getCachedStopData(s.id);
@@ -46,6 +87,22 @@ class NotificationManagerProvider extends ChangeNotifier {
         final payload = await AndroidBackgroundService.getCachedStationData(sid);
         stationPreviews[sid] = _buildPreviewFromPayload(payload);
         stationLastUpdated[sid] = _extractLastUpdatedFromPayload(payload) ?? _formatNow();
+      }
+
+      for (final t in trips) {
+        // Try to pass country if available in metadata to help resolve the correct endpoint
+        String? country;
+        if (t.metaJson != null) {
+          try {
+            final meta = jsonDecode(t.metaJson!);
+            if (meta is Map && meta.containsKey('country')) country = meta['country']?.toString();
+          } catch (e) {}
+        }
+        final payload = await AndroidBackgroundService.forceFetchTrip(t.tripId, country: country);
+        t.rawPayload = payload;
+        tripPreviews[t.tripId] = _buildTripPreviewFromPayload(payload);
+        tripLastUpdated[t.tripId] = _extractLastUpdatedFromPayload(payload) ?? _formatNow();
+        tripTitles[t.tripId] = _extractTitleFromPayload(payload) ?? t.tripId;
       }
     } catch (e) {
       if (kDebugMode) print('Error loading monitored targets: $e');
@@ -82,6 +139,38 @@ class NotificationManagerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> removeTrip(String tripId) async {
+    await AndroidBackgroundService.removeMonitoredTrip(tripId);
+    await AndroidBackgroundService.cancelNotification(key: 'train:$tripId');
+    trips.removeWhere((t) => t.tripId == tripId);
+    tripPreviews.remove(tripId);
+    tripLastUpdated.remove(tripId);
+    notifyListeners();
+  }
+
+  Future<void> refreshTrip(String tripId) async {
+    // Try to pass country from the monitored trip metadata when available
+    final idx = trips.indexWhere((t) => t.tripId == tripId);
+    String? country;
+    if (idx != -1 && trips[idx].metaJson != null) {
+      try {
+        final meta = jsonDecode(trips[idx].metaJson!);
+        if (meta is Map && meta.containsKey('country')) country = meta['country']?.toString();
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    final payload = await AndroidBackgroundService.forceFetchTrip(tripId, country: country);
+    if (idx != -1) {
+      trips[idx].rawPayload = payload;
+      tripPreviews[tripId] = _buildTripPreviewFromPayload(payload);
+      tripLastUpdated[tripId] = _extractLastUpdatedFromPayload(payload) ?? _formatNow();
+      tripTitles[tripId] = _extractTitleFromPayload(payload) ?? tripId;
+      notifyListeners();
+    }
+  }
+
   Future<String?> refreshStation(String stationId) async {
     final payload = await AndroidBackgroundService.forceFetchStation(stationId);
     stationPreviews[stationId] = _buildPreviewFromPayload(payload);
@@ -104,6 +193,43 @@ class NotificationManagerProvider extends ChangeNotifier {
         return '${line ?? ''} ${time ?? ''}${dest != null && dest != '' ? ' → $dest' : ''}';
       }).toList();
       return items.join(' • ');
+    } catch (e) {
+      return 'Errore nel parsing';
+    }
+  }
+
+  String _buildTripPreviewFromPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return 'Nessun dato';
+    try {
+      final root = jsonDecode(payload);
+      final json = root is Map && root.containsKey('data') ? root['data'] : root;
+      final category = json['category'] ?? json['type'] ?? '';
+      final num = json['tripNumber'] ?? json['trainNumber'] ?? json['service'] ?? '';
+
+      // Try to find next stop and platform
+      final stops = json['stops'] as List<dynamic>?;
+      String nextStop = '';
+      String platform = '';
+      if (stops != null && stops.isNotEmpty) {
+        for (final s in stops) {
+          final arr = s['scheduledArrival'] ?? s['arrival'] ?? s['arrivalTime'] ?? s['time'];
+          final parsed = _formatTimeToHHmm(arr);
+          if (parsed != null) {
+            nextStop = s['stationName'] ?? s['name'] ?? s['stop'] ?? '';
+            platform = s['platform'] ?? s['plannedPlatform'] ?? '';
+            break;
+          }
+        }
+      }
+
+      final titleParts = <String>[];
+      if ((category ?? '').isNotEmpty) titleParts.add(category);
+      if ((num ?? '').isNotEmpty) titleParts.add(num);
+      final title = titleParts.join(' ');
+      final stopPart = nextStop.isNotEmpty ? 'Prossima: $nextStop' : '';
+      final platformPart = platform.isNotEmpty ? 'Binario: $platform' : '';
+      final parts = [title, stopPart, platformPart].where((p) => p.isNotEmpty).toList();
+      return parts.join(' • ');
     } catch (e) {
       return 'Errore nel parsing';
     }
@@ -145,6 +271,27 @@ class NotificationManagerProvider extends ChangeNotifier {
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
+  String? _extractTitleFromPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return null;
+    try {
+      final root = jsonDecode(payload);
+      final json = root is Map && root.containsKey('data') ? root['data'] : root;
+      final category = json['category'] ?? json['type'] ?? '';
+      final num = json['tripNumber'] ?? json['trainNumber'] ?? json['service'] ?? json['id'] ?? '';
+      if ((category ?? '').toString().isNotEmpty || (num ?? '').toString().isNotEmpty) {
+        final parts = <String>[];
+        if ((category ?? '').toString().isNotEmpty) parts.add(category.toString());
+        if ((num ?? '').toString().isNotEmpty) parts.add(num.toString());
+        return parts.join(' ');
+      }
+      // As fallback try a friendly title from 'name' or 'title' fields
+      final alt = json['name'] ?? json['title'] ?? json['serviceName'] ?? '';
+      if (alt != null && alt.toString().isNotEmpty) return alt.toString();
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  }
   String? _formatTimeToHHmm(dynamic value) {
     if (value == null) return null;
     try {

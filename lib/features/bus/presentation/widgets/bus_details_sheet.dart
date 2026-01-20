@@ -10,7 +10,6 @@ import '../../../favorites/models/favorite_bus_line.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
 import '../../../../presentation/constants/notification_channels.dart';
-import '../../../../core/services/android_background_service.dart';
 
 class BusDetailsSheet extends StatefulWidget {
   final BusVehicle bus;
@@ -920,7 +919,7 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
           if (updates.isNotEmpty) {
             final now = DateTime.now();
             final next = updates.firstWhere((u) => u.status != 'passed', orElse: () => updates.first);
-            final nextStop = next.stopName ?? 'Fermata';
+            final nextStop = next.stopName;
 
             int? minutes;
             final eta = (next.arrivalEstimate ?? '').trim();
@@ -934,9 +933,10 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
             }
 
             // If we still don't have minutes, try to parse expectedTime as HH:mm
-            if (minutes == null && next.expectedTime != null && next.expectedTime!.contains(':')) {
+            final expected = next.expectedTime;
+            if (minutes == null && expected.contains(':')) {
               try {
-                final parts = next.expectedTime!.split(':');
+                final parts = expected.split(':');
                 final h = int.tryParse(parts[0]) ?? 0;
                 final mm = int.tryParse(parts[1]) ?? 0;
                 var dt = DateTime(now.year, now.month, now.day, h, mm);

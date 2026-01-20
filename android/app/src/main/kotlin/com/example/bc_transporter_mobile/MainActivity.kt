@@ -3,6 +3,8 @@ package com.example.bc_transporter_mobile
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.net.Uri
+import android.util.Log
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -71,6 +73,10 @@ class MainActivity: FlutterActivity() {
                     val enable = call.argument<Boolean>("enableNotifications") ?: true
                     val endpoint = call.argument<String>("endpoint")
                     val intervalSeconds = call.argument<Int>("intervalSeconds") ?: 0
+                    val tripId = call.argument<String>("tripId")
+                    val notifyMode = call.argument<String>("notifyMode") // 'to_destination' or 'general'
+                    val destinationStop = call.argument<String>("destinationStop")
+
                     // Start realtime foreground service for trains
                     val intent = android.content.Intent(this@MainActivity, RealtimeService::class.java).apply {
                         action = "start"
@@ -80,6 +86,9 @@ class MainActivity: FlutterActivity() {
                         putExtra("service", service)
                         putExtra("endpoint", endpoint)
                         putExtra("intervalSeconds", intervalSeconds)
+                        putExtra("tripId", tripId)
+                        putExtra("notifyMode", notifyMode)
+                        putExtra("destinationStop", destinationStop)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
@@ -94,6 +103,30 @@ class MainActivity: FlutterActivity() {
                         putExtra("type", "trains")
                     }
                     startService(intent)
+                    result.success(null)
+                }
+                "removeMonitoredTrip" -> {
+                    val tripId = call.argument<String>("tripId")
+                    if (!tripId.isNullOrEmpty()) {
+                        val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                        val json = prefs.getString("monitored_trips", null)
+                        if (!json.isNullOrEmpty()) {
+                            val obj = JSONObject(json)
+                            if (obj.has(tripId)) {
+                                obj.remove(tripId)
+                                prefs.edit().putString("monitored_trips", obj.toString()).apply()
+                            }
+                        }
+                        // cancel notification by key (train:<id>) to ensure immediate removal
+                        NotificationHelper.cancelNotificationByKey(this@MainActivity, "train:$tripId")
+                        Log.d("MainActivity","removeMonitoredTrip requested for $tripId")
+                        // tell service to remove job and cancel notification if active
+                        val intent = android.content.Intent(this@MainActivity, RealtimeService::class.java).apply {
+                            action = "removeTrip"
+                            putExtra("tripId", tripId)
+                        }
+                        startService(intent)
+                    }
                     result.success(null)
                 }
                 "scheduleBusesWorker" -> {
@@ -277,6 +310,62 @@ class MainActivity: FlutterActivity() {
                         for (i in 0 until arr.length()) list.add(arr.optString(i))
                         result.success(list)
                     }
+                }
+                "getMonitoredTrips" -> {
+                    val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                    val json = prefs.getString("monitored_trips", null)
+                    if (json.isNullOrEmpty()) {
+                        result.success(mapOf<String, String>())
+                    } else {
+                        val obj = JSONObject(json)
+                        val map = mutableMapOf<String, String>()
+                        val keys = obj.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            map[k] = obj.optString(k)
+                        }
+                        result.success(map)
+                    }
+                }
+                "forceFetchTrip" -> {
+                    val tripId = call.argument<String>("tripId")
+                    val countryArg = call.argument<String>("country")?.takeIf { it.isNotBlank() }
+                    var payload: String? = null
+                    if (!tripId.isNullOrEmpty()) {
+                        try {
+                            val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                            val monitored = prefs.getString("monitored_trips", null)
+                            var endpoint: String? = null
+                            var metaCountry: String? = null
+                            if (!monitored.isNullOrEmpty()) {
+                                val obj = JSONObject(monitored)
+                                if (obj.has(tripId)) {
+                                    val meta = JSONObject(obj.getString(tripId))
+                                    endpoint = meta.optString("endpoint", null)
+                                    metaCountry = meta.optString("country", null)?.takeIf { it.isNotBlank() }
+                                }
+                            }
+                            var url: String
+                            if (!endpoint.isNullOrEmpty()) {
+                                url = endpoint
+                            } else {
+                                val resolvedCountry = (countryArg ?: metaCountry)
+                                if (resolvedCountry.isNullOrBlank()) {
+                                    Log.d("MainActivity", "forceFetchTrip: no country or endpoint for $tripId, skipping")
+                                    result.success(null)
+                                    return@setMethodCallHandler
+                                }
+                                url = "https://prod.cuzimmartin.dev/api/${resolvedCountry.uppercase()}/trip?tripId=${Uri.encode(tripId)}"
+                            }
+                            val client = okhttp3.OkHttpClient()
+                            val request = okhttp3.Request.Builder().url(url).get().build()
+                            val resp = client.newCall(request).execute()
+                            if (resp.isSuccessful) payload = resp.body?.string()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    result.success(payload)
                 }
                 "scheduleFunctionsWorker" -> {
                     val metric = call.argument<String>("metric")

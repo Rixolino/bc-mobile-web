@@ -43,6 +43,7 @@ android {
 dependencies {
     implementation("androidx.work:work-runtime-ktx:2.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 
 flutter {

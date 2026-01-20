@@ -210,18 +210,11 @@ class TrainProvider with ChangeNotifier {
       }
 
       if (details != null && details.stops != null) {
-        _departures[index] = TrainDeparture(
-          trainNumber: dep.trainNumber,
-          category: dep.category,
-          destination: dep.destination,
-          origin: dep.origin,
-          scheduledTime: dep.scheduledTime,
-          estimatedTime: dep.estimatedTime,
-          platform: dep.platform,
-          delayMinutes: dep.delayMinutes,
-          status: dep.status,
-          tripId: dep.tripId,
+        // Preserve previous fields but include fetched stops, country and metadata to allow downstream features to use correct country
+        _departures[index] = dep.copyWith(
           stops: details.stops,
+          country: details.country,
+          metadata: details.metadata,
         );
         notifyListeners();
       }

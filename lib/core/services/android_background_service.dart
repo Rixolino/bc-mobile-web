@@ -43,7 +43,7 @@ class AndroidBackgroundService {
   }
 
   // Per-worker controls
-  static Future<void> scheduleTrainsWorker({String? stationId, String? country, String? service, bool enableNotifications = true, String? endpoint, int? intervalSeconds}) async {
+  static Future<void> scheduleTrainsWorker({String? stationId, String? country, String? service, bool enableNotifications = true, String? endpoint, int? intervalSeconds, String? tripId, String? notifyMode, String? destinationStop}) async {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('scheduleTrainsWorker', {
@@ -53,6 +53,9 @@ class AndroidBackgroundService {
         'enableNotifications': enableNotifications,
         'endpoint': endpoint,
         'intervalSeconds': intervalSeconds,
+        'tripId': tripId,
+        'notifyMode': notifyMode,
+        'destinationStop': destinationStop,
       });
     } catch (e) {}
   }
@@ -61,6 +64,13 @@ class AndroidBackgroundService {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('cancelTrainsWorker');
+    } catch (e) {}
+  }
+
+  static Future<void> removeMonitoredTrip(String tripId) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('removeMonitoredTrip', {'tripId': tripId});
     } catch (e) {}
   }
 
@@ -129,6 +139,27 @@ class AndroidBackgroundService {
       return [];
     } catch (e) {
       return [];
+    }
+  }
+
+  static Future<Map<String, String>> getMonitoredTrips() async {
+    if (!Platform.isAndroid) return {};
+    try {
+      final res = await _channel.invokeMethod('getMonitoredTrips');
+      if (res is Map) return Map<String, String>.from(res as Map);
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  static Future<String?> forceFetchTrip(String tripId, {String? country}) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await _channel.invokeMethod('forceFetchTrip', {'tripId': tripId, 'country': country});
+      return res as String?;
+    } catch (e) {
+      return null;
     }
   }
 

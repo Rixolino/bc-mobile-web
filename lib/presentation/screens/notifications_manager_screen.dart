@@ -182,6 +182,114 @@ class NotificationsManagerScreen extends StatelessWidget {
                       ),
                     ),
 
+                  // Treni monitorati
+                  const SizedBox(height: 16),
+                  const Text('Treni monitorati', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  if (vm.trips.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: Column(
+                        children: const [
+                          Icon(Icons.train, size: 48, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text('Nessun treno monitorato', style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+
+                  ...vm.trips.map((t) => Dismissible(
+                        key: ValueKey('trip-${t.tripId}'),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          color: Colors.red,
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          child: const Icon(Icons.delete, color: Colors.white),
+                        ),
+                        confirmDismiss: (_) async {
+                          return await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Rimuovi monitoraggio'),
+                                  content: Text('Rimuovere il monitoraggio per il treno ${vm.tripTitles[t.tripId] ?? t.tripId}?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Annulla')),
+                                    TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Rimuovi')),
+                                  ],
+                                ),
+                              ) ?? false;
+                        },
+                        onDismissed: (_) => vm.removeTrip(t.tripId),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: theme.cardColor,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: Offset(0, 4)),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: Stack(
+                              children: [
+                                Positioned(right: -20, top: -20, child: Icon(Icons.train, size: 120, color: theme.primaryColor.withOpacity(0.05))),
+                                ListTile(
+                                  leading: CircleAvatar(child: Icon(Icons.train)),
+                                  title: Text(vm.tripTitles[t.tripId] ?? t.tripId, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(vm.tripPreviews[t.tripId] ?? 'Nessun dato', maxLines: 2, overflow: TextOverflow.ellipsis),
+                                      const SizedBox(height: 6),
+                                      if (t.endpoint != null)
+                                        Text('URL: ${t.endpoint}', style: TextStyle(fontSize: 12, color: Colors.grey[600]), maxLines: 1, overflow: TextOverflow.ellipsis)
+                                      else if (t.country != null)
+                                        Text('Country: ${t.country}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                      const SizedBox(height: 6),
+                                      Text('Aggiornato: ${vm.tripLastUpdated[t.tripId] ?? ''}', style: TextStyle(fontSize: 12, color: Colors.grey[600])), 
+                                    ],
+                                  ),
+                                  isThreeLine: true,
+                                  trailing: PopupMenuButton<String>(
+                                    onSelected: (action) async {
+                                      final vmRef = Provider.of<NotificationManagerProvider>(context, listen: false);
+                                      if (action == 'refresh') {
+                                        await vmRef.refreshTrip(t.tripId);
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aggiornamento forzato')));
+                                      } else if (action == 'cancel') {
+                                        await AndroidBackgroundService.cancelNotification(key: 'train:${t.tripId}');
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifica cancellata')));
+                                      } else if (action == 'remove') {
+                                        await vmRef.removeTrip(t.tripId);
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'refresh', child: Text('Aggiorna')),
+                                      PopupMenuItem(value: 'cancel', child: Text('Cancella notifica')),
+                                      PopupMenuItem(value: 'remove', child: Text('Rimuovi')),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )),
+
+                  if (vm.stations.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: Column(
+                        children: const [
+                          Icon(Icons.train, size: 48, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text('Nessuna stazione monitorata', style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+
                   ...vm.stations.map((sid) => Dismissible(
                         key: ValueKey('station-$sid'),
                         direction: DismissDirection.endToStart,

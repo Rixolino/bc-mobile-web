@@ -15,7 +15,7 @@ class TrainStation {
     return TrainStation(
       id: json['id']?.toString() ?? json['stationId']?.toString() ?? json['codStazione']?.toString() ?? '',
       name: json['name'] ?? json['stationName'] ?? json['nomestazione'] ?? '',
-      country: json['country'] ?? 'IT',
+      country: json['country'] ?? '',
       type: json['type'],
     );
   }
@@ -40,7 +40,7 @@ class TrainStation {
     return TrainStation(
       id: getValue(json, fields['id'] ?? 'id')?.toString() ?? '',
       name: getValue(json, fields['name'] ?? 'name')?.toString() ?? '',
-      country: getValue(json, fields['country'] ?? 'country')?.toString() ?? 'IT',
+      country: getValue(json, fields['country'] ?? 'country')?.toString() ?? '',
       type: getValue(json, fields['type'] ?? 'type')?.toString(),
     );
   }
@@ -104,7 +104,7 @@ class TrainDeparture {
     this.status,
     this.tripId,
     this.stops,
-    this.country = 'IT',
+    this.country = '',
     this.metadata,
   });
 
@@ -155,7 +155,7 @@ class TrainDeparture {
       status: _getStringValue(actualData['status']),
       tripId: actualData['tripId']?.toString() ?? actualData['id']?.toString(),
       stops: stops,
-      country: actualData['country']?.toString() ?? 'IT',
+      country: actualData['country']?.toString() ?? '',
       metadata: actualData['metadata'] as Map<String, dynamic>?,
     );
   }
@@ -174,8 +174,18 @@ class TrainDeparture {
 
   static DateTime? _parseTime(dynamic time) {
     if (time == null) return null;
-    if (time is String) return DateTime.tryParse(time);
-    if (time is int) return DateTime.fromMillisecondsSinceEpoch(time);
+    if (time is int) {
+      return (time < 100000000000) ? DateTime.fromMillisecondsSinceEpoch(time * 1000) : DateTime.fromMillisecondsSinceEpoch(time);
+    }
+    if (time is String) {
+      final s = time.trim();
+      final n = double.tryParse(s);
+      if (n != null) {
+        final ms = (n < 1e11) ? (n * 1000).toInt() : n.toInt();
+        return DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+      return DateTime.tryParse(s);
+    }
     return null;
   }
   
@@ -215,6 +225,7 @@ class TrainStop {
   final int? departureDelay;
   final String? platform;
   final String country; // Country code (IT, FR, DE, CH, AT, etc.)
+  final bool cancelled; // whether this stop was cancelled (API: 'cancelled'/'canceled'/'status')
 
   TrainStop({
     required this.stationName,
@@ -226,7 +237,8 @@ class TrainStop {
     this.arrivalDelay,
     this.departureDelay,
     this.platform,
-    this.country = 'IT', // Default to Italy
+    this.country = '',
+    this.cancelled = false,
   });
 
   static int? _parseInt(dynamic value) {
@@ -247,13 +259,39 @@ class TrainStop {
       arrivalDelay: _parseInt(json['arrivalDelay']),
       departureDelay: _parseInt(json['departureDelay']),
       platform: TrainDeparture._getStringValue(json['platform'] ?? json['actualPlatform'] ?? json['plannedPlatform']),
-      country: TrainDeparture._getStringValue(json['country']) ?? 'IT',
+      country: TrainDeparture._getStringValue(json['country']) ?? '',
+      cancelled: _parseBool(json['cancelled'] ?? json['canceled'] ?? json['isCancelled'] ?? json['cancel'] ?? json['status']),
     );
+  }
+
+  static bool _parseBool(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.toString().toLowerCase();
+      return s == '1' || s == 'true' || s == 'yes' || s == 'cancelled' || s == 'canceled' || s == 'annullata' || s == 'annullato' || s == 'cancel';
+    }
+    return false;
   }
 
   static DateTime? _parse(dynamic t) {
     if (t == null) return null;
-    if (t is String) return DateTime.tryParse(t);
+    // Integer timestamps (seconds or milliseconds)
+    if (t is int) {
+      // Heuristic: values < 1e11 are seconds
+      return (t < 100000000000) ? DateTime.fromMillisecondsSinceEpoch(t * 1000) : DateTime.fromMillisecondsSinceEpoch(t);
+    }
+    if (t is String) {
+      final s = t.trim();
+      // Numeric strings (epoch seconds or millis)
+      final n = double.tryParse(s);
+      if (n != null) {
+        final ms = (n < 1e11) ? (n * 1000).toInt() : n.toInt();
+        return DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+      return DateTime.tryParse(s);
+    }
     return null;
   }
 }

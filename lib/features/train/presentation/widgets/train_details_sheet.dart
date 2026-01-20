@@ -1,8 +1,10 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
@@ -11,8 +13,6 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
-import '../../data/repositories/train_repository.dart';
-import '../../../../presentation/constants/notification_channels.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -29,8 +29,9 @@ class _ActualTime {
 class TrainDetailsSheet extends StatefulWidget {
   final TrainDeparture departure;
   final bool isArrivalMode;
+  final String? selectedCountry;
 
-  const TrainDetailsSheet({super.key, required this.departure, required this.isArrivalMode});
+  const TrainDetailsSheet({super.key, required this.departure, required this.isArrivalMode, this.selectedCountry});
 
   @override
   State<TrainDetailsSheet> createState() => _TrainDetailsSheetState();
@@ -39,66 +40,524 @@ class TrainDetailsSheet extends StatefulWidget {
 // Small widget to manage notifications toggle for a specific train
 class _TrainNotificationsButton extends StatefulWidget {
   final TrainDeparture departure;
-  const _TrainNotificationsButton({required this.departure});
+  final String? selectedCountry;
+  const _TrainNotificationsButton({required this.departure, this.selectedCountry});
 
   @override
   State<_TrainNotificationsButton> createState() => __TrainNotificationsButtonState();
-}
+} 
 
 class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
   bool _enabled = false;
 
-  Future<void> _toggle() async {
-    final tripId = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
-    final country = widget.departure.metadata?['country'] ?? 'IT';
-    final prodBase = 'https://prod.cuzimmartin.dev/api';
-    final endpoint = ifNotEmpty(tripId) ? '$prodBase/$country/trip?tripId=${Uri.encodeComponent(tripId)}' : null;
+  @override
+  void initState() {
+    super.initState();
+    _loadMonitoredState();
+  }
 
-    if (!_enabled) {
-      // Request permission (Android 13+), then schedule worker and show a confirmation notification
-      await AndroidBackgroundService.requestPermission();
-      final settings = Provider.of<SettingsProvider>(context, listen: false);
-      await AndroidBackgroundService.scheduleTrainsWorker(endpoint: endpoint, intervalSeconds: settings.trainRefreshSeconds);
-
-      // Fetch immediate trip details if available and send a summary notification
-      try {
-        final repo = TrainRepository();
-        TrainDeparture? details;
-        if (tripId.isNotEmpty) {
-          details = await repo.fetchTrip(tripId, country: country);
-        } else if (widget.departure.trainNumber != null) {
-          details = await repo.fetchTrainDetails(widget.departure.trainNumber ?? '', '');
-        }
-
-        String body;
-        if (details != null) {
-          final status = details.status ?? (details.delayMinutes != null && details.delayMinutes! > 0 ? 'Ritardo ${details.delayMinutes}min' : 'In orario');
-          final dest = details.destination ?? widget.departure.destination ?? '';
-          final scheduled = details.scheduledTime != null ? DateFormat('HH:mm').format(details.scheduledTime!.toLocal()) : '';
-          body = '${widget.departure.trainNumber ?? ''} → $dest • $status ${scheduled.isNotEmpty ? '($scheduled)' : ''}';
-        } else {
-          body = 'Riceverai aggiornamenti su questo treno';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: body);
-      } catch (e) {
-        print('Errore fetching trip details on enable: $e');
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche attivate per questo treno')));
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno attivate', body: 'Riceverai aggiornamenti su questo treno');
+  Future<void> _loadMonitoredState() async {
+    final tripKey = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
+    if (tripKey.isEmpty) return;
+    try {
+      final monitored = await AndroidBackgroundService.getMonitoredTrips();
+      if (monitored.containsKey(tripKey)) {
+        if (!mounted) return;
+        setState(() { _enabled = true; });
       }
-    } else {
-      await AndroidBackgroundService.cancelTrainsWorker();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate')));
-        final key = 'train:${tripId.isNotEmpty ? tripId : (widget.departure.trainNumber ?? '')}';
-      await AndroidBackgroundService.cancelNotification(key: key);
-      await AndroidBackgroundService.showNotification(channel: NotificationChannels.trains, title: 'Notifiche treno disattivate', body: 'Hai disattivato le notifiche per questo treno');
+    } catch (e) {
+      // ignore errors
+    }
+  }
+
+  // Helper: build notification title
+  String _buildTrainNotificationTitle(TrainDeparture d) {
+    final parts = <String>[];
+    if ((d.category ?? '').isNotEmpty) parts.add(d.category!);
+    if ((d.trainNumber ?? '').isNotEmpty) parts.add(d.trainNumber!);
+    final trainName = parts.join(' ').trim();
+
+    String origin = d.origin ?? '';
+    String dest = d.destination ?? '';
+    final stops = d.stops ?? [];
+    if ((origin.isEmpty || dest.isEmpty) && stops.isNotEmpty) {
+      origin = origin.isNotEmpty ? origin : stops.first.stationName;
+      dest = dest.isNotEmpty ? dest : stops.last.stationName;
     }
 
-    setState(() => _enabled = !_enabled);
+    if (origin.isEmpty && dest.isEmpty) {
+      if (trainName.isNotEmpty) return trainName;
+      return d.tripId ?? 'Treno';
+    }
+
+    final nameWithSpace = trainName.isNotEmpty ? '$trainName ' : '';
+    return "$nameWithSpace($origin → $dest)";
+  }
+
+  // Helper: build notification body according to spec
+  String _buildTrainNotificationBody(TrainDeparture d, {String? userDestination}) {
+    final now = DateTime.now().toUtc();
+    final stops = d.stops ?? [];
+
+    // Structured stop info with normalized UTC times
+    final stopStates = <Map<String, dynamic>>[];
+    for (int i = 0; i < stops.length; i++) {
+      final s = stops[i];
+      final DateTime? arrUtc = (s.estimatedArrival ?? s.arrival)?.toUtc();
+      final DateTime? depUtc = (s.estimatedDeparture ?? s.departure)?.toUtc();
+      stopStates.add({
+        'index': i,
+        'stop': s,
+        'arrUtc': arrUtc,
+        'depUtc': depUtc,
+        'cancelled': s.cancelled,
+      });
+    }
+
+    int nextIndex = -1;
+    String nextStop = '';
+    DateTime? nextArrival;
+    DateTime? nextDeparture;
+    String lastPassed = '';
+    bool isAtStation = false;
+
+    // 1) If metadata contains a lastDetection use it as authoritative when possible
+    final meta = d.metadata;
+    if (meta != null) {
+      final Map? lastDet = meta['lastDetection'] as Map?;
+      if (lastDet != null) {
+        String? stationName = lastDet['station']?.toString() ?? lastDet['stationName']?.toString();
+        int? idxFromMeta;
+        if (lastDet['stopIndex'] != null) idxFromMeta = int.tryParse(lastDet['stopIndex'].toString());
+        if (stationName != null && stationName.isNotEmpty) {
+          idxFromMeta ??= stopStates.indexWhere((ss) => (ss['stop'] as TrainStop).stationName.trim().toLowerCase() == stationName.trim().toLowerCase());
+        }
+        if (idxFromMeta != null && idxFromMeta >= 0 && idxFromMeta < stopStates.length) {
+          final currentIdx = idxFromMeta;
+          lastPassed = (stopStates[currentIdx]['stop'] as TrainStop).stationName;
+
+          // determine if we are at station using explicit flag or timestamp proximity
+          final atStationFlag = lastDet['atStation'] ?? lastDet['isAtStation'] ?? false;
+          if (atStationFlag == true) {
+            isAtStation = true;
+          } else {
+            final tsRaw = lastDet['timestamp'];
+            if (tsRaw != null) {
+              final ts = DateTime.tryParse(tsRaw.toString())?.toUtc();
+              if (ts != null) {
+                final arrUtc = stopStates[currentIdx]['arrUtc'] as DateTime?;
+                final depUtc = stopStates[currentIdx]['depUtc'] as DateTime?;
+                if (arrUtc != null && depUtc != null && !ts.isBefore(arrUtc) && !ts.isAfter(depUtc)) {
+                  isAtStation = true;
+                }
+              }
+            }
+          }
+
+          final ni = currentIdx + 1;
+          if (ni < stopStates.length) {
+            final nxt = stopStates[ni];
+            if (!(nxt['cancelled'] as bool)) {
+              nextIndex = ni;
+              nextStop = (nxt['stop'] as TrainStop).stationName;
+              nextArrival = nxt['arrUtc'] as DateTime?;
+              nextDeparture = nxt['depUtc'] as DateTime?;
+            }
+          }
+        }
+      }
+    }
+
+    // 2) If metadata didn't resolve nextIndex, pick the nearest future arrival (skip cancelled stops)
+    if (nextIndex == -1) {
+      DateTime? bestArr;
+      int bestIdx = -1;
+      for (var ss in stopStates) {
+        if (ss['cancelled'] == true) continue;
+        final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
+        if (arrUtc != null && arrUtc.isAfter(now)) {
+          final diff = arrUtc.difference(now).inSeconds;
+          if (bestArr == null || diff < bestArr.difference(now).inSeconds) {
+            bestArr = arrUtc;
+            bestIdx = ss['index'] as int;
+          }
+        }
+      }
+      if (bestIdx != -1) {
+        final s = stopStates[bestIdx];
+        nextIndex = bestIdx;
+        nextStop = (s['stop'] as TrainStop).stationName;
+        nextArrival = s['arrUtc'] as DateTime?;
+        nextDeparture = s['depUtc'] as DateTime?;
+      }
+    }
+
+    // 3) Fallback: choose the first non-cancelled stop after last passed index; otherwise first non-cancelled
+    if (nextIndex == -1 && stopStates.isNotEmpty) {
+      int lastIdx = -1;
+      for (var ss in stopStates) {
+        final DateTime? depUtc = ss['depUtc'] as DateTime?;
+        final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
+        if ((depUtc != null && depUtc.isBefore(now)) || (arrUtc != null && arrUtc.isBefore(now))) {
+          lastIdx = ss['index'] as int;
+        }
+      }
+      bool found = false;
+      for (int i = lastIdx + 1; i < stopStates.length; i++) {
+        if (stopStates[i]['cancelled'] == true) continue;
+        nextIndex = i;
+        nextStop = (stopStates[i]['stop'] as TrainStop).stationName;
+        nextArrival = stopStates[i]['arrUtc'] as DateTime?;
+        nextDeparture = stopStates[i]['depUtc'] as DateTime?;
+        found = true;
+        break;
+      }
+      if (!found) {
+        // first non-cancelled overall
+        for (var ss in stopStates) {
+          if (ss['cancelled'] == true) continue;
+          nextIndex = ss['index'] as int;
+          nextStop = (ss['stop'] as TrainStop).stationName;
+          nextArrival = ss['arrUtc'] as DateTime?;
+          nextDeparture = ss['depUtc'] as DateTime?;
+          break;
+        }
+      }
+    }
+
+    // 4) Compute lastPassed if still empty
+    if (lastPassed.isEmpty) {
+      int lastIdx = -1;
+      for (var ss in stopStates) {
+        final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
+        final DateTime? depUtc = ss['depUtc'] as DateTime?;
+        if ((depUtc != null && depUtc.isBefore(now)) || (arrUtc != null && arrUtc.isBefore(now))) lastIdx = ss['index'] as int;
+      }
+      if (lastIdx >= 0) lastPassed = (stopStates[lastIdx]['stop'] as TrainStop).stationName;
+    }
+
+    // Debug logs to help reproduce issues (only in debug builds)
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[notif-debug] now=$now nextIndex=$nextIndex nextStop=$nextStop lastPassed=$lastPassed isAtStation=$isAtStation');
+    }
+
+    final delay = d.delayMinutes ?? 0;
+    final status = delay > 0 ? 'Ritardo ${delay} min' : (delay < 0 ? 'In anticipo di ${-delay} min' : 'In orario');
+
+    // Count remaining stops to destination (ignore cancelled stops)
+    int remaining = 0;
+    if (userDestination != null && userDestination.trim().isNotEmpty && stops.isNotEmpty) {
+      final destIndex = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
+      if (destIndex != -1 && nextIndex != -1) {
+        // count only non-cancelled stops between nextIndex and destIndex
+        final int start = nextIndex < destIndex ? nextIndex : nextIndex;
+        int count = 0;
+        for (int i = start + 1; i <= destIndex; i++) if (!stops[i].cancelled) count++;
+        remaining = count;
+      }
+    } else if (nextIndex != -1) {
+      int count = 0;
+      for (int i = nextIndex + 1; i < stops.length; i++) if (!stops[i].cancelled) count++;
+      remaining = count;
+    }
+
+    // If user's destination is cancelled, return informative message
+    if (userDestination != null && userDestination.trim().isNotEmpty) {
+      final destIdx = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
+      if (destIdx != -1 && stops[destIdx].cancelled) return '⚠️ La tua fermata ($userDestination) è stata annullata.';
+      if (isAtStation && lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
+        return '⚠️ Treno in stazione: $userDestination. Preparati a scendere.';
+      }
+      if (nextStop.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
+        return '⚠️ Prepara i bagagli! Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
+      }
+      if (lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase() && nextIndex == -1) {
+        return '🚉 Sei arrivato a $userDestination. Ricordati di scendere dal treno!';
+      }
+    }
+
+    // Build standard body
+    final buffer = StringBuffer();
+    if (nextStop.isNotEmpty) {
+      final arrStr = nextArrival != null ? '${nextArrival.toLocal().hour.toString().padLeft(2, '0')}:${nextArrival.toLocal().minute.toString().padLeft(2, '0')}' : '--:--';
+      final depStr = nextDeparture != null ? '${nextDeparture.toLocal().hour.toString().padLeft(2, '0')}:${nextDeparture.toLocal().minute.toString().padLeft(2, '0')}' : '';
+      // try to find platform for next stop
+      String platform = '';
+      if (nextIndex >= 0 && nextIndex < stops.length) {
+        platform = stops[nextIndex].platform ?? '';
+      }
+      final platformPart = platform.isNotEmpty ? ' • Binario: $platform' : '';
+      String eventLabel = '';
+      if (depStr.isNotEmpty) {
+        eventLabel = 'In partenza alle $depStr';
+      } else if (arrStr.isNotEmpty) {
+        eventLabel = 'In arrivo alle $arrStr';
+      }
+      buffer.writeln('Prossima fermata: $nextStop$platformPart${eventLabel.isNotEmpty ? ' • $eventLabel' : ''}');
+    } else {
+      buffer.writeln('Prossima fermata: --');
+    }
+
+    // If train is at station show that specially
+    if (isAtStation && lastPassed.isNotEmpty) {
+      buffer.writeln('Treno in stazione: $lastPassed');
+    } else {
+      buffer.writeln('Stato attuale: ${lastPassed.isNotEmpty ? lastPassed : 'In transito'}');
+    }
+
+    // Show explicit delay/advance line without duplicating words
+    if (delay > 0) {
+      buffer.writeln('Ritardo: ${delay} min');
+    } else if (delay < 0) {
+      buffer.writeln('Anticipo: ${-delay} min');
+    } else {
+      buffer.writeln('In orario');
+    }
+
+    buffer.writeln('Fermate rimanenti: $remaining');
+
+    return buffer.toString().trim();
+  }
+
+  Future<void> _toggle() async {
+    final tripId = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
+    // Prefer an explicit endpoint if present in train metadata to avoid guessing country
+
+    // Open bottom sheet with options: 1) Notify until chosen destination, 2) General notification
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      builder: (ctx) {
+        String? selectedStop;
+        return StatefulBuilder(
+          builder: (ctx, sbSetState) {
+            final stops = widget.departure.stops ?? [];
+
+            String previewTitle() => _buildTrainNotificationTitle(widget.departure);
+            String previewBody() => _buildTrainNotificationBody(widget.departure, userDestination: selectedStop);
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(title: const Text('Notifica fino a...'), subtitle: const Text('Scegli una fermata dalla lista')),
+                  if (stops.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('Lista fermate non disponibile, verrà usata notifica generale.')),
+                  if (stops.isNotEmpty)
+                    SizedBox(
+                      height: 200,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: stops.length,
+                        itemBuilder: (c, i) {
+                          final s = stops[i];
+                          final nowUtc = DateTime.now().toUtc();
+                          final DateTime? arr = s.estimatedArrival ?? s.arrival;
+                          final DateTime? dep = s.estimatedDeparture ?? s.departure;
+                          bool isPassed = false;
+                          bool isCurrent = false;
+                          if (dep != null && dep.toUtc().isBefore(nowUtc)) {
+                            isPassed = true;
+                          } else if (arr != null && arr.toUtc().isBefore(nowUtc) && (dep == null || arr.toUtc().isBefore(nowUtc))) {
+                            isPassed = true;
+                          }
+                          if (arr != null && nowUtc.isAfter(arr) && (dep == null || nowUtc.isBefore(dep))) {
+                            isCurrent = true; // train currently at this station
+                          }
+                          final bool isCancelled = s.cancelled;
+                          final titleStyle = isCancelled ? TextStyle(color: Colors.red, fontStyle: FontStyle.italic) : (isPassed ? TextStyle(color: Colors.grey) : (isCurrent ? TextStyle(fontWeight: FontWeight.w700) : null));
+                          final subtitleParts = <String>[];
+                          if (s.country.isNotEmpty) subtitleParts.add(s.country);
+                          if (isPassed) subtitleParts.add('già passata');
+                          else if (isCurrent) subtitleParts.add('attuale');
+                          if (isCancelled) subtitleParts.add('annullata');
+                          final subtitleText = subtitleParts.join(' • ');
+                          final disabled = isPassed || isCancelled;
+                          return RadioListTile<String>(
+                            value: s.stationName,
+                            groupValue: selectedStop,
+                            title: Text(
+                              s.stationName,
+                              style: titleStyle,
+                            ),
+                            subtitle: subtitleText.isNotEmpty ? Text(subtitleText) : null,
+                            onChanged: disabled ? null : (v) => sbSetState(() { selectedStop = v; }),
+                            enabled: !disabled,
+                          );
+                        },
+                      ),
+                    ),
+                  const Divider(),
+
+                  // Preview
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Anteprima notifica', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(previewTitle(), style: TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        Text(previewBody()),
+                      ],
+                    ),
+                  ),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            child: const Text('Notifica fino alla fermata selezionata'),
+                            onPressed: selectedStop == null && stops.isNotEmpty ? null : () async {
+                              Navigator.pop(ctx);
+                              // schedule with destination
+                              final settings = Provider.of<SettingsProvider>(context, listen: false);
+                              await AndroidBackgroundService.requestPermission();
+                              await _resolveAndSchedule(
+                                tripId: tripId.isNotEmpty ? tripId : null,
+                                notifyMode: 'to_destination',
+                                destinationStop: selectedStop,
+                                settingsInterval: settings.trainRefreshSeconds,
+                                ctx: context,
+                              );
+                              setState(() => _enabled = true);
+                            },
+
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            child: const Text('Notifica generale'),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              final settings = Provider.of<SettingsProvider>(context, listen: false);
+                              await AndroidBackgroundService.requestPermission();
+                              await _resolveAndSchedule(
+                                tripId: tripId.isNotEmpty ? tripId : null,
+                                notifyMode: 'general',
+                                destinationStop: null,
+                                settingsInterval: settings.trainRefreshSeconds,
+                                ctx: context,
+                              );
+                              setState(() => _enabled = true);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: TextButton(
+                      child: const Text('Disattiva notifiche per questo treno', style: TextStyle(color: Colors.red)),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                      final monitorKey = tripId.isNotEmpty ? tripId : (widget.departure.trainNumber ?? '');
+                      if (monitorKey.isNotEmpty) await AndroidBackgroundService.removeMonitoredTrip(monitorKey);
+                      final key = 'train:$monitorKey';
+                        await AndroidBackgroundService.cancelNotification(key: key);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate')));
+                        setState(() => _enabled = false);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   bool ifNotEmpty(String? v) => v != null && v.isNotEmpty;
+
+  Future<void> _resolveAndSchedule({String? tripId, required String? notifyMode, String? destinationStop, required int settingsInterval, required BuildContext ctx}) async {
+    final prodBase = 'https://prod.cuzimmartin.dev/api';
+    // Try to refresh details in provider to let it populate metadata/endpoint if possible
+    final trainProvider = Provider.of<TrainProvider>(ctx, listen: false);
+    final idx = tripId != null ? trainProvider.departures.indexWhere((d) => d.tripId == tripId || (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)) : -1;
+    if (idx != -1) {
+      try {
+        await trainProvider.expandTrainDetails(idx);
+        // small pause to allow provider to update UI/state
+        await Future.delayed(const Duration(milliseconds: 400));
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Re-check metadata from provider's up-to-date model (prefer that over local widget.departure)
+    final TrainDeparture currentDep = (idx != -1) ? trainProvider.departures[idx] : widget.departure;
+    final metaEndpoint = currentDep.metadata != null ? (currentDep.metadata!['endpoint'] as String?) : null;
+    // Determine country but avoid using the panel default 'IT' unless explicitly set by user
+    dynamic countryCandidate = currentDep.metadata?['country'];
+    if (countryCandidate == null || (countryCandidate is String && countryCandidate.toString().isEmpty)) {
+      if (currentDep.country.isNotEmpty) {
+        countryCandidate = currentDep.country;
+      } else if (widget.selectedCountry != null && widget.selectedCountry!.isNotEmpty) {
+        countryCandidate = widget.selectedCountry;
+      } else {
+        countryCandidate = null;
+      }
+    }
+    final String? countryFromMeta = countryCandidate?.toString();
+
+    String? resolvedEndpoint;
+    String? usedCountry;
+
+    if (metaEndpoint != null && metaEndpoint.isNotEmpty) {
+      resolvedEndpoint = metaEndpoint;
+      // try to infer country from endpoint if possible
+    } else if (tripId != null && tripId.isNotEmpty && countryFromMeta != null && countryFromMeta.isNotEmpty) {
+      final candidate = '$prodBase/${countryFromMeta}/trip?tripId=${Uri.encodeComponent(tripId)}';
+      try {
+        final resp = await http.get(Uri.parse(candidate)).timeout(const Duration(seconds: 6));
+        if (resp.statusCode == 200) {
+          // Basic heuristic: response must contain stops or data
+          final body = resp.body;
+          if (body.contains('stops') || body.contains('data') || body.contains('trip')) {
+            resolvedEndpoint = candidate;
+            usedCountry = countryFromMeta;
+          } else {
+            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Impossibile verificare l\'endpoint dal country selezionata')));
+          }
+        } else {
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Richiesta all\'endpoint ${candidate} fallita: HTTP ${resp.statusCode}')));
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Errore di rete durante la verifica dell\'endpoint')));
+      }
+    } else if (tripId != null && tripId.isNotEmpty) {
+      // No country available: ask user to set it instead of guessing
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Non è possibile determinare l\'URL esatto: imposta la country del pannello o utilizza l\'endpoint manuale')));
+    }
+
+    // Proceed to schedule even if resolvedEndpoint is null (service will skip fetch if no country/endpoint)
+    await AndroidBackgroundService.scheduleTrainsWorker(
+      tripId: tripId,
+      country: usedCountry ?? countryFromMeta,
+      endpoint: resolvedEndpoint,
+      intervalSeconds: settingsInterval,
+      notifyMode: notifyMode,
+      destinationStop: destinationStop,
+    );
+
+    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Notifica impostata')));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +771,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               ),
               // Notifications button
               Builder(builder: (ctx) {
-                return _TrainNotificationsButton(departure: widget.departure);
+                return _TrainNotificationsButton(departure: widget.departure, selectedCountry: widget.selectedCountry);
               }),
               IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
               IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),
@@ -420,13 +879,30 @@ class _TimelineRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 12),
-                  Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
+                  // Station name with cancelled badge if applicable
+                  Row(children: [
+                    Expanded(
+                      child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
+                    ),
+                    if (stop.cancelled)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.errorColor.withOpacity(0.12),
+                          border: Border.all(color: theme.errorColor.withOpacity(0.3)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('Annullata', style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.w800)),
+                      ),
+                  ],),
                   if (stop.arrival != null) 
                     Text(buildTimeString('Arrivo', stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : (stop.arrivalDelay ?? 0)),
-                        style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor, fontSize: 12)),
+                        style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
                   if (stop.departure != null)
                     Text(buildTimeString('Partenza', stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : (stop.departureDelay ?? 0)),
-                        style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor, fontSize: 12)),
+                        style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+
                 ],
               ),
             ),
@@ -458,7 +934,16 @@ class _TimelineRow extends StatelessWidget {
             if (isCompleted) Container(color: theme.primaryColor),
             if (isTraversing) LayoutBuilder(builder: (c, ct) => Container(height: ct.maxHeight * progress, decoration: BoxDecoration(gradient: theme.progressGradient))),
           ])),
-          Positioned(top: 17, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.08), shape: BoxShape.circle, border: Border.all(color: highlighted ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.24), width: 2)))),
+          // Circle for the stop: highlight in red when cancelled
+          Positioned(top: 17, child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: stop.cancelled ? theme.errorColor : (highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.08)),
+              shape: BoxShape.circle,
+              border: Border.all(color: stop.cancelled ? theme.errorColor : (highlighted ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.24)), width: 2),
+            ),
+          )),
           if (isTraversing) Positioned.fill(child: LayoutBuilder(builder: (c, ct) => Stack(alignment: Alignment.topCenter, children: [
             Positioned(top: 17 + ((ct.maxHeight - 17) * progress) - 10, child: const _TrainIcon(size: 20))
           ]))) else if (isActiveStop) Positioned(top: 12, child: _TrainIcon(size: 20)),

@@ -18,7 +18,6 @@ import '../widgets/map_background.dart';
 
 import 'settings_screen.dart';
 import 'notifications_manager_screen.dart';
-import '../providers/notification_manager_provider.dart';
 import '../../core/services/android_background_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -115,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final stops = await AndroidBackgroundService.getMonitoredStops();
       final stations = await AndroidBackgroundService.getMonitoredStations();
-      return (stops?.length ?? 0) + (stations?.length ?? 0);
+      return stops.length + stations.length;
     } catch (e) {
       return 0;
     }

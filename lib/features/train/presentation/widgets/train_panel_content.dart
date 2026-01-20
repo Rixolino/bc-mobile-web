@@ -19,7 +19,7 @@ class TrainPanelContent extends StatefulWidget {
 
 class _TrainPanelContentState extends State<TrainPanelContent> {
   final TextEditingController _searchController = TextEditingController();
-  String _selectedCountry = 'IT';
+  String _selectedCountry = '';
 
   // Mappa dei fusi orari (Offset rispetto a UTC)
   final Map<String, int> countryTimezoneOffsets = {
@@ -57,7 +57,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (trainProvider.selectedService == 'direct') {
       displayedCountries = _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList();
       if (!['IT', 'FAL', 'EU'].contains(_selectedCountry)) {
-         _selectedCountry = 'IT';
+         _selectedCountry = displayedCountries.first['code'] ?? '';
       }
     }
 
@@ -180,6 +180,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                      child: TrainDetailsSheet(
                                        departure: updatedDep,
                                        isArrivalMode: isArrival,
+                                       selectedCountry: _selectedCountry,
                                      ),
                                    );
                                  },
@@ -298,19 +299,19 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           ],
         ),
         const SizedBox(height: 15),
-        if (trainProvider.selectedService == 'trainboardeu' || _selectedCountry != 'IT')
-          DropdownButton<String>(
-            value: _selectedCountry,
-            dropdownColor: theme.surfaceColor,
-            style: TextStyle(color: theme.textColor),
-            items: displayedCountries.map((c) => DropdownMenuItem(
-              value: c['code'],
-              child: Text(c['name']!),
-            )).toList(),
-            onChanged: (val) {
-              setState(() => _selectedCountry = val!);
-            },
-          ),
+        DropdownButton<String>(
+          value: _selectedCountry.isNotEmpty ? _selectedCountry : null,
+          dropdownColor: theme.surfaceColor,
+          style: TextStyle(color: theme.textColor),
+          hint: Text('Seleziona paese', style: TextStyle(color: theme.secondaryTextColor)),
+          items: displayedCountries.map((c) => DropdownMenuItem(
+            value: c['code'],
+            child: Text(c['name']!),
+          )).toList(),
+          onChanged: (val) {
+            setState(() => _selectedCountry = val ?? '');
+          },
+        ),
         const SizedBox(height: 10),
         TextField(
           controller: _searchController,
@@ -326,8 +327,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           onChanged: (val) {
              if (_selectedCountry == 'EU') {
                trainProvider.searchTrainByNumber(val);
-             } else {
+             } else if (_selectedCountry.isNotEmpty) {
                trainProvider.searchStations(val, country: _selectedCountry);
+             } else {
+               trainProvider.searchStations(val);
              }
           },
         ),

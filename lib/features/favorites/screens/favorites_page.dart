@@ -1199,7 +1199,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
 
     // Cerca le stazioni basate sul nome e nel country salvato
-    await trainProvider.searchStations(stop.name, country: stop.country ?? 'IT');
+    final countryArg = (stop.country != null && stop.country!.isNotEmpty) ? stop.country! : null;
+    if (countryArg != null) {
+      await trainProvider.searchStations(stop.name, country: countryArg);
+    } else {
+      await trainProvider.searchStations(stop.name);
+    }
 
     // Se non trovi nulla e non abbiamo country salvato (vecchi preferiti), prova un fallback europeo
     if (trainProvider.stationSuggestions.isEmpty && (stop.country == null || stop.country!.isEmpty)) {
