@@ -17,6 +17,9 @@ import '../../features/train/presentation/widgets/train_panel_content.dart';
 import '../widgets/map_background.dart';
 
 import 'settings_screen.dart';
+import 'notifications_manager_screen.dart';
+import '../providers/notification_manager_provider.dart';
+import '../../core/services/android_background_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -105,6 +108,16 @@ class _HomeScreenState extends State<HomeScreen> {
     // Apri il pannello per mostrare i risultati
     if (!_panelController.isPanelOpen) {
       _panelController.open();
+    }
+  }
+
+  Future<int> _getMonitoredCount() async {
+    try {
+      final stops = await AndroidBackgroundService.getMonitoredStops();
+      final stations = await AndroidBackgroundService.getMonitoredStations();
+      return (stops?.length ?? 0) + (stations?.length ?? 0);
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -330,6 +343,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 10),
+            // Notifications bell
+            FutureBuilder<int>(
+              future: _getMonitoredCount(),
+              builder: (context, snap) {
+                final cnt = snap.data ?? 0;
+                return Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.notifications, color: theme.textColor),
+                      onPressed: () async {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsManagerScreen()));
+                      },
+                    ),
+                    if (cnt > 0)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                          child: Center(
+                            child: Text('$cnt', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
             Consumer<AuthProvider>(
               builder: (context, authProvider, child) {
                 final hasNickname = authProvider.isAuthenticated && authProvider.currentUser?.nickname != null;

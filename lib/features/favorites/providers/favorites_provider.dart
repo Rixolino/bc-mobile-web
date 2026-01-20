@@ -108,8 +108,9 @@ class FavoritesProvider with ChangeNotifier {
     String? city,
     String? region,
     String? provider,
+    String? country,
   }) {
-    final id = '${userId}_${stopType.name}_${code}';
+    final id = '${userId}_${stopType.name}_${code}${country != null ? '_$country' : ''}';
     return FavoriteStop(
       id: id,
       addedAt: DateTime.now(),
@@ -122,6 +123,7 @@ class FavoritesProvider with ChangeNotifier {
       city: city,
       region: region,
       provider: provider,
+      country: country,
     );
   }
 
@@ -234,23 +236,25 @@ class FavoritesProvider with ChangeNotifier {
   }
 
   // Metodi specifici per le fermate
-  bool isStopFavorite(String code, StopType stopType) {
+  bool isStopFavorite(String code, StopType stopType, {String? country}) {
     return _favorites.any((fav) =>
         fav is FavoriteStop &&
         fav.code == code &&
-        fav.stopType == stopType);
+        fav.stopType == stopType &&
+        (country == null || fav.country == null || fav.country == country));
   }
 
   Future<bool> addStopFavorite(FavoriteStop favoriteStop) async {
     return await addFavorite(favoriteStop);
   }
 
-  Future<bool> removeStopFavorite(String code, StopType stopType) async {
+  Future<bool> removeStopFavorite(String code, StopType stopType, {String? country}) async {
     final favorite = _favorites.firstWhere(
       (fav) =>
           fav is FavoriteStop &&
           fav.code == code &&
-          fav.stopType == stopType,
+          fav.stopType == stopType &&
+          (country == null || fav.country == null || fav.country == country),
       orElse: () => throw Exception('Favorite stop not found'),
     );
     return await removeFavorite(favorite.id, favorite.userId);

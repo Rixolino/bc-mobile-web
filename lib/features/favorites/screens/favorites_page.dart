@@ -587,7 +587,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       ),
                       Text(
                         stop.stopType == StopType.trainStation
-                          ? 'Stazione' : (stop.city ?? 'Città'),
+                          ? 'Stazione${stop.country != null ? ' • ${stop.country}' : ''}' : (stop.city ?? 'Città'),
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.disabledColor),
                       ),
                     ],
@@ -822,6 +822,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
+          barrierColor: Colors.transparent,
           builder: (context) => TrainDetailsSheet(
             departure: realTimeData,
             isArrivalMode: trainProvider.isArrivalMode,
@@ -958,6 +959,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                   context: context,
                                   isScrollControlled: true,
                                   backgroundColor: Colors.transparent,
+                                  barrierColor: Colors.transparent,
                                   builder: (context) => TrainDetailsSheet(
                                     departure: result,
                                     isArrivalMode: provider.isArrivalMode,
@@ -1196,8 +1198,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
   void _showTrainStationSearchSheet(BuildContext context, FavoriteStop stop) async {
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
 
-    // Cerca le stazioni basate sul nome e mostra i suggerimenti
-    await trainProvider.searchStations(stop.name);
+    // Cerca le stazioni basate sul nome e nel country salvato
+    await trainProvider.searchStations(stop.name, country: stop.country ?? 'IT');
+
+    // Se non trovi nulla e non abbiamo country salvato (vecchi preferiti), prova un fallback europeo
+    if (trainProvider.stationSuggestions.isEmpty && (stop.country == null || stop.country!.isEmpty)) {
+      await trainProvider.searchStations(stop.name, country: 'EU');
+    }
 
     showModalBottomSheet(
       context: context,

@@ -20,6 +20,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import android.util.Log
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
 import java.util.concurrent.TimeUnit
 
 class RealtimeService : Service() {
@@ -166,6 +169,39 @@ class RealtimeService : Service() {
             while (isActive) {
                 val startTs = System.currentTimeMillis()
 
+                fun formatTimeString(value: String?): String {
+                    if (value.isNullOrEmpty()) return ""
+                    val v = value.trim()
+                    // Accept numeric integers, decimals and scientific notation
+                    val numericRegex = Regex("^[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$")
+                    if (numericRegex.matches(v)) {
+                        try {
+                            val d = v.toDouble()
+                            // Heuristic: if value looks like seconds (< 1e11) treat as seconds, otherwise millis
+                            val epochMillis = if (d < 1e11) (d * 1000L).toLong() else d.toLong()
+                            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                            return sdf.format(Date(epochMillis))
+                        } catch (e: Exception) {
+                            // fall through
+                        }
+                    }
+                    // Try ISO-8601 parse (OffsetDateTime or Instant)
+                    try {
+                        val odt = java.time.OffsetDateTime.parse(v)
+                        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        return sdf.format(Date.from(odt.toInstant()))
+                    } catch (e: Exception) {
+                        try {
+                            val inst = java.time.Instant.parse(v)
+                            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                            return sdf.format(Date.from(inst))
+                        } catch (e2: Exception) {
+                            // fallback to original
+                        }
+                    }
+                    return v
+                }
+
                 // First, handle monitored stops (buses)
                 val stops = getMonitoredStopsMap()
                 if (stops.isNotEmpty()) {
@@ -188,9 +224,10 @@ class RealtimeService : Service() {
                                             for (i in 0 until max) {
                                                 val dep = departures.optJSONObject(i)
                                                 val line = dep?.optString("line") ?: dep?.optString("lineCode") ?: dep?.optString("route") ?: dep?.optString("lineRef") ?: ""
-                                                val time = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: dep?.optString("expectedTime") ?: ""
                                                 val dest = dep?.optString("destination") ?: dep?.optString("to") ?: dep?.optString("headsign") ?: ""
-                                                val part = listOf(line, time, if (dest.isNotEmpty()) "→ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
+                                                val rawTime = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: dep?.optString("expectedTime") ?: ""
+                                                val time = formatTimeString(rawTime)
+                                        val part = listOf(line, time, if (dest.isNotEmpty()) "→ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
                                                 if (part.isNotEmpty()) items.add(part)
                                             }
                                         }
@@ -238,8 +275,9 @@ class RealtimeService : Service() {
                                             for (i in 0 until max) {
                                                 val dep = departures.optJSONObject(i)
                                                 val train = dep?.optString("trainNumber") ?: dep?.optString("service") ?: dep?.optString("train_id") ?: ""
-                                                val time = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: ""
                                                 val dest = dep?.optString("destination") ?: dep?.optString("to") ?: ""
+                                                val rawTime = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: ""
+                                                val time = formatTimeString(rawTime)
                                                 val part = listOf(train, time, if (dest.isNotEmpty()) "→ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
                                                 if (part.isNotEmpty()) items.add(part)
                                             }

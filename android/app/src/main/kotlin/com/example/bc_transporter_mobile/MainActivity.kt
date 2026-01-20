@@ -154,6 +154,89 @@ class MainActivity: FlutterActivity() {
                     }
                     result.success(null)
                 }
+                "forceFetchStop" -> {
+                    val stopId = call.argument<String>("stopId")
+                    var payload: String? = null
+                    if (!stopId.isNullOrEmpty()) {
+                        val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                        try {
+                            val baseUrl = prefs.getString("service_base_url", "https://betacloud-transporter.is-cool.dev")
+                            val provider = prefs.getString("service_provider", "bari")
+                            val url = "${baseUrl}/api/it/bus/${provider}/stops-updates?stopId=${stopId}"
+                            val client = okhttp3.OkHttpClient()
+                            val request = okhttp3.Request.Builder().url(url).get().build()
+                            val resp = client.newCall(request).execute()
+                            if (resp.isSuccessful) {
+                                payload = resp.body?.string()
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    result.success(payload)
+                }
+                "forceFetchStation" -> {
+                    val stationId = call.argument<String>("stationId")
+                    var payload: String? = null
+                    if (!stationId.isNullOrEmpty()) {
+                        try {
+                            val url = "https://prod.cuzimmartin.dev/api/it/departures?stationId=${stationId}"
+                            val client = okhttp3.OkHttpClient()
+                            val request = okhttp3.Request.Builder().url(url).get().build()
+                            val resp = client.newCall(request).execute()
+                            if (resp.isSuccessful) payload = resp.body?.string()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    result.success(payload)
+                }
+                "getCachedStopData" -> {
+                    val stopId = call.argument<String>("stopId")
+                    var payload: String? = null
+                    if (!stopId.isNullOrEmpty()) {
+                        val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                        payload = prefs.getString("stop:$stopId", null)
+                    }
+                    result.success(payload)
+                }
+                "getCachedStationData" -> {
+                    val stationId = call.argument<String>("stationId")
+                    var payload: String? = null
+                    if (!stationId.isNullOrEmpty()) {
+                        val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                        payload = prefs.getString("station:$stationId", null)
+                    }
+                    result.success(payload)
+                }
+                "removeMonitoredStation" -> {
+                    val stationId = call.argument<String>("stationId")
+                    if (!stationId.isNullOrEmpty()) {
+                        val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                        val json = prefs.getString("monitored_stations", null)
+                        if (!json.isNullOrEmpty()) {
+                            val arr = org.json.JSONArray(json)
+                            val newArr = org.json.JSONArray()
+                            for (i in 0 until arr.length()) {
+                                val v = arr.optString(i)
+                                if (v != stationId) newArr.put(v)
+                            }
+                            prefs.edit().putString("monitored_stations", newArr.toString()).apply()
+                        }
+
+                        // If there are no monitored stops or stations left, stop the service to save battery
+                        val remainingStops = prefs.getString("monitored_stops", null)?.let { JSONObject(it).length() } ?: 0
+                        val remainingStations = prefs.getString("monitored_stations", null)?.let { org.json.JSONArray(it).length() } ?: 0
+                        if (remainingStops == 0 && remainingStations == 0) {
+                            val stopIntent = android.content.Intent(this@MainActivity, RealtimeService::class.java).apply {
+                                action = "stop"
+                                putExtra("type", "buses")
+                            }
+                            startService(stopIntent)
+                        }
+                    }
+                    result.success(null)
+                }
                 "isStopMonitored" -> {
                     val stopId = call.argument<String>("stopId")
                     var monitored = false
@@ -166,6 +249,34 @@ class MainActivity: FlutterActivity() {
                         }
                     }
                     result.success(monitored)
+                }
+                "getMonitoredStops" -> {
+                    val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                    val json = prefs.getString("monitored_stops", null)
+                    if (json.isNullOrEmpty()) {
+                        result.success(mapOf<String, String>())
+                    } else {
+                        val obj = JSONObject(json)
+                        val map = mutableMapOf<String, String>()
+                        val keys = obj.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            map[k] = obj.optString(k)
+                        }
+                        result.success(map)
+                    }
+                }
+                "getMonitoredStations" -> {
+                    val prefs = getSharedPreferences("realtime_cache", Context.MODE_PRIVATE)
+                    val json = prefs.getString("monitored_stations", null)
+                    if (json.isNullOrEmpty()) {
+                        result.success(listOf<String>())
+                    } else {
+                        val arr = org.json.JSONArray(json)
+                        val list = mutableListOf<String>()
+                        for (i in 0 until arr.length()) list.add(arr.optString(i))
+                        result.success(list)
+                    }
                 }
                 "scheduleFunctionsWorker" -> {
                     val metric = call.argument<String>("metric")

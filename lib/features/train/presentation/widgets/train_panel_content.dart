@@ -89,13 +89,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 builder: (context, favoritesProvider, authProvider, child) {
                   if (!authProvider.isAuthenticated) return const SizedBox.shrink();
                   final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                  final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation);
+                  final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
                   return IconButton.filledTonal(
                     icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
                     onPressed: () async {
                       try {
                         if (isFavorite) {
-                          await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation);
+                          await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione rimossa dai preferiti')));
                         } else {
                           final fav = favoritesProvider.createFavoriteStop(
@@ -108,6 +108,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                             city: null,
                             region: null,
                             provider: null,
+                            country: station.country ?? _selectedCountry,
                           );
                           await favoritesProvider.addStopFavorite(fav);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione aggiunta ai preferiti')));
@@ -163,7 +164,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                context: context, 
                                isScrollControlled: true,
                                backgroundColor: Colors.transparent,
-                               barrierColor: theme.textColor.withOpacity(0.5),
+                               barrierColor: Colors.transparent,
                                builder: (ctx) => Consumer<TrainProvider>(
                                  builder: (context, provider, child) {
                                    // Trova il treno aggiornato cercando per ID o numero treno
@@ -391,13 +392,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               builder: (context, favoritesProvider, authProvider, child) {
                 if (!authProvider.isAuthenticated) return const SizedBox.shrink();
                 final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                final isFavorite = favoritesProvider.isStopFavorite(s.id, StopType.trainStation);
+                final isFavorite = favoritesProvider.isStopFavorite(s.id, StopType.trainStation, country: s.country);
                 return IconButton(
                   icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : theme.secondaryTextColor),
                   onPressed: () async {
                     try {
                       if (isFavorite) {
-                        await favoritesProvider.removeStopFavorite(s.id, StopType.trainStation);
+                        await favoritesProvider.removeStopFavorite(s.id, StopType.trainStation, country: s.country);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione rimossa dai preferiti')));
                       } else {
                         final fav = favoritesProvider.createFavoriteStop(
@@ -405,6 +406,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                           name: s.name,
                           code: s.id,
                           stopType: StopType.trainStation,
+                          country: s.country,
                         );
                         await favoritesProvider.addStopFavorite(fav);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione aggiunta ai preferiti')));
@@ -413,6 +415,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
                     }
                   },
+
                 );
               },
             ),

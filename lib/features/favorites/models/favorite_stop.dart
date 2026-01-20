@@ -15,6 +15,7 @@ class FavoriteStop extends FavoriteItem {
   final String? city;
   final String? region;
   final String? provider; // Per identificare il provider (es. "tper", "fal", ecc.)
+  final String? country; // ISO country code for stations (e.g. IT, FR)
 
   const FavoriteStop({
     required super.id,
@@ -28,6 +29,7 @@ class FavoriteStop extends FavoriteItem {
     this.city,
     this.region,
     this.provider,
+    this.country,
   }) : super(type: FavoriteType.stop);
 
   @override
@@ -44,6 +46,7 @@ class FavoriteStop extends FavoriteItem {
         'city': city,
         'region': region,
         'provider': provider,
+        'country': country,
       };
 
   static FavoriteStop fromJson(Map<String, dynamic> json) => FavoriteStop(
@@ -58,6 +61,7 @@ class FavoriteStop extends FavoriteItem {
         city: json['city'],
         region: json['region'],
         provider: json['provider'],
+        country: json['country'],
       );
 
   @override

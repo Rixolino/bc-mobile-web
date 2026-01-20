@@ -93,6 +93,13 @@ class AndroidBackgroundService {
     } catch (e) {}
   }
 
+  static Future<void> removeMonitoredStation(String stationId) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('removeMonitoredStation', {'stationId': stationId});
+    } catch (e) {}
+  }
+
   static Future<bool> isStopMonitored(String stopId) async {
     if (!Platform.isAndroid) return false;
     try {
@@ -100,6 +107,68 @@ class AndroidBackgroundService {
       return res == true;
     } catch (e) {
       return false;
+    }
+  }
+
+  static Future<Map<String, String>> getMonitoredStops() async {
+    if (!Platform.isAndroid) return {};
+    try {
+      final res = await _channel.invokeMethod('getMonitoredStops');
+      if (res is Map) return Map<String, String>.from(res as Map);
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  static Future<List<String>> getMonitoredStations() async {
+    if (!Platform.isAndroid) return [];
+    try {
+      final res = await _channel.invokeMethod('getMonitoredStations');
+      if (res is List) return List<String>.from(res as List);
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<String?> getCachedStopData(String stopId) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await _channel.invokeMethod('getCachedStopData', {'stopId': stopId});
+      return res as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<String?> getCachedStationData(String stationId) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await _channel.invokeMethod('getCachedStationData', {'stationId': stationId});
+      return res as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<String?> forceFetchStop(String stopId) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await _channel.invokeMethod('forceFetchStop', {'stopId': stopId});
+      return res as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<String?> forceFetchStation(String stationId) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await _channel.invokeMethod('forceFetchStation', {'stationId': stationId});
+      return res as String?;
+    } catch (e) {
+      return null;
     }
   }
 

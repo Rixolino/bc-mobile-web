@@ -181,9 +181,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                         if (isFavorite) {
                                           await favoritesProvider.removeStopFavorite(widget.stop.stopId, StopType.busStop);
                                         } else {
-                                          final favoriteStop = FavoriteStop(
-                                            id: '${userId}_${StopType.busStop.name}_${widget.stop.stopId}',
-                                            addedAt: DateTime.now(),
+                                          final favoriteStop = favoritesProvider.createFavoriteStop(
                                             userId: userId,
                                             name: widget.stop.stopName,
                                             code: widget.stop.stopId,
@@ -193,6 +191,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                             city: null, // Non disponibile nel BariStop
                                             region: null, // Non disponibile nel BariStop
                                             provider: provider.selectedProvider?.name?.toString(),
+                                            country: null,
                                           );
                                           await favoritesProvider.addStopFavorite(favoriteStop);
                                         }
