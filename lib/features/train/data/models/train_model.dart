@@ -65,6 +65,12 @@ class TrainDeparture {
       return current;
     }
 
+    List<Map<String, dynamic>>? tripMessages;
+    final rawMsgs = getValue(json, fields['messages'] ?? 'messages');
+    if (rawMsgs is List && rawMsgs.isNotEmpty) {
+      tripMessages = rawMsgs.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? Map<String, dynamic>.from(e) : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})).toList();
+    }
+
     return TrainDeparture(
       trainNumber: getValue(json, fields['trainNumber'] ?? 'trainNumber')?.toString(),
       category: getValue(json, fields['category'] ?? 'category')?.toString(),
@@ -76,6 +82,7 @@ class TrainDeparture {
       delayMinutes: int.tryParse(getValue(json, fields['delay'] ?? 'delay')?.toString() ?? '0'),
       status: getValue(json, fields['status'] ?? 'status')?.toString(),
       tripId: getValue(json, fields['tripId'] ?? 'tripId')?.toString(),
+      messages: tripMessages,
     );
   }
   final String? trainNumber;
@@ -91,6 +98,7 @@ class TrainDeparture {
   final List<TrainStop>? stops;
   final String country;
   final Map<String, dynamic>? metadata;
+  final List<Map<String, dynamic>>? messages; // optional messages/alerts for the trip
 
   TrainDeparture({
     this.trainNumber,
@@ -106,6 +114,7 @@ class TrainDeparture {
     this.stops,
     this.country = '',
     this.metadata,
+    this.messages,
   });
 
   factory TrainDeparture.fromJson(Map<String, dynamic> json, {bool isDeparture = true}) {
@@ -143,6 +152,13 @@ class TrainDeparture {
       stops = rawStops.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList();
     }
 
+    // parse trip-level messages if present
+    List<Map<String, dynamic>>? tripMessages;
+    final rawTripMsgs = actualData['messages'];
+    if (rawTripMsgs is List && rawTripMsgs.isNotEmpty) {
+      tripMessages = rawTripMsgs.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? e : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})).toList();
+    }
+
     return TrainDeparture(
       trainNumber: num,
       category: _getStringValue(actualData['category'] ?? actualData['type'] ?? actualData['operator']),
@@ -157,6 +173,7 @@ class TrainDeparture {
       stops: stops,
       country: actualData['country']?.toString() ?? '',
       metadata: actualData['metadata'] as Map<String, dynamic>?,
+      messages: tripMessages,
     );
   }
 
@@ -226,6 +243,7 @@ class TrainStop {
   final String? platform;
   final String country; // Country code (IT, FR, DE, CH, AT, etc.)
   final bool cancelled; // whether this stop was cancelled (API: 'cancelled'/'canceled'/'status')
+  final List<Map<String, dynamic>>? messages; // optional messages/alerts for this stop
 
   TrainStop({
     required this.stationName,
@@ -239,6 +257,7 @@ class TrainStop {
     this.platform,
     this.country = '',
     this.cancelled = false,
+    this.messages,
   });
 
   static int? _parseInt(dynamic value) {
@@ -260,7 +279,10 @@ class TrainStop {
       departureDelay: _parseInt(json['departureDelay']),
       platform: TrainDeparture._getStringValue(json['platform'] ?? json['actualPlatform'] ?? json['plannedPlatform']),
       country: TrainDeparture._getStringValue(json['country']) ?? '',
-      cancelled: _parseBool(json['cancelled'] ?? json['canceled'] ?? json['isCancelled'] ?? json['cancel'] ?? json['status']),
+      // Only treat explicit cancel flags as true. Avoid using generic 'status' or 'cancel' fields
+      // which may contain unrelated status codes that would incorrectly mark stops as cancelled.
+      cancelled: _parseBool(json['cancelled'] ?? json['canceled'] ?? json['isCancelled']),
+      messages: (json['messages'] is List) ? (json['messages'] as List).map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? e : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})).toList() : null,
     );
   }
 

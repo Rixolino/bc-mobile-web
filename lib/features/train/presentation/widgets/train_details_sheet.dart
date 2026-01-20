@@ -243,7 +243,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     }
 
     final delay = d.delayMinutes ?? 0;
-    final status = delay > 0 ? 'Ritardo ${delay} min' : (delay < 0 ? 'In anticipo di ${-delay} min' : 'In orario');
 
     // Count remaining stops to destination (ignore cancelled stops)
     int remaining = 0;
@@ -769,6 +768,36 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   );
                 },
               ),
+              // Messages button (se presenti)
+              if (_hasMessages())
+                IconButton(
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(Icons.error_outline),
+                      Positioned(
+                        right: -6,
+                        top: -6,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(color: theme.errorColor, shape: BoxShape.circle),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text(
+                            '${(_messages()?.length ?? 0)}',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  onPressed: _showMessagesSheet,
+                  style: IconButton.styleFrom(
+                    backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                    foregroundColor: theme.warningColor,
+                  ),
+                ),
+
               // Notifications button
               Builder(builder: (ctx) {
                 return _TrainNotificationsButton(departure: widget.departure, selectedCountry: widget.selectedCountry);
@@ -826,6 +855,158 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           Text(statusText, style: TextStyle(color: badgeColor, fontWeight: FontWeight.w800, fontSize: 13)),
         ],
       ),
+    );
+  }
+
+  // Messages helpers: extract and display train messages when present
+  List<Map<String, dynamic>>? _messages() {
+    final List<Map<String, dynamic>> out = [];
+
+    // Trip-level messages (preferred source: explicit parsed field)
+    final tripMsgs = widget.departure.messages;
+    if (tripMsgs != null && tripMsgs.isNotEmpty) {
+      out.addAll(tripMsgs.map((m) => Map<String, dynamic>.from(m)));
+    }
+
+    // Some providers may embed messages inside metadata as fallback
+    final meta = widget.departure.metadata;
+    if (meta != null) {
+      final raw = meta['messages'] ?? meta['alerts'] ?? meta['notes'];
+      if (raw is List && raw.isNotEmpty) {
+        out.addAll(raw.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? Map<String, dynamic>.from(e) : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})));
+      }
+    }
+
+    // Stop-level messages: include station context
+    final stops = widget.departure.stops ?? [];
+    for (final s in stops) {
+      if (s.messages != null && s.messages!.isNotEmpty) {
+        for (final m in s.messages!) {
+          final Map<String, dynamic> mm = Map<String, dynamic>.from(m);
+          mm['station'] = s.stationName;
+          out.add(mm);
+        }
+      }
+    }
+
+    return out.isNotEmpty ? out : null;
+  }
+
+  bool _hasMessages() => (_messages() ?? []).isNotEmpty;
+
+  void _showMessagesSheet() {
+    final msgs = _messages() ?? [];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      builder: (ctx) {
+        final Map<String, int> priCounts = {};
+        for (final m in msgs) {
+          final p = (m['priority'] ?? '').toString().toLowerCase();
+          if (p.isNotEmpty) priCounts[p] = (priCounts[p] ?? 0) + 1;
+        }
+        return SafeArea(
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.6,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('Messaggi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Spacer(),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${msgs.length}'),
+                        if (priCounts.isNotEmpty) const SizedBox(height: 6),
+                        if (priCounts.isNotEmpty)
+                          Wrap(
+                            spacing: 6,
+                            children: priCounts.entries.map<Widget>((e) {
+                              final key = e.key;
+                              final count = e.value;
+                              final bg = key == 'high'
+                                  ? Theme.of(context).colorScheme.error.withOpacity(0.12)
+                                  : (key == 'medium' ? Colors.amber.withOpacity(0.12) : Theme.of(context).primaryColor.withOpacity(0.12));
+                              final textColor = key == 'high' ? Theme.of(context).colorScheme.error : Theme.of(context).primaryColor;
+                              return Chip(label: Text('${key}: ${count}', style: TextStyle(color: textColor, fontSize: 12)), backgroundColor: bg);
+                            }).toList(),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: msgs.length,
+                    separatorBuilder: (_, __) => const Divider(),
+                    itemBuilder: (c, i) {
+                      final m = msgs[i];
+                      final type = (m['type'] ?? 'info').toString().toLowerCase();
+                      final title = (m['title'] ?? '').toString();
+                      final text = (m['text'] ?? '').toString();
+                      final icon = type == 'warning' ? Icons.warning_rounded : Icons.info_outline;
+                      final color = type == 'warning' ? Theme.of(context).colorScheme.error : Theme.of(context).primaryColor;
+                      final station = (m['station'] ?? '').toString();
+                      final priority = (m['priority'] ?? '').toString().toLowerCase();
+                      final subtitleWidget = station.isNotEmpty
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(station, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Text(text),
+                            ],
+                          )
+                        : Text(text);
+
+                      // Priority colors
+                      final Color priColor = priority == 'high'
+                        ? Theme.of(context).colorScheme.error
+                        : (priority == 'medium' ? Colors.amber : Theme.of(context).primaryColor);
+
+                      final bgColor = priority == 'high'
+                        ? Theme.of(context).colorScheme.error.withOpacity(0.04)
+                        : (priority == 'medium' ? Colors.amber.withOpacity(0.04) : Theme.of(context).primaryColor.withOpacity(0.02));
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          border: Border(left: BorderSide(color: priColor, width: priority.isNotEmpty ? 4 : 0)),
+                        ),
+                        child: ListTile(
+                          leading: Icon(icon, color: color),
+                          title: Row(children: [
+                            Expanded(child: Text(title.isNotEmpty ? title : (station.isNotEmpty ? station : ''), style: TextStyle(fontWeight: FontWeight.w700))),
+                            if (priority.isNotEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                child: Chip(
+                                  label: Text(priority.toUpperCase(), style: TextStyle(color: priColor, fontSize: 11, fontWeight: FontWeight.w800)),
+                                  backgroundColor: priColor.withOpacity(0.12),
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                          ]),
+                          subtitle: subtitleWidget,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Chiudi'))),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
