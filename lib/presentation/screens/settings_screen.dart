@@ -80,7 +80,7 @@ class SettingsScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              _buildSectionTitle('Notifiche & Background', theme),
+              _buildSectionTitle('Test Notifiche', theme),
               const SizedBox(height: 16),
               _buildBackgroundNotificationControls(context, settings, theme),
 
@@ -340,6 +340,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildBackgroundNotificationControls(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    // Simplified: remove toggles that enable/cancel background workers. Keep config and Test buttons.
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -352,38 +353,23 @@ class SettingsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.notifications, color: theme.primaryColor, size: 20),
+              Icon(Icons.notifications_active, color: theme.primaryColor, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Notifiche Background',
+                'Test Notifiche',
                 style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 12),
+
+          // Treni - only config and test
           Row(
             children: [
               Expanded(child: Text('Treni', style: TextStyle(color: theme.textColor))),
               IconButton(
                 icon: Icon(Icons.settings, color: theme.secondaryTextColor),
                 onPressed: () => _showTrainConfigDialog(context, settings),
-              ),
-              Switch(
-                value: settings.trainsWorkerEnabled,
-                onChanged: (v) async {
-                  await settings.setTrainsWorkerEnabled(v);
-                  if (v) {
-                    await AndroidBackgroundService.scheduleTrainsWorker(
-                      stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null,
-                      service: settings.trainService,
-                      enableNotifications: v,
-                      intervalSeconds: settings.trainRefreshSeconds,
-                    );
-                  } else {
-                    await AndroidBackgroundService.cancelTrainsWorker();
-                  }
-                },
-                activeColor: theme.primaryColor,
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -394,30 +380,22 @@ class SettingsScreen extends StatelessWidget {
               )
             ],
           ),
+
           if (settings.trainStationId.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text('Stazione: ${settings.trainStationId} · Servizio: ${settings.trainService}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
             ),
+
           const SizedBox(height: 8),
+
+          // Autobus - only config and test
           Row(
             children: [
               Expanded(child: Text('Autobus', style: TextStyle(color: theme.textColor))),
               IconButton(
                 icon: Icon(Icons.settings, color: theme.secondaryTextColor),
                 onPressed: () => _showBusConfigDialog(context, settings),
-              ),
-              Switch(
-                value: settings.busesWorkerEnabled,
-                onChanged: (v) async {
-                  await settings.setBusesWorkerEnabled(v);
-                  if (v) {
-                    await AndroidBackgroundService.scheduleBusesWorker(provider: settings.busProvider, baseUrl: settings.busBaseUrl, enableNotifications: v, intervalSeconds: settings.busRefreshSeconds);
-                  } else {
-                    await AndroidBackgroundService.cancelBusesWorker();
-                  }
-                },
-                activeColor: theme.primaryColor,
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -428,26 +406,18 @@ class SettingsScreen extends StatelessWidget {
               )
             ],
           ),
+
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text('Provider: ${settings.busProvider} · Base URL: ${settings.busBaseUrl}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
           ),
+
           const SizedBox(height: 8),
+
+          // Funzioni - test only
           Row(
             children: [
               Expanded(child: Text('Funzioni', style: TextStyle(color: theme.textColor))),
-              Switch(
-                value: settings.functionsWorkerEnabled,
-                onChanged: (v) async {
-                  await settings.setFunctionsWorkerEnabled(v);
-                  if (v) {
-                    await AndroidBackgroundService.scheduleFunctionsWorker();
-                  } else {
-                    await AndroidBackgroundService.cancelFunctionsWorker();
-                  }
-                },
-                activeColor: theme.primaryColor,
-              ),
               const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () async {
@@ -461,6 +431,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
 
   void _showTrainConfigDialog(BuildContext context, SettingsProvider settings) {
     final stationController = TextEditingController(text: settings.trainStationId);

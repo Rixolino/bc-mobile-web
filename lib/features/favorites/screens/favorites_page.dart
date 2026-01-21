@@ -171,6 +171,44 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
                             final item = feedItems[index];
+                            // Allow swipe-to-delete for FavoriteTrain items
+                            if (item is FavoriteTrain) {
+                              final train = item;
+                              return Dismissible(
+                                key: ValueKey(train.id),
+                                direction: DismissDirection.endToStart,
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.95),
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: const Icon(Icons.delete, color: Colors.white),
+                                ),
+                                onDismissed: (direction) async {
+                                  final removed = train;
+                                  final success = await favoritesProvider.removeTrainFavorite(removed.trainNumber, removed.departureStation, removed.arrivalStation);
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: const Text('Treno rimosso dai preferiti'),
+                                        action: SnackBarAction(
+                                          label: 'Annulla',
+                                          onPressed: () async {
+                                            await favoritesProvider.addTrainFavorite(removed);
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante la rimozione del preferito')));
+                                  }
+                                },
+                                child: _buildFeedItem(context, item, favoritesProvider),
+                              );
+                            }
+
                             return _buildFeedItem(context, item, favoritesProvider);
                           },
                           childCount: feedItems.length,
@@ -337,6 +375,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Widget _buildLiveTrainCard(BuildContext context, FavoriteTrain train, FavoritesProvider provider) {
     final theme = Theme.of(context);
     final realTimeData = _realTimeData[train.id];
+    final isFav = provider.isTrainFavorite(train.trainNumber, train.departureStation, train.arrivalStation);
 
     return GestureDetector(
       onTap: () => _showDetailSheet(context, train),
@@ -388,8 +427,57 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             ],
                           ),
                         ),
-                        // Stato Live basato su dati reali
-                        _buildLiveStatusIndicator(realTimeData),
+                        // Stato Live basato su dati reali + pulsante preferito
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildLiveStatusIndicator(realTimeData),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: isFav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti',
+                              icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? Colors.orange : theme.colorScheme.onSurface),
+                              onPressed: () async {
+                                // toggle favorite and show snackbar with undo
+                                ScaffoldMessenger.of(context).removeCurrentSnackBar();
+                                if (isFav) {
+                                  final success = await provider.removeTrainFavorite(train.trainNumber, train.departureStation, train.arrivalStation);
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Treno rimosso dai preferiti'),
+                                        action: SnackBarAction(
+                                          label: 'Annulla',
+                                          onPressed: () async {
+                                            await provider.addTrainFavorite(train);
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante la rimozione')));
+                                  }
+                                } else {
+                                  final success = await provider.addTrainFavorite(train);
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Treno aggiunto ai preferiti'),
+                                        action: SnackBarAction(
+                                          label: 'Annulla',
+                                          onPressed: () async {
+                                            await provider.removeTrainFavorite(train.trainNumber, train.departureStation, train.arrivalStation);
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante l\'aggiunta')));
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -586,8 +674,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       Text(
+                        // If we don't have city stored in the favorite, fall back to provider name (many bus stop models like BariStop don't include a city field)
                         stop.stopType == StopType.trainStation
-                          ? 'Stazione${stop.country != null ? ' • ${stop.country}' : ''}' : (stop.city ?? 'Città'),
+                          ? 'Stazione${stop.city != null && stop.city!.isNotEmpty ? ' • ${_capitalizeFirst(stop.city)}' : ''}${stop.country != null && stop.country!.isNotEmpty ? ' • ${_capitalizeFirst(stop.country)}' : ''}'
+                          : 'Città${stop.city != null && stop.city!.isNotEmpty ? ' • ${_capitalizeFirst(stop.city)}' : (stop.provider != null && stop.provider!.isNotEmpty ? ' • ${_capitalizeFirst(stop.provider)}' : '')}',
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.disabledColor),
                       ),
                     ],
@@ -1322,5 +1412,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
     } catch (e) {
       return timeString;
     }
+  }
+
+  // Capitalize the first character of a string (preserve the rest of the text)
+  String _capitalizeFirst(String? s) {
+    if (s == null) return '';
+    final t = s.trim();
+    if (t.isEmpty) return '';
+    return t[0].toUpperCase() + t.substring(1);
   }
 }

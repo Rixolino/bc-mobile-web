@@ -68,61 +68,62 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: Icon(Icons.arrow_back, color: theme.textColor),
-                onPressed: () {
-                  trainProvider.clearSelection();
-                },
-              ),
-              Expanded(
-                child: Text(
-                   "${station.name} (${trainProvider.isArrivalMode ? 'Arrivi' : 'Partenze'})",
+          // Card-style header using Material ListTile for a stronger visual hierarchy
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+                leading: IconButton(
+                  icon: Icon(Icons.arrow_back, color: theme.textColor),
+                  onPressed: () {
+                    trainProvider.clearSelection();
+                  },
+                ),
+                title: Text(
+                  "${station.name} (${trainProvider.isArrivalMode ? 'Arrivi' : 'Partenze'})",
                   style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-
-              // Favorite station button (only if authenticated)
-              Consumer2<FavoritesProvider, AuthProvider>(
-                builder: (context, favoritesProvider, authProvider, child) {
-                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                  final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
-                  return IconButton.filledTonal(
-                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                    onPressed: () async {
-                      try {
-                        if (isFavorite) {
-                          await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione rimossa dai preferiti')));
-                        } else {
-                          final fav = favoritesProvider.createFavoriteStop(
-                            userId: userId,
-                            name: station.name,
-                            code: station.id,
-                            stopType: StopType.trainStation,
-                            latitude: null,
-                            longitude: null,
-                            city: null,
-                            region: null,
-                            provider: null,
-                            country: station.country ?? _selectedCountry,
-                          );
-                          await favoritesProvider.addStopFavorite(fav);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                trailing: Consumer2<FavoritesProvider, AuthProvider>(
+                  builder: (context, favoritesProvider, authProvider, child) {
+                    if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                    final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                    final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
+                    return IconButton(
+                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : theme.secondaryTextColor),
+                      onPressed: () async {
+                        try {
+                          if (isFavorite) {
+                            await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione rimossa dai preferiti')));
+                          } else {
+                            final fav = favoritesProvider.createFavoriteStop(
+                              userId: userId,
+                              name: station.name,
+                              code: station.id,
+                              stopType: StopType.trainStation,
+                              latitude: null,
+                              longitude: null,
+                              city: null,
+                              region: null,
+                              provider: null,
+                              country: station.country ?? _selectedCountry,
+                            );
+                            await favoritesProvider.addStopFavorite(fav);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
                         }
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
-                      }
-                    },
-                    style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor),
-                  );
-                },
+                      },
+                    );
+                  },
+                ),
               ),
-
-            ],
+            ),
           ),
           if (widget.showModeToggle) ...[
             const SizedBox(height: 10),
@@ -146,9 +147,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       final isArrival = trainProvider.isArrivalMode;
                       
                       return Card(
-                        color: theme.surfaceColor.withOpacity(0.05),
+                        elevation: 3,
+                        color: theme.surfaceColor.withOpacity(0.04),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
                           onTap: () {
@@ -167,8 +169,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                barrierColor: Colors.transparent,
                                builder: (ctx) => Consumer<TrainProvider>(
                                  builder: (context, provider, child) {
-                                   // Trova il treno aggiornato cercando per ID o numero treno
-                                   // Invece di usare l'indice che può cambiare nel tempo
                                    final updatedDep = provider.departures.firstWhere(
                                      (d) => (targetId != null && d.tripId == targetId) || 
                                             (d.trainNumber == targetNum && d.destination == dep.destination),
@@ -238,10 +238,29 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        "Binario: ${dep.platform ?? '?'}",
-                                        style: TextStyle(color: theme.warningColor, fontSize: 12),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Expanded(child: Text("Binario: ${dep.platform ?? '?'}", style: TextStyle(color: theme.warningColor, fontSize: 12))),
+                                          FilledButton(
+                                            onPressed: () {
+                                              // open details (same behavior as tapping the card)
+                                              showModalBottomSheet(
+                                                context: context,
+                                                isScrollControlled: true,
+                                                backgroundColor: Colors.transparent,
+                                                barrierColor: Colors.transparent,
+                                                builder: (ctx) => TrainDetailsSheet(
+                                                  departure: dep,
+                                                  isArrivalMode: isArrival,
+                                                  selectedCountry: _selectedCountry,
+                                                ),
+                                              );
+                                            },
+                                            style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                                            child: const Text('Dettagli'),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -356,23 +375,15 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   Widget _buildModeToggle(BuildContext context, String label, bool active, VoidCallback onTap) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    return FilledButton(
+      onPressed: onTap,
+      style: FilledButton.styleFrom(
+        backgroundColor: active ? theme.primaryColor : theme.surfaceColor.withOpacity(0.06),
+        foregroundColor: active ? theme.textColor : theme.secondaryTextColor,
+        shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? theme.primaryColor : theme.surfaceColor.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? theme.textColor : theme.secondaryTextColor,
-            fontSize: 12,
-            fontWeight: active ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
       ),
+      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: active ? FontWeight.bold : FontWeight.normal)),
     );
   }
 

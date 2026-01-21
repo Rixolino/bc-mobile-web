@@ -99,33 +99,33 @@ class _BusPanelContentState extends State<BusPanelContent> {
     required Widget child,
   }) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.surfaceColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
-      ),
-      child: ExpansionTile(
-        title: Text(
-          title,
-          style: TextStyle(
-            color: theme.textColor,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          title: Text(
+            title,
+            style: TextStyle(
+              color: theme.textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
+          initiallyExpanded: expanded,
+          onExpansionChanged: onExpanded,
+          collapsedIconColor: theme.secondaryTextColor,
+          iconColor: theme.secondaryTextColor,
+          backgroundColor: theme.surfaceColor.withOpacity(0.02),
+          collapsedBackgroundColor: Colors.transparent,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: child,
+            ),
+          ],
         ),
-        initiallyExpanded: expanded,
-        onExpansionChanged: onExpanded,
-        collapsedIconColor: theme.secondaryTextColor,
-        iconColor: theme.secondaryTextColor,
-        backgroundColor: theme.surfaceColor.withOpacity(0.02),
-        collapsedBackgroundColor: Colors.transparent,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: child,
-          ),
-        ],
       ),
     );
   }

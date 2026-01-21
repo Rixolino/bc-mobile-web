@@ -38,21 +38,19 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _showSkyscanner ? "Ricerca Aeroporti" : "Traffico Aereo",
-                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Switch(
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                title: Text(_showSkyscanner ? "Ricerca Aeroporti" : "Traffico Aereo", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                trailing: Switch(
                   value: _showSkyscanner,
                   onChanged: (val) => setState(() => _showSkyscanner = val),
                   activeColor: theme.primaryColor,
                 ),
-          ],
-        ),
-        const SizedBox(height: 10),
+              ),
+            ),
+            const SizedBox(height: 10),
         if (!_showSkyscanner) ...[
           Text(
             "Monitora i voli in tempo reale nell'area visibile.",

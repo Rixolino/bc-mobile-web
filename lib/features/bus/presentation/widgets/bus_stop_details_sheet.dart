@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -28,11 +29,19 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
   List<StopDeparture> _departures = [];
   bool _isLoadingDepartures = false;
 
+  // Notification state for this stop (initialized on open)
+  bool _notificationsEnabled = false;
+
   @override
   void initState() {
     super.initState();
     _startAutoRefresh();
     _fetchDepartures(showLoading: true);
+
+    // Verify whether notifications are enabled for this stop so UI reflects current state
+    AndroidBackgroundService.isStopMonitored(widget.stop.stopId).then((v) {
+      if (mounted) setState(() => _notificationsEnabled = v);
+    });
   }
 
   @override
@@ -70,16 +79,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     _timer = null;
   }
 
-  void _toggleAutoRefresh() {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final interval = settings.busRefreshSeconds;
-    if (_timer != null) {
-      _stopAutoRefresh();
-    } else if (interval > 0) {
-      _startAutoRefresh();
-    }
-    setState(() {});
-  }
+
 
   Future<void> _fetchDepartures({bool showLoading = false}) async {
     if (showLoading) {
@@ -167,81 +167,144 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                                 ],
                               ),
                             ),
-                            Row(
-                              children: [
-                                Consumer2<FavoritesProvider, AuthProvider>(
-                                  builder: (context, favoritesProvider, authProvider, child) {
-                                    if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                                    
-                                    final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                                    final isFavorite = favoritesProvider.isStopFavorite(widget.stop.stopId, StopType.busStop);
-                                    return IconButton.filledTonal(
-                                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                                      onPressed: () async {
-                                        if (isFavorite) {
-                                          await favoritesProvider.removeStopFavorite(widget.stop.stopId, StopType.busStop);
-                                        } else {
-                                          final favoriteStop = favoritesProvider.createFavoriteStop(
-                                            userId: userId,
-                                            name: widget.stop.stopName,
-                                            code: widget.stop.stopId,
-                                            stopType: StopType.busStop,
-                                            latitude: widget.stop.latitude,
-                                            longitude: widget.stop.longitude,
-                                            city: null, // Non disponibile nel BariStop
-                                            region: null, // Non disponibile nel BariStop
-                                            provider: provider.selectedProvider?.name,
-                                            country: null,
-                                          );
-                                          await favoritesProvider.addStopFavorite(favoriteStop);
-                                        }
-                                      },
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: theme.surfaceColor.withOpacity(0.05),
-                                        foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor,
-                                      ),
-                                    );
-                                  },
-                                ),
-                                Consumer<SettingsProvider>(
-                                  builder: (context, settings, child) {
-                                    final canAutoRefresh = settings.busRefreshSeconds > 0;
-                                    return Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton.filledTonal(
-                                          icon: Icon(_timer != null ? Icons.timer : Icons.timer_off),
-                                          onPressed: canAutoRefresh ? _toggleAutoRefresh : null,
-                                          style: IconButton.styleFrom(
-                                            backgroundColor: theme.surfaceColor.withOpacity(0.05),
-                                            foregroundColor: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _BusNotificationsButton(stop: widget.stop),
-                                      ],
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.close, color: theme.secondaryTextColor),
-                                  onPressed: () {
-                                    if (widget.scrollController == null) {
-                                      // If opened as modal, close the modal sheet
-                                      Navigator.of(context).pop();
-                                    } else {
-                                      // If embedded in map, just clear the selection
-                                      provider.clearStopSelection();
-                                    }
-                                  },
-                                ),
-                              ],
+                            IconButton(
+                              icon: Icon(Icons.close, color: theme.secondaryTextColor),
+                              onPressed: () {
+                                if (widget.scrollController == null) {
+                                  // If opened as modal, close the modal sheet
+                                  Navigator.of(context).pop();
+                                } else {
+                                  // If embedded in map, just clear the selection
+                                  provider.clearStopSelection();
+                                }
+                              },
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text('Fermata Bus ${provider.selectedProvider?.name ?? 'N/A'}', style: TextStyle(color: theme.secondaryTextColor)),
+                      Text('Fermata Bus ${_capitalizeFirst(provider.selectedProvider?.name ?? 'N/A')}', style: TextStyle(color: theme.secondaryTextColor)),
+                      const SizedBox(height: 8),
+
+                      // Material-styled rounded buttons (Wrap to avoid overflow)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          // City / Provider info (outlined)
+                          if ((provider.selectedProvider?.name ?? '').isNotEmpty)
+                            OutlinedButton.icon(
+                              onPressed: null,
+                              icon: const Icon(Icons.location_city, size: 16),
+                              label: Text('Città • ${_capitalizeFirst(provider.selectedProvider?.name)}'),
+                              style: OutlinedButton.styleFrom(
+                                shape: const StadiumBorder(),
+                                foregroundColor: theme.textColor,
+                                side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.12)),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            ),
+
+                          // Stop ID (copy)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: widget.stop.stopId));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID fermata copiato')));
+                            },
+                            icon: const Icon(Icons.copy, size: 16),
+                            label: Text('ID • ${widget.stop.stopId}'),
+                            style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                          ),
+
+                          // Position (copy coordinates)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              final coords = '${widget.stop.latitude.toStringAsFixed(6)}, ${widget.stop.longitude.toStringAsFixed(6)}';
+                              Clipboard.setData(ClipboardData(text: coords));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coordinate copiate')));
+                            },
+                            icon: const Icon(Icons.my_location, size: 16),
+                            label: Text('Posizione • ${widget.stop.latitude.toStringAsFixed(6)}, ${widget.stop.longitude.toStringAsFixed(6)}'),
+                            style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                          ),
+
+                          // Favorite toggle as button (requires auth)
+                          Consumer2<FavoritesProvider, AuthProvider>(
+                            builder: (context, favoritesProvider, authProvider, child) {
+                              if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                              final isFavorite = favoritesProvider.isStopFavorite(widget.stop.stopId, StopType.busStop);
+                              return ElevatedButton.icon(
+                                onPressed: () async {
+                                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                                  if (isFavorite) {
+                                    await favoritesProvider.removeStopFavorite(widget.stop.stopId, StopType.busStop);
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fermata rimossa dai preferiti')));
+                                  } else {
+                                    final favoriteStop = favoritesProvider.createFavoriteStop(
+                                      userId: userId,
+                                      name: widget.stop.stopName,
+                                      code: widget.stop.stopId,
+                                      stopType: StopType.busStop,
+                                      latitude: widget.stop.latitude,
+                                      longitude: widget.stop.longitude,
+                                      city: null,
+                                      region: null,
+                                      provider: provider.selectedProvider?.name,
+                                      country: null,
+                                    );
+                                    await favoritesProvider.addStopFavorite(favoriteStop);
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fermata aggiunta ai preferiti')));
+                                  }
+                                },
+                                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, size: 16, color: isFavorite ? Colors.red : null),
+                                label: Text(isFavorite ? 'Preferito' : 'Aggiungi ai preferiti'),
+                                style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                              );
+                            },
+                          ),
+
+                          // Notifications toggle as stateful button (icon + label reflect current state)
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await AndroidBackgroundService.requestPermission();
+                                final providerName = provider.selectedProvider?.name ?? '';
+                                final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
+                                final settings = Provider.of<SettingsProvider>(context, listen: false);
+
+                                if (!_notificationsEnabled) {
+                                  // enable monitoring
+                                  await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds, stopId: widget.stop.stopId, stopName: widget.stop.stopName);
+                                  // optionally show a small notification immediately
+                                  final title = '${widget.stop.stopName} (${widget.stop.stopId})';
+                                  final items = _departures.take(3).map((d) => '${d.line} ${d.formattedTime}').join(', ');
+                                  final body = items.isEmpty ? 'Nessuna partenza disponibile al momento' : 'Prossime partenze: $items';
+                                  await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: title, body: body, key: 'stop:${widget.stop.stopId}');
+
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche attivate per ${providerName.isNotEmpty ? providerName : 'questa fermata'}')));
+                                } else {
+                                  // disable monitoring
+                                  await AndroidBackgroundService.removeMonitoredStop(widget.stop.stopId);
+                                  await AndroidBackgroundService.cancelNotification(key: 'stop:${widget.stop.stopId}');
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate per questa fermata')));
+                                }
+
+                                setState(() => _notificationsEnabled = !_notificationsEnabled);
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore notifiche: $e')));
+                              }
+                            },
+                            icon: Icon(_notificationsEnabled ? Icons.notifications_active : Icons.notifications_none, size: 16, color: _notificationsEnabled ? Theme.of(context).primaryColor : null),
+                            label: Text(_notificationsEnabled ? 'Disattiva notifiche' : 'Notifiche'),
+                            style: ElevatedButton.styleFrom(
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              backgroundColor: _notificationsEnabled ? Theme.of(context).primaryColor.withOpacity(0.12) : null,
+                            ),
+                          ),
+                        ],
+                      ),
+
                       const SizedBox(height: 18),
 
                       // Basic info
@@ -366,12 +429,12 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                         builder: (context) => BusDetailsSheet(bus: existingBus!, page: 'favorites'),
                       );
                     }
-                  } else if (departure.vehicleId != null && departure.vehicleId.isNotEmpty) {
+                  } else if (departure.vehicleId.isNotEmpty) {
                     // Crea un nuovo bus temporaneo con coordinate dal provider
                     final newBus = BusVehicle(
                       id: departure.vehicleId,
                       line: departure.line,
-                      destination: destination ?? departure.destination ?? '',
+                      destination: destination ?? departure.destination,
                       latitude: selectedProvider.latitude ?? 0.0,
                       longitude: selectedProvider.longitude ?? 0.0,
                       tripId: departure.tripId,
@@ -406,7 +469,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                departure.line ?? 'N/A',
+                departure.line,
                 style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
               ),
             ),
@@ -418,7 +481,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "${departure.formattedTime ?? 'N/A'}${departure.delayText ?? ''}",
+                  "${departure.formattedTime}${departure.delayText}",
                   style: TextStyle(color: theme.secondaryTextColor),
                 ),
                 if (departure.isRealtime)
@@ -487,79 +550,13 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
       ),
     );
   }
-}
 
-// Notifications button for a specific bus stop/trip
-class _BusNotificationsButton extends StatefulWidget {
-  final BariStop stop;
-  const _BusNotificationsButton({required this.stop});
-
-  @override
-  State<_BusNotificationsButton> createState() => _BusNotificationsButtonState();
-}
-
-class _BusNotificationsButtonState extends State<_BusNotificationsButton> {
-  bool _enabled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize enabled state based on monitored stops stored in native prefs
-    AndroidBackgroundService.isStopMonitored(widget.stop.stopId).then((v) {
-      if (mounted) setState(() => _enabled = v);
-    });
-  }
-
-  Future<void> _toggle() async {
-    final providerName = Provider.of<BusProvider>(context, listen: false).selectedProvider?.name ?? '';
-    final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
-
-    try {
-      await AndroidBackgroundService.requestPermission();
-      if (!_enabled) {
-        // Fetch immediate data for this stop and notify user with summary
-        final provider = Provider.of<BusProvider>(context, listen: false);
-        List<StopDeparture> departures = [];
-        try {
-          departures = await provider.fetchStopUpdates(widget.stop.stopId);
-        } catch (e) {
-          print('Errore fetching stop updates on enable: $e');
-        }
-
-        String body;
-        if (departures.isEmpty) {
-          body = 'Nessuna partenza disponibile al momento per la fermata ${widget.stop.stopId}';
-        } else {
-          final items = departures.take(3).map((d) => '${d.line} ${d.formattedTime}').join(', ');
-          body = 'Prossime partenze: $items';
-        }
-
-        final settings = Provider.of<SettingsProvider>(context, listen: false);
-        await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds, stopId: widget.stop.stopId, stopName: widget.stop.stopName);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche autobus attivate per ${providerName.isNotEmpty ? providerName : 'provider'}')));
-        // Use stop name and id as notification title when enabling notifications for this stop
-        final title = '${widget.stop.stopName} (${widget.stop.stopId})';
-        final key = 'stop:${widget.stop.stopId}';
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: title, body: body, key: key);
-      } else {
-        // Remove only this monitored stop instead of cancelling all bus monitoring
-        await AndroidBackgroundService.removeMonitoredStop(widget.stop.stopId);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche autobus disattivate per questa fermata')));
-        final key = 'stop:${widget.stop.stopId}';
-        await AndroidBackgroundService.cancelNotification(key: key);
-        await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: 'Notifiche bus disattivate', body: 'Hai disattivato le notifiche per questa fermata');
-      }
-      setState(() => _enabled = !_enabled);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore notifiche: $e')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton.filledTonal(
-      icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
-      onPressed: _toggle,
-    );
+  String _capitalizeFirst(String? s) {
+    if (s == null) return '';
+    final t = s.trim();
+    if (t.isEmpty) return '';
+    return t[0].toUpperCase() + t.substring(1);
   }
 }
+
+
