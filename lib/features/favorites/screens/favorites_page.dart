@@ -1362,7 +1362,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             subtitle: Text(s.country),
                             onTap: () async {
                               Navigator.pop(context);
-                              trainProvider.selectStation(s);
+                              // Usa il country del preferito invece di quello della stazione trovata
+                              final stationWithPreferredCountry = TrainStation(
+                                id: s.id,
+                                name: s.name,
+                                country: stop.country ?? s.country,
+                                type: s.type,
+                              );
+                              trainProvider.selectStation(stationWithPreferredCountry);
                               await showModalBottomSheet(
                                 context: context,
                                 isScrollControlled: true,
