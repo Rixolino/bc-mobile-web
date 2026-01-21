@@ -420,6 +420,8 @@ class MainActivity: FlutterActivity() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
+            // Make notification expandable to show full details
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body ?: ""))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
