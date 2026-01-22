@@ -10,7 +10,7 @@ import 'presentation/providers/config_provider.dart';
 import 'presentation/providers/settings_provider.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/map_state_provider.dart';
-import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/splash_screen.dart';
 import 'core/services/android_background_service.dart';
 
 void main() {
@@ -121,7 +121,7 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
                 theme: AppTheme.lightTheme,
                 darkTheme: AppTheme.darkTheme,
                 themeMode: theme.themeMode,
-                home: const HomeScreen(),
+                home: const SplashScreen(),
               );
             },
           );

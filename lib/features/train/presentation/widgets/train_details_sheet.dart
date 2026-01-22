@@ -26,6 +26,18 @@ class _ActualTime {
   const _ActualTime(this.time, {this.isEstimated = false});
 }
 
+// Shared helper: estimate arrival and departure UTC times for a stop using train-level delay when schedules are used.
+Map<String, DateTime?> _estimateStopTimesGlobal(TrainStop s, int trainDelay) {
+  DateTime? arr = s.estimatedArrival?.toUtc() ?? (s.arrival != null ? s.arrival!.toUtc().add(Duration(minutes: trainDelay)) : null);
+  DateTime? dep = s.estimatedDeparture?.toUtc() ?? (s.departure != null ? s.departure!.toUtc().add(Duration(minutes: trainDelay)) : null);
+
+  // Ensure both exist when possible
+  if (arr == null && dep != null) arr = dep.subtract(const Duration(minutes: 1));
+  if (dep == null && arr != null) dep = arr.add(const Duration(minutes: 1));
+
+  return {'arr': arr, 'dep': dep};
+}
+
 class TrainDetailsSheet extends StatefulWidget {
   final TrainDeparture departure;
   final bool isArrivalMode;
@@ -99,12 +111,23 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     final now = DateTime.now().toUtc();
     final stops = d.stops ?? [];
 
+    // Local helper to compute effective UTC times respecting train-level delay
+    _ActualTime? _stopActual(DateTime? scheduled, DateTime? estimated, int? stopDelayMinutes) {
+      if (estimated != null) return _ActualTime(estimated.toUtc(), isEstimated: true);
+      if (scheduled != null) {
+        final int trainDelay = d.delayMinutes ?? 0;
+        final int useDelay = trainDelay != 0 ? trainDelay : (stopDelayMinutes ?? 0);
+        return _ActualTime(scheduled.toUtc().add(Duration(minutes: useDelay)), isEstimated: false);
+      }
+      return null;
+    }
+
     // Structured stop info with normalized UTC times
     final stopStates = <Map<String, dynamic>>[];
     for (int i = 0; i < stops.length; i++) {
       final s = stops[i];
-      final DateTime? arrUtc = (s.estimatedArrival ?? s.arrival)?.toUtc();
-      final DateTime? depUtc = (s.estimatedDeparture ?? s.departure)?.toUtc();
+      final DateTime? arrUtc = _stopActual(s.arrival, s.estimatedArrival, s.arrivalDelay)?.time;
+      final DateTime? depUtc = _stopActual(s.departure, s.estimatedDeparture, s.departureDelay)?.time;
       stopStates.add({
         'index': i,
         'stop': s,
@@ -353,13 +376,16 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                         itemBuilder: (c, i) {
                           final s = stops[i];
                           final nowUtc = DateTime.now().toUtc();
-                          final DateTime? arr = s.estimatedArrival ?? s.arrival;
-                          final DateTime? dep = s.estimatedDeparture ?? s.departure;
+                          // Compute effective arrival/departure times using train-level delay when estimates are missing
+                          final times = _estimateStopTimesGlobal(s, widget.departure.delayMinutes ?? 0);
+                          final DateTime? arr = times['arr'] as DateTime?;
+                          final DateTime? dep = times['dep'] as DateTime?;
+
                           bool isPassed = false;
                           bool isCurrent = false;
-                          if (dep != null && dep.toUtc().isBefore(nowUtc)) {
+                          if (dep != null && dep.isBefore(nowUtc)) {
                             isPassed = true;
-                          } else if (arr != null && arr.toUtc().isBefore(nowUtc) && (dep == null || arr.toUtc().isBefore(nowUtc))) {
+                          } else if (arr != null && arr.isBefore(nowUtc) && (dep == null || arr.isBefore(nowUtc))) {
                             isPassed = true;
                           }
                           if (arr != null && nowUtc.isAfter(arr) && (dep == null || nowUtc.isBefore(dep))) {
@@ -617,11 +643,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     return DateFormat('HH:mm').format(date.toUtc().add(Duration(hours: offset)));
   }
 
-  _ActualTime? _getActualTime(DateTime? scheduled, DateTime? estimated, int? delayMinutes) {
-    if (estimated != null) return _ActualTime(estimated.toUtc(), isEstimated: true);
-    if (scheduled != null) return _ActualTime(scheduled.toUtc().add(Duration(minutes: delayMinutes ?? 0)), isEstimated: false);
-    return null;
-  }
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -639,11 +663,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
     if (stops.isNotEmpty) {
       for (int i = 0; i < stops.length - 1; i++) {
-        final depCurrent = _getActualTime(stops[i].departure, stops[i].estimatedDeparture, stops[i].departureDelay ?? 0);
-        final arrNext = _getActualTime(stops[i+1].arrival, stops[i+1].estimatedArrival, stops[i+1].arrivalDelay ?? 0);
-        final arrCurrent = _getActualTime(stops[i].arrival, stops[i].estimatedArrival, stops[i].arrivalDelay ?? 0);
+        final curTimes = _estimateStopTimesGlobal(stops[i], widget.departure.delayMinutes ?? 0);
+        final nextTimes = _estimateStopTimesGlobal(stops[i+1], widget.departure.delayMinutes ?? 0);
 
-        if (depCurrent != null && depCurrent.isEstimated && arrNext != null && nowUtc.isAfter(depCurrent.time) && nowUtc.isBefore(arrNext.time)) {
+        final _ActualTime? depCurrent = curTimes['dep'] != null ? _ActualTime(curTimes['dep']!, isEstimated: stops[i].estimatedDeparture != null) : null;
+        final _ActualTime? arrCurrent = curTimes['arr'] != null ? _ActualTime(curTimes['arr']!, isEstimated: stops[i].estimatedArrival != null) : null;
+        final _ActualTime? arrNext = nextTimes['arr'] != null ? _ActualTime(nextTimes['arr']!, isEstimated: stops[i+1].estimatedArrival != null) : null;
+
+        // If the train is currently traversing between depCurrent and arrNext
+        if (depCurrent != null && arrNext != null && nowUtc.isAfter(depCurrent.time) && nowUtc.isBefore(arrNext.time)) {
           currentSegmentIndex = i;
           isAtStation = false;
           final total = arrNext.time.difference(depCurrent.time).inSeconds;
@@ -652,12 +680,14 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           break;
         }
 
+        // If the current stop window covers now, mark as at station
         if (arrCurrent != null && depCurrent != null && !nowUtc.isBefore(arrCurrent.time) && !nowUtc.isAfter(depCurrent.time)) {
           currentSegmentIndex = i;
           isAtStation = true;
           break;
         }
-        
+
+        // If we've already passed the next arrival, move the index forward
         if (arrNext != null && nowUtc.isAfter(arrNext.time)) currentSegmentIndex = i + 1;
       }
     }
