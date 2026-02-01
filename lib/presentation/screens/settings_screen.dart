@@ -84,6 +84,9 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _buildBackgroundNotificationControls(context, settings, theme),
 
+              const SizedBox(height: 16),
+              _buildTrainProximityNotice(context, settings, theme),
+
               const SizedBox(height: 32),
               
               _buildSectionTitle('Mappa', theme),
@@ -486,7 +489,43 @@ class SettingsScreen extends StatelessWidget {
       },
     );
   }
-
+  Widget _buildTrainProximityNotice(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    final int current = settings.trainArrivalPreNoticeMinutes;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text('Preavviso arrivo stazione', style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Text('$current min', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Slider(
+            value: current.toDouble(),
+            min: 5,
+            max: 20,
+            divisions: 15,
+            label: '$current min',
+            onChanged: (v) => settings.setTrainArrivalPreNoticeMinutes(v.toInt()),
+            activeColor: theme.primaryColor,
+          ),
+          const SizedBox(height: 6),
+          Text('Ricevi un avviso N minuti prima dell\'arrivo stimato alla tua fermata (5–20 minuti).', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+        ],
+      ),
+    );
+  }
   void _showBusConfigDialog(BuildContext context, SettingsProvider settings) {
     final providerController = TextEditingController(text: settings.busProvider);
     final baseController = TextEditingController(text: settings.busBaseUrl);

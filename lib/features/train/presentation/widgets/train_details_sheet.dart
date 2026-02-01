@@ -13,6 +13,7 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
+import '../../../../presentation/providers/notification_manager_provider.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -289,10 +290,12 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       final destIdx = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
       if (destIdx != -1 && stops[destIdx].cancelled) return '⚠️ La tua fermata ($userDestination) è stata annullata.';
       if (isAtStation && lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
-        return '⚠️ Treno in stazione: $userDestination. Preparati a scendere.';
+        // keep neutral informational message for main channel
+        return '⚠️ Treno in stazione: $userDestination. Ricordati di scendere.';
       }
       if (nextStop.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
-        return '⚠️ Prepara i bagagli! Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
+        // do not instruct to "prepare bags" here; proximity alerts will be sent on a dedicated channel
+        return '⚠️ Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
       }
       if (lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase() && nextIndex == -1) {
         return '🚉 Sei arrivato a $userDestination. Ricordati di scendere dal treno!';
@@ -572,6 +575,8 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     }
 
     // Proceed to schedule even if resolvedEndpoint is null (service will skip fetch if no country/endpoint)
+    // include arrival pre-notice from settings
+    final settings = Provider.of<SettingsProvider>(ctx, listen: false);
     await AndroidBackgroundService.scheduleTrainsWorker(
       tripId: tripId,
       country: usedCountry ?? countryFromMeta,
@@ -579,9 +584,16 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       intervalSeconds: settingsInterval,
       notifyMode: notifyMode,
       destinationStop: destinationStop,
+      arrivalNoticeMinutes: settings.trainArrivalPreNoticeMinutes,
     );
 
     ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Notifica impostata')));
+
+    // If user requested destination-specific notify, do an immediate proximity check (may trigger the pre-notice now)
+    if (notifyMode == 'to_destination' && destinationStop != null && destinationStop.isNotEmpty) {
+      final notifProv = Provider.of<NotificationManagerProvider>(ctx, listen: false);
+      notifProv.triggerProximityCheckForTrip(tripId ?? '', destinationStop, settings.trainArrivalPreNoticeMinutes);
+    }
   }
 
   @override

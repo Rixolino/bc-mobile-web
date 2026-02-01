@@ -16,6 +16,7 @@ class SettingsProvider with ChangeNotifier {
   // Configurable parameters for background workers
   static const String keyTrainStationId = 'train_station_id';
   static const String keyTrainService = 'train_service';
+  static const String keyTrainArrivalPreNotice = 'train_arrival_prenotice_minutes';
   static const String keyBusProvider = 'bus_provider';
   static const String keyBusBaseUrl = 'bus_base_url';
 
@@ -35,6 +36,9 @@ class SettingsProvider with ChangeNotifier {
   String _busProvider = 'bari';
   String _busBaseUrl = 'https://betacloud-transporter.is-cool.dev';
 
+  // Arrival pre-notice for trains (minutes before effective arrival)
+  int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
+
   int get busRefreshSeconds => _busRefreshSeconds;
   int get trainRefreshSeconds => _trainRefreshSeconds;
   int get planeRefreshSeconds => _planeRefreshSeconds;
@@ -49,6 +53,9 @@ class SettingsProvider with ChangeNotifier {
   String get trainService => _trainService;
   String get busProvider => _busProvider;
   String get busBaseUrl => _busBaseUrl;
+
+  // New: arrival pre-notice in minutes
+  int get trainArrivalPreNoticeMinutes => _trainArrivalPreNoticeMinutes;
 
   SettingsProvider() {
     _loadSettings();
@@ -70,6 +77,7 @@ class SettingsProvider with ChangeNotifier {
     // Load worker params
     _trainStationId = prefs.getString(keyTrainStationId) ?? '';
     _trainService = prefs.getString(keyTrainService) ?? 'trainboardeu';
+    _trainArrivalPreNoticeMinutes = prefs.getInt(keyTrainArrivalPreNotice) ?? 10;
     _busProvider = prefs.getString(keyBusProvider) ?? 'bari';
     _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
 
@@ -101,7 +109,7 @@ class SettingsProvider with ChangeNotifier {
     // If trains worker is enabled, reschedule with new interval
     if (_trainsWorkerEnabled) {
       try {
-        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: seconds);
+        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: seconds, arrivalNoticeMinutes: _trainArrivalPreNoticeMinutes);
       } catch (e) {
         print('Error rescheduling trains worker: $e');
       }
@@ -170,6 +178,22 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyTrainService, service);
+  }
+
+  Future<void> setTrainArrivalPreNoticeMinutes(int minutes) async {
+    _trainArrivalPreNoticeMinutes = minutes;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(keyTrainArrivalPreNotice, minutes);
+
+    // If trains worker is enabled, reschedule with new pre-notice value
+    if (_trainsWorkerEnabled) {
+      try {
+        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: _trainRefreshSeconds, );
+      } catch (e) {
+        print('Error rescheduling trains worker with new arrival pre-notice: $e');
+      }
+    }
   }
 
   // Bus worker config

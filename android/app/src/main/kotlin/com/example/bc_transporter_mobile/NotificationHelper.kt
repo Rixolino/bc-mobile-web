@@ -11,6 +11,8 @@ object NotificationHelper {
     const val CHANNEL_FUNCTIONS = "functions_updates_channel"
     const val CHANNEL_TRAINS = "trains_updates_channel"
     const val CHANNEL_BUSES = "buses_updates_channel"
+    // Channel for proximity / arrival alerts
+    const val CHANNEL_TRAIN_PROXIMITY = "trains_proximity_channel"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -34,6 +36,12 @@ object NotificationHelper {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply { description = "Notifiche specifiche sui bus" }
 
+            val trainProx = NotificationChannel(
+                CHANNEL_TRAIN_PROXIMITY,
+                "Avvisi arrivo stazione",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply { description = "Notifiche di preavviso per l'arrivo alla stazione selezionata" }
+
             val functions = NotificationChannel(
                 CHANNEL_FUNCTIONS,
                 "Notifiche Funzioni",
@@ -43,6 +51,7 @@ object NotificationHelper {
             nm.createNotificationChannel(transports)
             nm.createNotificationChannel(trains)
             nm.createNotificationChannel(buses)
+            nm.createNotificationChannel(trainProx)
             nm.createNotificationChannel(functions)
         }
     }
