@@ -1,4 +1,4 @@
-package com.example.bc_transporter_mobile
+﻿package com.rix19.betacloud.transporter
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -432,4 +432,6 @@ class MainActivity: FlutterActivity() {
         notificationManager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), builder.build())
     }
 }
+
+
 

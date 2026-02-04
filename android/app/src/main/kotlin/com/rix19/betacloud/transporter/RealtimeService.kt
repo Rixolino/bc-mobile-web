@@ -1,4 +1,4 @@
-package com.example.bc_transporter_mobile
+﻿package com.rix19.betacloud.transporter
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -231,7 +231,7 @@ class RealtimeService : Service() {
                 // Log intervallo tra le iterazioni
                 if (lastIterationTs > 0) {
                     val actualIntervalSec = (startTs - lastIterationTs) / 1000
-                    Log.d("RealtimeService", "═══ POLLING ITERATION START ═══ (actual interval: ${actualIntervalSec}s, target: ${normalizedInterval}s)")
+                    Log.d("RealtimeService", "â•â•â• POLLING ITERATION START â•â•â• (actual interval: ${actualIntervalSec}s, target: ${normalizedInterval}s)")
                 }
                 lastIterationTs = startTs
 
@@ -293,11 +293,11 @@ class RealtimeService : Service() {
                                                 val dest = dep?.optString("destination") ?: dep?.optString("to") ?: dep?.optString("headsign") ?: ""
                                                 val rawTime = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: dep?.optString("expectedTime") ?: ""
                                                 val time = formatTimeString(rawTime)
-                                        val part = listOf(line, time, if (dest.isNotEmpty()) "→ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
+                                        val part = listOf(line, time, if (dest.isNotEmpty()) "â†’ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
                                                 if (part.isNotEmpty()) items.add(part)
                                             }
                                         }
-                                        val bodyText = if (items.isEmpty()) "Nessuna partenza disponibile al momento" else "Prossime partenze: " + items.joinToString(" • ")
+                                        val bodyText = if (items.isEmpty()) "Nessuna partenza disponibile al momento" else "Prossime partenze: " + items.joinToString(" â€¢ ")
                                         val title = if (name.isNotEmpty()) "${name} (${id})" else "Fermata ${id}"
                                         val nid = NotificationHelper.getIdForKey("stop:$id")
                                         NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_BUSES, title, bodyText, nid)
@@ -344,11 +344,11 @@ class RealtimeService : Service() {
                                                 val dest = dep?.optString("destination") ?: dep?.optString("to") ?: ""
                                                 val rawTime = dep?.optString("time") ?: dep?.optString("scheduledTime") ?: dep?.optString("departureTime") ?: ""
                                                 val time = formatTimeString(rawTime)
-                                                val part = listOf(train, time, if (dest.isNotEmpty()) "→ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
+                                                val part = listOf(train, time, if (dest.isNotEmpty()) "â†’ $dest" else "").filter { it.isNotEmpty() }.joinToString(" ")
                                                 if (part.isNotEmpty()) items.add(part)
                                             }
                                         }
-                                        val bodyText = if (items.isEmpty()) "Nessuna partenza disponibile" else "Prossime partenze: " + items.joinToString(" • ")
+                                        val bodyText = if (items.isEmpty()) "Nessuna partenza disponibile" else "Prossime partenze: " + items.joinToString(" â€¢ ")
                                         val title = "Stazione ${sid}"
                                         val nid = NotificationHelper.getIdForKey("station:$sid")
                                         NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, nid)
@@ -405,7 +405,7 @@ class RealtimeService : Service() {
                                     val root = JSONObject(body)
                                     val json = root.optJSONObject("data") ?: root
 
-                                    // Determine train title (robust fallbacks) — origin/destination can be objects
+                                    // Determine train title (robust fallbacks) â€” origin/destination can be objects
                                     val category = json.optString("category").takeIf { it.isNotBlank() } ?: json.optString("type").takeIf { it.isNotBlank() } ?: ""
                                     val trainNum = json.optString("tripNumber").takeIf { it.isNotBlank() }
                                         ?: json.optString("trainNumber").takeIf { it.isNotBlank() }
@@ -430,7 +430,7 @@ class RealtimeService : Service() {
                                         ?: "-"
 
                                     val trainName = listOf(category, trainNum).filter { it.isNotBlank() }.joinToString(" ")
-                                    val title = if (origin == "-" && dest == "-") trainName else "$trainName (${origin} → ${dest})"
+                                    val title = if (origin == "-" && dest == "-") trainName else "$trainName (${origin} â†’ ${dest})"
 
                                     // Parse stops (support multiple key names and fallback arrays)
                                     val stopsArr = json.optJSONArray("stops")
@@ -518,8 +518,8 @@ class RealtimeService : Service() {
                                             Log.d("RealtimeService", "Trip $tId: Found startingStop='$startingStop' at index $startingIndex")
                                         }
                                         
-                                        // First pass: find lastPassed (completely past its departure time)
-                                        // and also get its scheduled departure time to check for delays
+                                        // First pass: find lastPassed (completely past its estimated departure time)
+                                        // CRITICAL: All logic based on ESTIMATED times, never scheduled
                                         // Start from startingIndex (or 0 if not set)
                                         val scanStart = if (startingIndex >= 0) startingIndex else 0
                                         
@@ -539,64 +539,56 @@ class RealtimeService : Service() {
 
                                             if (cancelled) continue
 
-                                            // Get arrival times first (to check if train has arrived)
-                                            val arrKeys = listOf("expectedArrival", "estimatedArrival", "actualArrival", "expectedTime", "arrival", "scheduledArrival", "arrivalTime", "time")
-                                            var arrInst: java.time.Instant? = null
-                                            for (k in arrKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank()) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null) { arrInst = parsed; break }
-                                                }
-                                            }
-
-                                            // Get departure times (scheduled and estimated)
-                                            val depKeys = listOf("expectedDeparture", "estimatedDeparture", "actualDeparture", "departure", "scheduledDeparture", "departureTime")
-                                            var schedDepInst: java.time.Instant? = null
-                                            var estDepInst: java.time.Instant? = null
-                                            
+                                            // Get SCHEDULED times as baseline
+                                            val schedArr = s?.optString("scheduledArrival") ?: s?.optString("arrivalTime") ?: ""
                                             val schedDep = s?.optString("scheduledDeparture") ?: s?.optString("departureTime") ?: ""
-                                            schedDepInst = if (schedDep.isNotBlank()) parseToInstant(schedDep) else null
+                                            var schedArrInst: java.time.Instant? = if (schedArr.isNotBlank()) parseToInstant(schedArr) else null
+                                            var schedDepInst: java.time.Instant? = if (schedDep.isNotBlank()) parseToInstant(schedDep) else null
+
+                                            // Get ESTIMATED times (preferred)
+                                            val estArr = s?.optString("estimatedArrival") ?: s?.optString("expectedArrival") ?: s?.optString("arrival") ?: ""
+                                            val estDep = s?.optString("estimatedDeparture") ?: s?.optString("expectedDeparture") ?: s?.optString("departure") ?: ""
+                                            var estArrInst: java.time.Instant? = if (estArr.isNotBlank()) parseToInstant(estArr) else null
+                                            var estDepInst: java.time.Instant? = if (estDep.isNotBlank()) parseToInstant(estDep) else null
                                             
-                                            for (k in depKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank() && estDepInst == null) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null && !parsed.isBefore(schedDepInst ?: now)) {
-                                                        estDepInst = parsed; break
-                                                    }
-                                                }
+                                            // If estimated not available, CALCULATE it from scheduled + delay
+                                            if (estArrInst == null && schedArrInst != null) {
+                                                val arrDelayMin = s?.optInt("arrivalDelay", 0) ?: 0
+                                                estArrInst = schedArrInst.plusSeconds((arrDelayMin * 60).toLong())
+                                            }
+                                            if (estDepInst == null && schedDepInst != null) {
+                                                val depDelayMin = s?.optInt("departureDelay", 0) ?: 0
+                                                estDepInst = schedDepInst.plusSeconds((depDelayMin * 60).toLong())
                                             }
 
-                                            // Check if train is **currently stopped at this station** (arrived but not yet departed)
-                                            val depToCheck = estDepInst ?: schedDepInst
-                                            if (arrInst != null && !arrInst.isAfter(now) && depToCheck != null && !depToCheck.isBefore(now)) {
-                                                // Train HAS ARRIVED but NOT YET DEPARTED → currently at this station
+                                            // Check if train is **currently stopped at this station** (estimated arrival in past, estimated departure in future)
+                                            if (estArrInst != null && !estArrInst.isAfter(now) && estDepInst != null && !estDepInst.isBefore(now)) {
+                                                // Train HAS ARRIVED but NOT YET DEPARTED (estimated times) â†’ currently at this station
                                                 currentStationName = name
-                                                currentStationDeparture = depToCheck
+                                                currentStationDeparture = estDepInst  // Use estimated departure
                                                 lastPassedIndex = i
                                                 lastPassed = name
                                                 lastPassedDepartureScheduled = schedDepInst
                                                 lastPassedDepartureEstimated = estDepInst
                                                 // Don't break; keep looking for stations further ahead that might also have past arrival times
-                                            } else if (depToCheck != null && depToCheck.isBefore(now)) {
-                                                // Departure is completely in the past → train has already left
+                                            } else if (estDepInst != null && estDepInst.isBefore(now)) {
+                                                // Estimated departure is completely in the past â†’ train has already left
                                                 lastPassedIndex = i
                                                 lastPassed = name
                                                 lastPassedDepartureScheduled = schedDepInst
                                                 lastPassedDepartureEstimated = estDepInst
                                                 // Don't override currentStation if already set; clear it if this stop is fully past
-                                                if (arrInst != null && !arrInst.isAfter(now) && depToCheck != null && depToCheck.isBefore(now)) {
+                                                if (estArrInst != null && !estArrInst.isAfter(now) && estDepInst != null && estDepInst.isBefore(now)) {
                                                     currentStationName = ""  // Train has left, no longer "at" a station
                                                     currentStationDeparture = null
                                                 }
                                             } else {
-                                                // Stop in the future; no need to check further for lastPassed
+                                                // Stop in the future (estimated); no need to check further for lastPassed
                                                 break
                                             }
                                         }
 
-                                        // Second pass: find next stop (first one not yet departed)
+                                        // Second pass: find next stop (first one not yet departed based on ESTIMATED times)
                                         // Start from startingIndex or 0
                                         // **RIGOROUS:** Only consider stops that are:
                                         // 1. After lastPassedIndex (to avoid going backwards)
@@ -619,85 +611,49 @@ class RealtimeService : Service() {
 
                                             if (cancelled) continue
 
-                                            // Get scheduled times (primary reference for rigid checking)
-                                            val schedArrKeys = listOf("scheduledArrival", "arrivalTime", "time")
-                                            var schedArrInst: java.time.Instant? = null
-                                            for (k in schedArrKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank()) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null) { schedArrInst = parsed; break }
-                                                }
-                                            }
+                                            // Get SCHEDULED times as baseline
+                                            val schedArr = s?.optString("scheduledArrival") ?: s?.optString("arrivalTime") ?: ""
+                                            val schedDep = s?.optString("scheduledDeparture") ?: s?.optString("departureTime") ?: ""
+                                            var schedArrInst: java.time.Instant? = if (schedArr.isNotBlank()) parseToInstant(schedArr) else null
+                                            var schedDepInst: java.time.Instant? = if (schedDep.isNotBlank()) parseToInstant(schedDep) else null
+
+                                            // Get ESTIMATED times (preferred)
+                                            val estArr = s?.optString("estimatedArrival") ?: s?.optString("expectedArrival") ?: s?.optString("arrival") ?: ""
+                                            val estDep = s?.optString("estimatedDeparture") ?: s?.optString("expectedDeparture") ?: s?.optString("departure") ?: ""
+                                            var estArrInst: java.time.Instant? = if (estArr.isNotBlank()) parseToInstant(estArr) else null
+                                            var estDepInst: java.time.Instant? = if (estDep.isNotBlank()) parseToInstant(estDep) else null
                                             
-                                            val schedDepKeys = listOf("scheduledDeparture", "departureTime")
-                                            var schedDepInst: java.time.Instant? = null
-                                            for (k in schedDepKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank()) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null) { schedDepInst = parsed; break }
-                                                }
+                                            // If estimated not available, CALCULATE it from scheduled + delay
+                                            if (estArrInst == null && schedArrInst != null) {
+                                                val arrDelayMin = s?.optInt("arrivalDelay", 0) ?: 0
+                                                estArrInst = schedArrInst.plusSeconds((arrDelayMin * 60).toLong())
+                                            }
+                                            if (estDepInst == null && schedDepInst != null) {
+                                                val depDelayMin = s?.optInt("departureDelay", 0) ?: 0
+                                                estDepInst = schedDepInst.plusSeconds((depDelayMin * 60).toLong())
                                             }
 
-                                            // **RIGID CONTROL:** Stop must have scheduled time in future (or now) to be considered as next
-                                            val schedArrFuture = schedArrInst?.takeIf { !it.isBefore(now) }
-                                            val schedDepFuture = schedDepInst?.takeIf { !it.isBefore(now) }
+                                            // **RIGID CONTROL:** Stop must have ESTIMATED time in future to be considered as next
+                                            val estArrFuture = estArrInst?.takeIf { !it.isBefore(now) }
+                                            val estDepFuture = estDepInst?.takeIf { !it.isBefore(now) }
                                             
-                                            // If neither scheduled time is in future, skip this stop (it's already passed or being processed)
-                                            if (schedArrFuture == null && schedDepFuture == null) continue
+                                            // If neither estimated time is in future, skip this stop (it's already passed or being processed)
+                                            if (estArrFuture == null && estDepFuture == null) continue
 
-                                            // Get estimated times (for display/calculation, but scheduled is authority)
-                                            val arrKeys = listOf("expectedArrival", "estimatedArrival", "actualArrival", "expectedTime", "arrival", "scheduledArrival", "arrivalTime", "time")
-                                            var arrInst: java.time.Instant? = null
-                                            for (k in arrKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank()) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null) { arrInst = parsed; break }
-                                                }
-                                            }
-
-                                            val depKeys = listOf("expectedDeparture", "estimatedDeparture", "actualDeparture", "departure", "scheduledDeparture", "departureTime")
-                                            var depInst: java.time.Instant? = null
-                                            for (k in depKeys) {
-                                                val v = s?.optString(k)
-                                                if (!v.isNullOrBlank()) {
-                                                    val parsed = parseToInstant(v)
-                                                    if (parsed != null) { depInst = parsed; break }
-                                                }
-                                            }
-
-                                            // Prefer estimated times if available, otherwise use scheduled
+                                            // Prefer estimated arrival/departure times for next stop selection
                                             var candidateInst: java.time.Instant? = null
                                             var candidateType: String? = null
                                             
-                                            val arrFuture = arrInst?.takeIf { !it.isBefore(now) }
-                                            val depFuture = depInst?.takeIf { !it.isBefore(now) }
-
-                                            if (arrFuture != null && depFuture != null) {
-                                                if (!arrFuture.isAfter(depFuture)) {
-                                                    candidateInst = arrFuture; candidateType = "arrival"
+                                            if (estArrFuture != null && estDepFuture != null) {
+                                                if (!estArrFuture.isAfter(estDepFuture)) {
+                                                    candidateInst = estArrFuture; candidateType = "arrival"
                                                 } else {
-                                                    candidateInst = depFuture; candidateType = "departure"
+                                                    candidateInst = estDepFuture; candidateType = "departure"
                                                 }
-                                            } else if (arrFuture != null) {
-                                                candidateInst = arrFuture; candidateType = "arrival"
-                                            } else if (depFuture != null) {
-                                                candidateInst = depFuture; candidateType = "departure"
-                                            } else {
-                                                // Fallback to scheduled if no estimate available (but we already checked scheduled is in future)
-                                                if (schedArrFuture != null && schedDepFuture != null) {
-                                                    if (!schedArrFuture.isAfter(schedDepFuture)) {
-                                                        candidateInst = schedArrFuture; candidateType = "arrival"
-                                                    } else {
-                                                        candidateInst = schedDepFuture; candidateType = "departure"
-                                                    }
-                                                } else if (schedArrFuture != null) {
-                                                    candidateInst = schedArrFuture; candidateType = "arrival"
-                                                } else if (schedDepFuture != null) {
-                                                    candidateInst = schedDepFuture; candidateType = "departure"
-                                                }
+                                            } else if (estArrFuture != null) {
+                                                candidateInst = estArrFuture; candidateType = "arrival"
+                                            } else if (estDepFuture != null) {
+                                                candidateInst = estDepFuture; candidateType = "departure"
                                             }
 
                                             if (candidateInst != null) {
@@ -827,7 +783,7 @@ class RealtimeService : Service() {
                                             
                                             if (prevEstDepInst != null && currentEstDepInst != null && currentEstDepInst.isAfter(prevEstDepInst)) {
                                                 val delayIncrease = java.time.Duration.between(prevEstDepInst, currentEstDepInst).seconds
-                                                Log.d("RealtimeService", "Trip $tId: ⚠️ STOP DETECTED - lastPassed=$lastPassed departure delayed by ${delayIncrease}s from ${prevEstDepStr} to ${currentEstDep}. NOT advancing to next stop")
+                                                Log.d("RealtimeService", "Trip $tId: âš ï¸ STOP DETECTED - lastPassed=$lastPassed departure delayed by ${delayIncrease}s from ${prevEstDepStr} to ${currentEstDep}. NOT advancing to next stop")
                                                 shouldAdvanceToNextStop = false
                                             }
                                             
@@ -947,7 +903,7 @@ class RealtimeService : Service() {
                                             if (name.trim().equals(destinationStop.trim(), ignoreCase = true)) {
                                                 val cancelled = (s?.optBoolean("cancelled", false) == true) || (s?.optBoolean("canceled", false) == true) || (s?.optString("status")?.equals("cancelled", ignoreCase = true) == true)
                                                 if (cancelled) {
-                                                    bodyText = "⚠️ La tua fermata ($destinationStop) è stata annullata."
+                                                    bodyText = "âš ï¸ La tua fermata ($destinationStop) Ã¨ stata annullata."
                                                 }
                                                 break
                                             }
@@ -1014,13 +970,13 @@ class RealtimeService : Service() {
                                                 }
 
                                                 val delayPart = when {
-                                                    delayToShowSeconds == null -> "• In orario"
-                                                    delayToShowSeconds > 0 -> "• Ritardo: +${formatDelaySeconds(delayToShowSeconds)}"
-                                                    delayToShowSeconds < 0 -> "• Anticipo: ${formatDelaySeconds(-delayToShowSeconds)}"
-                                                    else -> "• In orario"
+                                                    delayToShowSeconds == null -> "â€¢ In orario"
+                                                    delayToShowSeconds > 0 -> "â€¢ Ritardo: +${formatDelaySeconds(delayToShowSeconds)}"
+                                                    delayToShowSeconds < 0 -> "â€¢ Anticipo: ${formatDelaySeconds(-delayToShowSeconds)}"
+                                                    else -> "â€¢ In orario"
                                                 }
 
-                                                var proxBody = "⚠️ Prepara i bagagli! Arrivo a $destinationStop in circa ${minutesToArrival} min (alle $atStr). $delayPart"
+                                                var proxBody = "âš ï¸ Prepara i bagagli! Arrivo a $destinationStop in circa ${minutesToArrival} min (alle $atStr). $delayPart"
                                                 if (notifyMode == "to_destination" && destinationStop.isNotBlank()) {
                                                     proxBody = proxBody + "\nTarget destinazione: ${destinationStop}"
                                                 }
@@ -1046,7 +1002,7 @@ class RealtimeService : Service() {
                                             val timeStr = nextArrivalInstant?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
                                             val eventLabel = if (nextEventType == "departure") "In partenza alle $timeStr" else "In arrivo alle $timeStr"
 
-                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "• Binario: $platformStr " else ""}• $eventLabel\n")
+                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "â€¢ Binario: $platformStr " else ""}â€¢ $eventLabel\n")
                                         } else {
                                             sb.append("Prossima fermata: --\n")
                                         }
@@ -1091,7 +1047,7 @@ class RealtimeService : Service() {
                                         sb.append("Fermate rimanenti: $remaining")
                                         bodyText = sb.toString().trim()
                                     } else if (bodyText.isEmpty() && notifyMode == "to_destination" && destinationStop.isNotBlank() && lastPassed.trim().equals(destinationStop.trim(), ignoreCase = true) && nextIndex == -1) {
-                                        bodyText = "🚉 Sei arrivato a $destinationStop. Ricordati di scendere dal treno!"
+                                        bodyText = "ðŸš‰ Sei arrivato a $destinationStop. Ricordati di scendere dal treno!"
                                         // Final arrival: show final notification and remove monitor
                                         val nid = NotificationHelper.getIdForKey("train:$tId")
                                         NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, nid)
@@ -1238,7 +1194,7 @@ class RealtimeService : Service() {
                                             val timeStr = arrStr
                                             val eventLabel = if (nextEventType == "departure") "In partenza alle $timeStr" else "In arrivo alle $timeStr"
 
-                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "• Binario: $platformStr " else ""}• $eventLabel\n")
+                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "â€¢ Binario: $platformStr " else ""}â€¢ $eventLabel\n")
                                         } else {
                                             sb.append("Prossima fermata: --\n")
                                         }
@@ -1249,18 +1205,18 @@ class RealtimeService : Service() {
                                             delayForNotifySeconds != null -> {
                                                 val dmin = delayForNotifySeconds / 60
                                                 when {
-                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • Ritardo: +${dmin} min\n"
-                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • Anticipo: ${-dmin} min\n"
-                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • In orario\n"
+                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Ritardo: +${dmin} min\n"
+                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Anticipo: ${-dmin} min\n"
+                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ In orario\n"
                                                 }
                                             }
                                             // Fallback to trip-level delay (seconds)
                                             delaySeconds != 0 -> {
                                                 val dmin = delaySeconds / 60
                                                 when {
-                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • Ritardo: +${dmin} min\n"
-                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • Anticipo: ${-dmin} min\n"
-                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} • In orario\n"
+                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Ritardo: +${dmin} min\n"
+                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Anticipo: ${-dmin} min\n"
+                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ In orario\n"
                                                 }
                                             }
                                             else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \n"
@@ -1272,14 +1228,36 @@ class RealtimeService : Service() {
                                         var statualLine = when {
                                             currentStationName.isNotEmpty() -> {
                                                 // Train is currently stopped at a station
-                                                val depTime = currentStationDeparture?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
-                                                "Stato attuale: In stazione a $currentStationName (partirà alle $depTime)"
+                                                // Use estimated departure if available, otherwise calculate estimated = scheduled + delay
+                                                var depTime = currentStationDeparture
+                                                if (depTime == null && lastPassedDepartureScheduled != null && stopsArr != null && lastPassedIndex >= 0) {
+                                                    // Calculate estimated departure = scheduled departure + departure delay
+                                                    val sObj = stopsArr.optJSONObject(lastPassedIndex)
+                                                    val depDelayMinutes = sObj?.optInt("departureDelay") ?: sObj?.optInt("delayMinutes") ?: sObj?.optInt("delay") ?: 0
+                                                    if (depDelayMinutes != 0) {
+                                                        depTime = lastPassedDepartureScheduled.plusSeconds((depDelayMinutes * 60).toLong())
+                                                    } else {
+                                                        depTime = lastPassedDepartureScheduled
+                                                    }
+                                                }
+                                                val depTimeStr = depTime?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
+                                                "Stato attuale: In stazione a $currentStationName (partirÃ  alle $depTimeStr)"
                                             }
                                             lastPassed.isNotEmpty() -> {
                                                 // Train is in transit from lastPassed station
-                                                val depStr = lastPassedDepartureEstimated?.let { sdf.format(java.util.Date.from(it)) } 
-                                                    ?: lastPassedDepartureScheduled?.let { sdf.format(java.util.Date.from(it)) } 
-                                                    ?: "--:--"
+                                                // Use estimated departure if available, otherwise calculate estimated = scheduled + delay
+                                                var depTime = lastPassedDepartureEstimated
+                                                if (depTime == null && lastPassedDepartureScheduled != null && stopsArr != null && lastPassedIndex >= 0) {
+                                                    // Calculate estimated departure = scheduled departure + departure delay
+                                                    val sObj = stopsArr.optJSONObject(lastPassedIndex)
+                                                    val depDelayMinutes = sObj?.optInt("departureDelay") ?: sObj?.optInt("delayMinutes") ?: sObj?.optInt("delay") ?: 0
+                                                    if (depDelayMinutes != 0) {
+                                                        depTime = lastPassedDepartureScheduled.plusSeconds((depDelayMinutes * 60).toLong())
+                                                    } else {
+                                                        depTime = lastPassedDepartureScheduled
+                                                    }
+                                                }
+                                                val depStr = depTime?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
                                                 "Stato attuale: In viaggio da $lastPassed (partito alle $depStr)"
                                             }
                                             else -> "Stato attuale: In transito"
@@ -1328,7 +1306,7 @@ class RealtimeService : Service() {
                                     var timesChanged = false
                                     if (prevTimesStr != null && prevTimesStr != currentTimesStr) {
                                         timesChanged = true
-                                        Log.d("RealtimeService", "Trip $tId: ⏰ TIMES CHANGED → FORCE NOTIFY\n  PREV: $prevTimesStr\n  NEW: $currentTimesStr")
+                                        Log.d("RealtimeService", "Trip $tId: â° TIMES CHANGED â†’ FORCE NOTIFY\n  PREV: $prevTimesStr\n  NEW: $currentTimesStr")
                                     }
                                     
                                     prefs.edit().putString("trip:times:$tId", currentTimesStr).apply()
@@ -1414,3 +1392,5 @@ class RealtimeService : Service() {
         super.onDestroy()
     }
 }
+
+

@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
 
     <application
-        android:label="bc_transporter_mobile"
+        android:label="BC. Transporter"
         android:name=".App"
         android:icon="@mipmap/ic_launcher">
         <activity

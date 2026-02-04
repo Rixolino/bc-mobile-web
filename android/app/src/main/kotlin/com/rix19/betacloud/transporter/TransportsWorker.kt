@@ -1,4 +1,4 @@
-package com.example.bc_transporter_mobile
+﻿package com.rix19.betacloud.transporter
 
 import android.content.Context
 import androidx.work.CoroutineWorker
@@ -36,3 +36,5 @@ class TransportsWorker(appContext: Context, params: WorkerParameters) : Coroutin
         }
     }
 }
+
+

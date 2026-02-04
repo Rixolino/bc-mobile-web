@@ -307,7 +307,7 @@ mobile_app/
 ├── capture_logs.bat                   🛠️ Script (Windows)
 ├── NOTIFICHE_DEBUG.md                 (duplicate link, see above)
 │
-├── android/app/src/main/kotlin/com/example/bc_transporter_mobile/
+├── android/app/src/main/kotlin/com/rix19/betacloud/transporter/
 │   └── RealtimeService.kt             🔴 Modified file
 │
 └── README.md                          📄 Project readme

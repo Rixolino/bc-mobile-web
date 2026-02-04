@@ -1,4 +1,4 @@
-package com.example.bc_transporter_mobile
+﻿package com.rix19.betacloud.transporter
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -84,3 +84,5 @@ object NotificationHelper {
         nm.cancel(id)
     }
 }
+
+

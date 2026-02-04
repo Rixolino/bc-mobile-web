@@ -1,5 +1,5 @@
-name: bc_transporter_mobile
-description: App mobile ufficiale di BC Transporter
+name: bc_transporter
+description: App mobile BC. Transporter
 publish_to: 'none'
 version: 1.0.0+1
 
