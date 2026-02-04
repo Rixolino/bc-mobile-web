@@ -576,7 +576,9 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
     // Proceed to schedule even if resolvedEndpoint is null (service will skip fetch if no country/endpoint)
     // include arrival pre-notice from settings
+    // also pass the current first stop as the "starting" reference point for consistent calculations
     final settings = Provider.of<SettingsProvider>(ctx, listen: false);
+    String? startingStop = widget.departure.stops?.isNotEmpty == true ? widget.departure.stops!.first.stationName : null;
     await AndroidBackgroundService.scheduleTrainsWorker(
       tripId: tripId,
       country: usedCountry ?? countryFromMeta,
@@ -584,6 +586,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       intervalSeconds: settingsInterval,
       notifyMode: notifyMode,
       destinationStop: destinationStop,
+      startingStop: startingStop,
       arrivalNoticeMinutes: settings.trainArrivalPreNoticeMinutes,
     );
 
@@ -592,7 +595,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     // If user requested destination-specific notify, do an immediate proximity check (may trigger the pre-notice now)
     if (notifyMode == 'to_destination' && destinationStop != null && destinationStop.isNotEmpty) {
       final notifProv = Provider.of<NotificationManagerProvider>(ctx, listen: false);
-      notifProv.triggerProximityCheckForTrip(tripId ?? '', destinationStop, settings.trainArrivalPreNoticeMinutes);
+      notifProv.triggerProximityCheckForTrip(tripId ?? '', destinationStop, settings.trainArrivalPreNoticeMinutes, startingStop);
     }
   }
 

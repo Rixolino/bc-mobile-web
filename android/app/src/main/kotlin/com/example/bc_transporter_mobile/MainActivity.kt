@@ -76,6 +76,7 @@ class MainActivity: FlutterActivity() {
                     val tripId = call.argument<String>("tripId")
                     val notifyMode = call.argument<String>("notifyMode") // 'to_destination' or 'general'
                     val destinationStop = call.argument<String>("destinationStop")
+                    val startingStop = call.argument<String>("startingStop")
                     val arrivalNoticeMinutes = call.argument<Int>("arrivalNoticeMinutes") ?: 10
 
                     // Start realtime foreground service for trains
@@ -90,6 +91,7 @@ class MainActivity: FlutterActivity() {
                         putExtra("tripId", tripId)
                         putExtra("notifyMode", notifyMode)
                         putExtra("destinationStop", destinationStop)
+                        putExtra("startingStop", startingStop)
                         putExtra("arrivalNoticeMinutes", arrivalNoticeMinutes)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

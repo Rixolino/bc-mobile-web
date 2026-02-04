@@ -43,7 +43,7 @@ class AndroidBackgroundService {
   }
 
   // Per-worker controls
-  static Future<void> scheduleTrainsWorker({String? stationId, String? country, String? service, bool enableNotifications = true, String? endpoint, int? intervalSeconds, String? tripId, String? notifyMode, String? destinationStop, int? arrivalNoticeMinutes}) async {
+  static Future<void> scheduleTrainsWorker({String? stationId, String? country, String? service, bool enableNotifications = true, String? endpoint, int? intervalSeconds, String? tripId, String? notifyMode, String? destinationStop, String? startingStop, int? arrivalNoticeMinutes}) async {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('scheduleTrainsWorker', {
@@ -56,6 +56,7 @@ class AndroidBackgroundService {
         'tripId': tripId,
         'notifyMode': notifyMode,
         'destinationStop': destinationStop,
+        'startingStop': startingStop,
         'arrivalNoticeMinutes': arrivalNoticeMinutes,
       });
     } catch (e) {}

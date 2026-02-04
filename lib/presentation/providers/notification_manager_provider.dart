@@ -176,7 +176,7 @@ class NotificationManagerProvider extends ChangeNotifier {
   /// Check arrival time for [tripId] and [destinationStop]. If the effective
   /// arrival time (scheduled + delay) is within [preNoticeMinutes] from now,
   /// send an immediate proximity notification on the dedicated channel.
-  Future<void> triggerProximityCheckForTrip(String tripId, String destinationStop, int preNoticeMinutes) async {
+  Future<void> triggerProximityCheckForTrip(String tripId, String destinationStop, int preNoticeMinutes, [String? startingStop]) async {
     try {
       // try to fetch latest trip payload (prefer country info when available)
       final idx = trips.indexWhere((t) => t.tripId == tripId);
@@ -426,11 +426,28 @@ class NotificationManagerProvider extends ChangeNotifier {
           stopStates.add({'index': i, 'stop': s, 'arrUtc': arrUtc, 'depUtc': depUtc, 'cancelled': s['cancelled'] == true});
         }
 
+        // Find starting stop index if provided (reference point for stop counting)
+        int startingIndex = -1;
+        if (startingStop != null && startingStop.isNotEmpty && stopStates.isNotEmpty) {
+          startingIndex = stopStates.indexWhere((ss) {
+            final name = (ss['stop']['stationName'] ?? ss['stop']['name'] ?? ss['stop']['stop'] ?? '').toString().trim().toLowerCase();
+            return name == startingStop.trim().toLowerCase();
+          });
+          if (startingIndex >= 0) {
+            // ignore: avoid_print
+            print('triggerProximityCheckForTrip: Found startingStop="$startingStop" at index $startingIndex');
+          }
+        }
+
         // Determine nextIndex and lastPassed akin to UI
+        // Start scanning from startingIndex (or 0)
         int nextIndex = -1; String nextStop = ''; DateTime? nextArrival; DateTime? nextDeparture; String lastPassed = ''; bool isAtStation = false;
+        final scanStart = startingIndex >= 0 ? startingIndex : 0;
+        
         // 1) nearest future arrival
         DateTime? bestArr; int bestIdx = -1;
-        for (var ss in stopStates) {
+        for (int i = scanStart; i < stopStates.length; i++) {
+          final ss = stopStates[i];
           if (ss['cancelled'] == true) continue;
           final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
           if (arrUtc != null && arrUtc.isAfter(now)) {
@@ -499,8 +516,11 @@ class NotificationManagerProvider extends ChangeNotifier {
         }
 
         // Compute remaining stops relative to destinationStop
+        // Count from nextIndex (or startingIndex+1 if startingStop is set)
         int remaining = 0;
         final destIdx = stops.indexWhere((s) => ((s['stationName'] ?? s['name'] ?? s['stop'] ?? '').toString().trim().toLowerCase() == destinationStop.trim().toLowerCase()));
+        final countStartIndex = startingIndex >= 0 ? startingIndex : (nextIndex >= 0 ? nextIndex : 0);
+        
         if (destIdx != -1 && nextIndex != -1) {
           final int start = nextIndex < destIdx ? nextIndex : nextIndex;
           int count = 0;
