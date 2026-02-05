@@ -142,6 +142,16 @@ class TrainProvider with ChangeNotifier {
     }
   }
 
+  void setStationSuggestions(List<TrainStation> suggestions) {
+    _stationSuggestions = suggestions;
+    notifyListeners();
+  }
+
+  void clearStationSuggestions() {
+    _stationSuggestions = [];
+    notifyListeners();
+  }
+
   Future<void> fetchDepartures(String stationId, {String country = 'IT', bool silent = false}) async {
     if (stationId.isEmpty) return;
     

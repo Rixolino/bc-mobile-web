@@ -15,6 +15,7 @@ import '../providers/theme_provider.dart';
 import '../../features/bus/presentation/widgets/bus_panel_content.dart';
 import '../../features/plane/presentation/widgets/plane_panel_content.dart';
 import '../../features/train/presentation/widgets/train_panel_content.dart';
+import '../../features/train/presentation/screens/train_search_screen.dart';
 import '../widgets/map_background.dart';
 
 import 'settings_screen.dart';
@@ -1082,6 +1083,14 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 0.0),
           child: ElevatedButton.icon(
             onPressed: () {
+              if (index == 0) {
+                 // Naviga alla schermata treni separata
+                 Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const TrainSearchScreen())
+                 );
+                 return;
+              }
+
               if (_selectedModeIndex != index) {
                 // Cancella elementi dalla mappa quando si cambia trasporto
                 Provider.of<TrainProvider>(context, listen: false).clearAll();
@@ -1097,6 +1106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Apriamo leggermente il pannello se si cambia modalità
                 _panelController.open();
               });
+
 
               // Notifichiamo il MapStateProvider per resettare la vista
               Provider.of<MapStateProvider>(context, listen: false).setCategory(index);
