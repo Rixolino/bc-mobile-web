@@ -27,158 +27,168 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
-        return SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // City Selector - Expandable
-              _buildExpandableSection(
-                title: "Seleziona Città / Operatore",
-                expanded: _expandedCitySelector,
-                onExpanded: (value) => setState(() => _expandedCitySelector = value),
-                child: Wrap(
-                  spacing: 8,
-                  children: busProvider.providers.map((provider) => _buildCityChip(context, provider.name, busProvider)).toList(),
-                ),
-              ),
-              const SizedBox(height: 8),
+        final selectedProvider = _getSelectedProvider(busProvider);
+        final supportsSolutions = selectedProvider?.supportsSolutions == true;
 
-              // Options Section - Expandable
-              _buildExpandableSection(
-                title: _getSelectedProvider(busProvider)?.supportsSolutions == true ? "Pianifica Viaggio" : "Opzioni",
-                expanded: _expandedOptions,
-                onExpanded: (value) => setState(() => _expandedOptions = value),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (busProvider.selectedCity == "Flixbus") _buildFlixbusSearch(busProvider),
-                if (_getSelectedProvider(busProvider)?.supportsSolutions == true) _buildBariRouting(busProvider),
-                if (busProvider.selectedCity != "Flixbus") ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: busProvider.isLoading ? null : () => busProvider.fetchVehicles(),
-                      icon: busProvider.isLoading
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.refresh),
-                      label: const Text("Aggiorna Posizioni"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: theme.textColor,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Operator Selection (Horizontal Scroll)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Text(
+                "Operatore",
+                style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: busProvider.providers.map((provider) {
+                  final isSelected = busProvider.selectedCity == provider.name;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: FilterChip(
+                      label: Text(provider.name),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        busProvider.selectCity(provider.name);
+                        final p = busProvider.providers.firstWhere(
+                          (p) => p.name == provider.name,
+                          orElse: () => BusProviderConfig(name: provider.name, provider: '', endpoints: {}),
+                        );
+                        if (p.latitude != null && p.longitude != null) {
+                          mapState.flyTo(p.latitude!, p.longitude!, zoom: p.zoom ?? 12.0);
+                        }
+                      },
+                      backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                      selectedColor: theme.primaryColor.withOpacity(0.2),
+                      labelStyle: TextStyle(
+                        color: isSelected ? theme.primaryColor : theme.textColor,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(color: isSelected ? theme.primaryColor : Colors.transparent),
+                      ),
+                      showCheckmark: false,
+                      avatar: CircleAvatar(
+                        backgroundColor: isSelected ? theme.primaryColor : theme.surfaceColor.withOpacity(0.2),
+                        child: Icon(Icons.directions_bus, size: 12, color: isSelected ? theme.textColor : theme.secondaryTextColor),
                       ),
                     ),
+                  );
+                }).toList(),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+
+            // 2. Action Area (Planning / Search / Refresh)
+            if (busProvider.selectedCity == "Flixbus") 
+              _buildFlixbusSearch(busProvider)
+            else if (supportsSolutions) 
+              _buildBariRouting(busProvider)
+            else
+              // Standard Realtime View Actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Veicoli in tempo reale", style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
+                  TextButton.icon(
+                    onPressed: busProvider.isLoading ? null : () => busProvider.fetchVehicles(),
+                    icon: busProvider.isLoading
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.refresh, size: 18),
+                    label: const Text("Aggiorna"),
                   ),
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
+              ),
+              
+            const SizedBox(height: 10),
 
-          // Results Section - Expandable
-          _buildExpandableSection(
-            title: "Risultati",
-            expanded: _expandedResults,
-            onExpanded: (value) => setState(() => _expandedResults = value),
-            child: SizedBox(
-              height: 300,
+            // 3. Results Area
+            Expanded(
               child: _buildResultsList(busProvider, mapState),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        );
       },
     );
   }
 
-  Widget _buildExpandableSection({
-    required String title,
-    required bool expanded,
-    required ValueChanged<bool> onExpanded,
-    required Widget child,
-  }) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          title: Text(
-            title,
-            style: TextStyle(
-              color: theme.textColor,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          initiallyExpanded: expanded,
-          onExpansionChanged: onExpanded,
-          collapsedIconColor: theme.secondaryTextColor,
-          iconColor: theme.secondaryTextColor,
-          backgroundColor: theme.surfaceColor.withOpacity(0.02),
-          collapsedBackgroundColor: Colors.transparent,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: child,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Helper: Removed _buildExpandableSection as it is no longer used
 
   Widget _buildFlixbusSearch(BusProvider busProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return TextField(
-      controller: _searchController,
-      decoration: InputDecoration(
-        hintText: "Cerca città Flixbus...",
-        hintStyle: TextStyle(color: theme.secondaryTextColor),
-        prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
-        suffixIcon: IconButton(
-          icon: Icon(Icons.send, color: theme.successColor),
-          onPressed: () => busProvider.searchFlixbus(_searchController.text),
-        ),
-        filled: true,
-        fillColor: theme.surfaceColor.withOpacity(0.1),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))],
       ),
-      style: TextStyle(color: theme.textColor),
-      onSubmitted: (val) => busProvider.searchFlixbus(val),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: "Cerca fermata Flixbus...",
+          hintStyle: TextStyle(color: theme.secondaryTextColor),
+          prefixIcon: Icon(Icons.search, color: theme.primaryColor),
+          suffixIcon: IconButton(
+            icon: Icon(Icons.send, color: theme.primaryColor),
+            onPressed: () => busProvider.searchFlixbus(_searchController.text),
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+        ),
+        style: TextStyle(color: theme.textColor),
+        onSubmitted: (val) => busProvider.searchFlixbus(val),
+      ),
     );
   }
 
   Widget _buildBariRouting(BusProvider busProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Pianifica Viaggio",
-          style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+    return Card(
+      elevation: 0,
+      color: theme.surfaceColor.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.route, color: theme.primaryColor),
+                const SizedBox(width: 8),
+                Text("Pianifica Viaggio", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildStopSelector("Da", busProvider.selectedFromStop, (BariStop? stop) => busProvider.selectFromStop(stop), busProvider),
+            const SizedBox(height: 12),
+            _buildStopSelector("A", busProvider.selectedToStop, (BariStop? stop) => busProvider.selectToStop(stop), busProvider),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: (busProvider.selectedFromStop != null && busProvider.selectedToStop != null && !busProvider.isLoadingSolutions)
+                    ? () => busProvider.fetchBariSolutions()
+                    : null,
+                icon: busProvider.isLoadingSolutions
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.search),
+                label: const Text("Cerca Soluzioni"),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
-        _buildStopSelector("Da", busProvider.selectedFromStop, (BariStop? stop) => busProvider.selectFromStop(stop), busProvider),
-        const SizedBox(height: 8),
-        _buildStopSelector("A", busProvider.selectedToStop, (BariStop? stop) => busProvider.selectToStop(stop), busProvider),
-        const SizedBox(height: 10),
-        ElevatedButton.icon(
-          onPressed: (busProvider.selectedFromStop != null && busProvider.selectedToStop != null && !busProvider.isLoadingSolutions)
-              ? () => busProvider.fetchBariSolutions()
-              : null,
-          icon: busProvider.isLoadingSolutions
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.search),
-          label: const Text("Cerca Soluzioni"),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.successColor,
-            foregroundColor: theme.textColor,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -186,29 +196,40 @@ class _BusPanelContentState extends State<BusPanelContent> {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return InkWell(
       onTap: () => _showStopSelectionDialog(context, label, busProvider, onSelect),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: theme.surfaceColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.3)),
+          color: theme.surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.2)),
         ),
         child: Row(
           children: [
-            Icon(selectedStop != null ? Icons.location_on : Icons.location_searching, color: theme.secondaryTextColor),
-            const SizedBox(width: 8),
+            Icon(
+              selectedStop != null ? Icons.my_location : Icons.circle_outlined, 
+              color: selectedStop != null ? theme.primaryColor : theme.secondaryTextColor,
+              size: 20
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                selectedStop?.stopName ?? "Seleziona fermata $label",
-                style: TextStyle(color: selectedStop != null ? theme.textColor : theme.secondaryTextColor),
+                selectedStop?.stopName ?? "Seleziona $label...",
+                style: TextStyle(
+                  color: selectedStop != null ? theme.textColor : theme.secondaryTextColor,
+                  fontWeight: selectedStop != null ? FontWeight.w500 : FontWeight.normal
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(Icons.arrow_drop_down, color: theme.secondaryTextColor),
+            Icon(Icons.unfold_more, color: theme.secondaryTextColor, size: 20),
           ],
         ),
       ),
     );
   }
+
 
   void _showStopSelectionDialog(BuildContext context, String label, BusProvider busProvider, Function(BariStop?) onSelect) {
     if (busProvider.stops.isEmpty && !busProvider.isLoadingStops) {

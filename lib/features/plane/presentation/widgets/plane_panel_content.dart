@@ -31,117 +31,178 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
     final planeProvider = Provider.of<PlaneProvider>(context);
     final mapState = Provider.of<MapStateProvider>(context, listen: false);
 
-
-
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-                title: Text(_showSkyscanner ? "Ricerca Aeroporti" : "Traffico Aereo", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-                trailing: Switch(
-                  value: _showSkyscanner,
-                  onChanged: (val) => setState(() => _showSkyscanner = val),
-                  activeColor: theme.primaryColor,
-                ),
+            // 1. Mode Selector (Tabs)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.surfaceColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _buildTabButton(context, "Radar Live", !_showSkyscanner, () => setState(() => _showSkyscanner = false))),
+                  Expanded(child: _buildTabButton(context, "Orari Aeroporti", _showSkyscanner, () => setState(() => _showSkyscanner = true))),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-        if (!_showSkyscanner) ...[
-          Text(
-            "Monitora i voli in tempo reale nell'area visibile.",
-            style: TextStyle(color: theme.secondaryTextColor),
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton.icon(
-            onPressed: planeProvider.isLoading ? null : widget.onRefresh,
-            icon: planeProvider.isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.radar),
-            label: const Text("Scansiona Area"),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              foregroundColor: theme.textColor,
-            ),
-          ),
-        ] else ...[
-          _buildAirportSearch(planeProvider),
-        ],
-        const SizedBox(height: 20),
-        Expanded(
-          child: _showSkyscanner ? _buildSkyscannerResults(planeProvider, mapState) : _buildRealtimeList(planeProvider, mapState),
-        ),
-      ],
-    );
+
+            // 2. Main Content
+            if (!_showSkyscanner) ...[
+              // Realtime Radar View
+              _buildRealtimeHeader(context, planeProvider),
+              const SizedBox(height: 10),
+              Expanded(child: _buildRealtimeList(planeProvider, mapState)),
+            ] else ...[
+              // Airport Boards View
+              _buildAirportSearch(planeProvider),
+              const SizedBox(height: 16),
+              Expanded(child: _buildSkyscannerResults(planeProvider, mapState)),
+            ],
+          ],
+        );
       },
     );
   }
 
+  Widget _buildTabButton(BuildContext context, String label, bool active, VoidCallback onTap) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? theme.surfaceColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))] : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? theme.textColor : theme.secondaryTextColor,
+            fontWeight: active ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
 
-
+  Widget _buildRealtimeHeader(BuildContext context, PlaneProvider planeProvider) {
+    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: theme.surfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1))
+      ),
+      child: Row(
+        children: [
+           Icon(Icons.radar, color: theme.primaryColor, size: 32),
+           const SizedBox(width: 16),
+           Expanded(
+             child: Column(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+                 Text("Monitoraggio Aereo", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                 Text("Scansiona l'area visibile", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+               ],
+             )
+           ),
+           FilledButton(
+             onPressed: planeProvider.isLoading ? null : widget.onRefresh,
+             style: FilledButton.styleFrom(
+               shape: const StadiumBorder(),
+               backgroundColor: theme.primaryColor
+             ),
+             child: planeProvider.isLoading 
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text("Scan"),
+           )
+        ],
+      ),
+    );
+  }
 
   Widget _buildAirportSearch(PlaneProvider planeProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return Column(
       children: [
-        TextField(
-          controller: _airportController,
-          decoration: InputDecoration(
-            hintText: "Cerca aeroporto (es. Roma, LHR)...",
-            hintStyle: TextStyle(color: theme.secondaryTextColor),
-            prefixIcon: Icon(Icons.flight_takeoff, color: theme.secondaryTextColor),
-            suffixIcon: planeProvider.selectedAirport != null 
-              ? IconButton(
-                  icon: Icon(Icons.clear, color: theme.secondaryTextColor),
-                  onPressed: () {
-                    _airportController.clear();
-                    planeProvider.clearAirportSelection();
-                  },
-                )
-              : null,
-            filled: true,
-            fillColor: theme.surfaceColor.withOpacity(0.06),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))],
           ),
-          style: TextStyle(color: theme.textColor),
-          onChanged: (val) {
-            if (val.length > 2) planeProvider.searchAirports(val);
-          },
+          child: TextField(
+            controller: _airportController,
+            decoration: InputDecoration(
+              hintText: "Cerca aeroporto (e.g. Fiumicino)...",
+              hintStyle: TextStyle(color: theme.secondaryTextColor),
+              prefixIcon: Icon(Icons.flight_takeoff, color: theme.primaryColor),
+              suffixIcon: planeProvider.selectedAirport != null 
+                ? IconButton(
+                    icon: Icon(Icons.clear, color: theme.secondaryTextColor),
+                    onPressed: () {
+                      _airportController.clear();
+                      planeProvider.clearAirportSelection();
+                    },
+                  )
+                : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(16),
+            ),
+            style: TextStyle(color: theme.textColor),
+            onChanged: (val) {
+              if (val.length > 2) planeProvider.searchAirports(val);
+            },
+          ),
         ),
         if (planeProvider.selectedAirport != null) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text("Partenze"),
-                  selected: !planeProvider.isArrivalMode,
-                  onSelected: (val) => planeProvider.setArrivalMode(false),
-                  backgroundColor: theme.surfaceColor.withOpacity(0.06),
-                  selectedColor: theme.primaryColor,
-                  labelStyle: TextStyle(color: theme.textColor),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text("Arrivi"),
-                  selected: planeProvider.isArrivalMode,
-                  onSelected: (val) => planeProvider.setArrivalMode(true),
-                  backgroundColor: theme.surfaceColor.withOpacity(0.06),
-                  selectedColor: theme.primaryColor,
-                  labelStyle: TextStyle(color: theme.textColor),
-                ),
-              ),
+               _buildFilterChip("Partenze", !planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(false)),
+               const SizedBox(width: 10),
+               _buildFilterChip("Arrivi", planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(true)),
             ],
           ),
         ],
       ],
     );
+  }
+  
+  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
+      final theme = Provider.of<ThemeProvider>(context, listen: false);
+      return Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: isSelected ? theme.primaryColor.withOpacity(0.1) : theme.surfaceColor.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: isSelected ? theme.primaryColor : Colors.transparent),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600
+              ),
+            ),
+          ),
+        ),
+      );
   }
 
   Widget _buildSkyscannerResults(PlaneProvider planeProvider, MapStateProvider mapState) {
@@ -152,13 +213,17 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
     // Show suggestions if we are typing and haven't selected an airport yet
     if (planeProvider.airportSuggestions.isNotEmpty) {
-      return ListView.builder(
+      return ListView.separated(
         itemCount: planeProvider.airportSuggestions.length,
+        separatorBuilder: (ctx, i) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
         itemBuilder: (context, index) {
           final a = planeProvider.airportSuggestions[index];
           return ListTile(
-            leading: Icon(Icons.location_city, color: theme.primaryColor),
-            title: Text(a.name, style: TextStyle(color: theme.textColor)),
+            leading: CircleAvatar(
+              backgroundColor: theme.primaryColor.withOpacity(0.1),
+              child: Icon(Icons.location_city, color: theme.primaryColor, size: 20),
+            ),
+            title: Text(a.name, style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
             subtitle: Text("${a.iata} - ${a.country}", style: TextStyle(color: theme.secondaryTextColor)),
             onTap: () {
                planeProvider.selectAirport(a);
@@ -180,48 +245,87 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         itemBuilder: (context, index) {
           final f = planeProvider.scheduledFlights[index];
           final isDeparture = !planeProvider.isArrivalMode;
-          return ListTile(
-            leading: Icon(Icons.event, color: theme.warningColor),
-            title: Text(
-              f.airline.isEmpty ? f.callsign : f.airline,
-              style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)
-            ),
-            subtitle: Text(
-              "${isDeparture ? "Per: ${f.destination}" : "Da: ${f.origin}"}\n${f.flightNumber} | ${f.statusLocalized ?? 'Programmato'}", 
-              style: TextStyle(color: theme.secondaryTextColor)
-            ),
-            isThreeLine: true,
-            trailing: Text(
-              _formatTime(isDeparture ? f.scheduledDeparture : f.scheduledArrival),
-              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
-            ),
-            onTap: () {
-              final target = f;
-              planeProvider.selectFlight(f);
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                barrierColor: Theme.of(context).disabledColor.withOpacity(0.5),
-                builder: (ctx) => Consumer<PlaneProvider>(
-                  builder: (context, provider, child) {
-                    final updated = provider.selectedFlight ?? target;
-                    return FractionallySizedBox(heightFactor: 0.85, child: FlightDetailsSheet(flight: updated));
-                  },
+          // Build refined flight card
+          return Card(
+            elevation: 0,
+            color: theme.surfaceColor,
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            child: InkWell(
+              onTap: () {
+                 // ... sheet logic ...
+                 final target = f;
+                 planeProvider.selectFlight(f);
+                 showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    barrierColor: Theme.of(context).disabledColor.withOpacity(0.5),
+                    builder: (ctx) => FractionallySizedBox(heightFactor: 0.85, child: FlightDetailsSheet(flight: target)),
+                 );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                child: Row(
+                  children: [
+                    Text(
+                       _formatTime(isDeparture ? f.scheduledDeparture : f.scheduledArrival),
+                       style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(f.airline, style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w600)),
+                          Text(
+                            "${isDeparture ? "Per" : "Da"}: ${isDeparture ? f.destination : f.origin}", 
+                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 13)
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(f.statusLocalized, theme).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4)
+                      ),
+                      child: Text(
+                        f.statusLocalized ?? 'Schedulato',
+                        style: TextStyle(color: _getStatusColor(f.statusLocalized, theme), fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    )
+                  ],
                 ),
-              );
-            },
+              ),
+            ),
           );
         },
       );
     }
 
     return Center(
-      child: Text(
-        "Cerca un aeroporto per vedere il tabellone orari", 
-        style: TextStyle(color: theme.secondaryTextColor)
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.flight_takeoff, size: 48, color: theme.secondaryTextColor.withOpacity(0.2)),
+          const SizedBox(height: 16),
+          Text(
+            "Cerca un aeroporto per vedere il tabellone orari", 
+            style: TextStyle(color: theme.secondaryTextColor)
+          ),
+        ],
       )
     );
+  }
+
+  Color _getStatusColor(String? status, ThemeProvider theme) {
+      if (status == null) return theme.secondaryTextColor;
+      final s = status.toLowerCase();
+      if (s.contains('delay') || s.contains('ritardo')) return theme.errorColor;
+      if (s.contains('landed') || s.contains('atterrato')) return theme.successColor;
+      if (s.contains('cancel') || s.contains('cancellato')) return theme.errorColor;
+      return theme.primaryColor;
   }
 
   String _formatTime(DateTime? dt) {
@@ -231,15 +335,31 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildRealtimeList(PlaneProvider planeProvider, MapStateProvider mapState) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return ListView.builder(
+    
+    if (planeProvider.flights.isEmpty) {
+       return Center(child: Text("Nessun aereo in volo nell'area", style: TextStyle(color: theme.secondaryTextColor)));
+    }
+    
+    return ListView.separated(
       itemCount: planeProvider.flights.length,
+      separatorBuilder: (ctx, i) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
       itemBuilder: (context, index) {
         final f = planeProvider.flights[index];
         return ListTile(
-          leading: Icon(Icons.flight, color: theme.primaryColor),
-          title: Text(f.callsign, style: TextStyle(color: theme.textColor)),
+          leading: CircleAvatar(
+             backgroundColor: theme.surfaceColor.withOpacity(0.1),
+             child: Icon(Icons.flight, color: theme.primaryColor, size: 20),
+          ),
+          title: Text(f.callsign, style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
           subtitle: Text("${f.origin} -> ${f.destination}", style: TextStyle(color: theme.secondaryTextColor)),
-          trailing: Text("${(f.altitude ?? 0).toInt()} ft", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+               Text("${(f.altitude ?? 0).toInt()} ft", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 13)),
+               Text("${(f.speed ?? 0).toInt()} km/h", style: TextStyle(color: theme.secondaryTextColor, fontSize: 11)),
+            ],
+          ),
           onTap: () {
             if (f.latitude != null && f.longitude != null) {
               mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);

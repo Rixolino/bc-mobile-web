@@ -28,14 +28,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     'HU': 1, 'RO': 2, 'GR': 2, 'SE': 1, 'NO': 1, 'DK': 1,
   };
 
-  // Helper per formattare l'orario nel fuso della stazione
-  String _formatStationTime(DateTime? date, String countryCode) {
-    if (date == null) return '--:--';
-    final int offset = countryTimezoneOffsets[countryCode] ?? 1;
-    final stationTime = date.toUtc().add(Duration(hours: offset));
-    return DateFormat('HH:mm').format(stationTime);
-  }
-
   final List<Map<String, String>> _countries = [
     {'code': 'IT', 'name': 'Italia'},
     {'code': 'DE', 'name': 'Germania'},
@@ -68,211 +60,108 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Card-style header using Material ListTile for a stronger visual hierarchy
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4.0),
-                leading: IconButton(
-                  icon: Icon(Icons.arrow_back, color: theme.textColor),
-                  onPressed: () {
-                    trainProvider.clearSelection();
-                  },
-                ),
-                title: Text(
-                  "${station.name} (${trainProvider.isArrivalMode ? 'Arrivi' : 'Partenze'})",
-                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: Consumer2<FavoritesProvider, AuthProvider>(
-                  builder: (context, favoritesProvider, authProvider, child) {
-                    if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                    final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                    final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
-                    return IconButton(
-                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : theme.secondaryTextColor),
-                      onPressed: () async {
-                        try {
-                          if (isFavorite) {
-                            await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione rimossa dai preferiti')));
-                          } else {
-                            final fav = favoritesProvider.createFavoriteStop(
-                              userId: userId,
-                              name: station.name,
-                              code: station.id,
-                              stopType: StopType.trainStation,
-                              latitude: null,
-                              longitude: null,
-                              city: null,
-                              region: null,
-                              provider: null,
-                              country: station.country ?? _selectedCountry,
-                            );
-                            await favoritesProvider.addStopFavorite(fav);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stazione aggiunta ai preferiti')));
-                          }
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
+          // Professional Header Container
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              border: Border(bottom: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))),
             ),
-          ),
-          if (widget.showModeToggle) ...[
-            const SizedBox(height: 10),
-            Row(
+            child: Column(
               children: [
-                _buildModeToggle(context, "Partenze", !trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(false)),
-                const SizedBox(width: 8),
-                _buildModeToggle(context, "Arrivi", trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(true)),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.arrow_back, color: theme.textColor),
+                      onPressed: () => trainProvider.clearSelection(),
+                      style: IconButton.styleFrom(
+                        backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            station.name,
+                            style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            station.country,
+                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Consumer2<FavoritesProvider, AuthProvider>(
+                      builder: (context, favoritesProvider, authProvider, child) {
+                        if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                        final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
+                        return IconButton(
+                          icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : theme.secondaryTextColor),
+                          onPressed: () async {
+                              // ... existing logic ...
+                              try {
+                                if (isFavorite) {
+                                  await favoritesProvider.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione rimossa dai preferiti')));
+                                } else {
+                                  final fav = favoritesProvider.createFavoriteStop(
+                                    userId: authProvider.currentUser?.id?.toString() ?? 'guest', // Fixed param name
+                                    name: station.name,
+                                    code: station.id,
+                                    stopType: StopType.trainStation,
+                                    latitude: null,
+                                    longitude: null,
+                                    city: null,
+                                    region: null,
+                                    provider: null,
+                                    country: station.country,
+                                  );
+                                  await favoritesProvider.addStopFavorite(fav);
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                                }
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
+                              }
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Modern Segmented Toggle
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.surfaceColor.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      Expanded(child: _buildSegmentButton(context, "Partenze", !trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(false))),
+                      Expanded(child: _buildSegmentButton(context, "Arrivi", trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(true))),
+                    ],
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 10),
-          ],
-          Divider(color: theme.secondaryTextColor.withOpacity(0.14)),
+          ),
+          
           Expanded(
             child: trainProvider.isLoadingDepartures
                 ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                 : ListView.builder(
+                    padding: const EdgeInsets.only(top: 8, bottom: 80),
                     itemCount: trainProvider.departures.length,
                     itemBuilder: (context, index) {
                       final dep = trainProvider.departures[index];
-                      final isArrival = trainProvider.isArrivalMode;
-                      
-                      return Card(
-                        elevation: 3,
-                        color: theme.surfaceColor.withOpacity(0.04),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                             final String? targetId = dep.tripId;
-                             final String? targetNum = dep.trainNumber;
-                             
-                             // Fetch details if empty
-                             if (dep.stops == null) {
-                                trainProvider.expandTrainDetails(index);
-                             }
-                             
-                             showModalBottomSheet(
-                               context: context, 
-                               isScrollControlled: true,
-                               backgroundColor: Colors.transparent,
-                               barrierColor: Colors.transparent,
-                               builder: (ctx) => Consumer<TrainProvider>(
-                                 builder: (context, provider, child) {
-                                   final updatedDep = provider.departures.firstWhere(
-                                     (d) => (targetId != null && d.tripId == targetId) || 
-                                            (d.trainNumber == targetNum && d.destination == dep.destination),
-                                     orElse: () => dep,
-                                   );
-
-                                   return FractionallySizedBox(
-                                     heightFactor: 0.85,
-                                     child: TrainDetailsSheet(
-                                       departure: updatedDep,
-                                       isArrivalMode: isArrival,
-                                       selectedCountry: _selectedCountry,
-                                     ),
-                                   );
-                                 },
-                               )
-                             );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Row(
-                              children: [
-                                // Time Column
-                                Column(
-                                  children: [
-                                    Text(
-                                      dep.scheduledTime != null ? _formatStationTime(dep.scheduledTime!, station.country) : '--:--',
-                                      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 18),
-                                    ),
-                                    if (dep.isDelayed)
-                                      Container(
-                                        margin: const EdgeInsets.only(top: 4),
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: theme.errorColor.withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          "+${dep.delayMinutes}'",
-                                          style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(width: 16),
-                                
-                                // Info Column
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "${dep.category ?? ''} ${dep.trainNumber ?? ''}",
-                                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 14),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Row(
-                                        children: [
-                                          Icon(isArrival ? Icons.arrow_back : Icons.arrow_forward, color: theme.secondaryTextColor, size: 12),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              isArrival ? (dep.origin ?? '') : (dep.destination ?? ''),
-                                              style: TextStyle(color: theme.secondaryTextColor, fontSize: 13),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          Expanded(child: Text("Binario: ${dep.platform ?? '?'}", style: TextStyle(color: theme.warningColor, fontSize: 12))),
-                                          FilledButton(
-                                            onPressed: () {
-                                              // open details (same behavior as tapping the card)
-                                              showModalBottomSheet(
-                                                context: context,
-                                                isScrollControlled: true,
-                                                backgroundColor: Colors.transparent,
-                                                barrierColor: Colors.transparent,
-                                                builder: (ctx) => TrainDetailsSheet(
-                                                  departure: dep,
-                                                  isArrivalMode: isArrival,
-                                                  selectedCountry: _selectedCountry,
-                                                ),
-                                              );
-                                            },
-                                            style: FilledButton.styleFrom(shape: const StadiumBorder()),
-                                            child: const Text('Dettagli'),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                
-                                // Action Icon
-                                Icon(Icons.info_outline, color: theme.primaryColor),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
+                      // Use a cleaner, schedule-board style card
+                      return _buildTrainCard(context, dep, theme);
                     },
                   ),
           ),
@@ -281,109 +170,314 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
 
     // View 2: Search Form & Suggestions
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              "Cerca Stazione",
-              style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            // Selettore Servizio (Direct vs Trainboard)
-            DropdownButton<String>(
-              value: trainProvider.selectedService,
-              dropdownColor: theme.surfaceColor,
-              icon: Icon(Icons.settings, color: theme.primaryColor, size: 20),
-              underline: const SizedBox(),
-              style: TextStyle(color: theme.primaryColor, fontSize: 13),
-              items: const [
-                DropdownMenuItem(value: 'direct', child: Text("BC. Transporter")),
-                DropdownMenuItem(value: 'trainboardeu', child: Text("Trainboard.eu (Beta)")),
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with Service Selection
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Cerca Stazione",
+                style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: trainProvider.selectedService,
+                    dropdownColor: theme.surfaceColor,
+                    icon: Icon(Icons.tune, color: theme.primaryColor, size: 18),
+                    style: TextStyle(color: theme.primaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                    items: const [
+                      DropdownMenuItem(value: 'direct', child: Text("BC. Transporter")),
+                      DropdownMenuItem(value: 'trainboardeu', child: Text("Trainboard.eu")),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) trainProvider.setService(val);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Search Input - Floating Material Style
+          Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
               ],
+            ),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: "Nome stazione o numero treno...",
+                hintStyle: TextStyle(color: theme.secondaryTextColor),
+                prefixIcon: Icon(Icons.search, color: theme.primaryColor),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+              style: TextStyle(color: theme.textColor, fontSize: 16),
               onChanged: (val) {
-                if (val != null) trainProvider.setService(val);
+                 if (_selectedCountry == 'EU') {
+                   trainProvider.searchTrainByNumber(val);
+                 } else if (_selectedCountry.isNotEmpty) {
+                   trainProvider.searchStations(val, country: _selectedCountry);
+                 } else {
+                   trainProvider.searchStations(val);
+                 }
               },
             ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Toggle Partenze / Arrivi
-        Row(
-          children: [
-            _buildModeToggle(context, "Partenze", !trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(false)),
-            const SizedBox(width: 8),
-            _buildModeToggle(context, "Arrivi", trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(true)),
-          ],
-        ),
-        const SizedBox(height: 15),
-        DropdownButton<String>(
-          value: _selectedCountry.isNotEmpty ? _selectedCountry : null,
-          dropdownColor: theme.surfaceColor,
-          style: TextStyle(color: theme.textColor),
-          hint: Text('Seleziona paese', style: TextStyle(color: theme.secondaryTextColor)),
-          items: displayedCountries.map((c) => DropdownMenuItem(
-            value: c['code'],
-            child: Text(c['name']!),
-          )).toList(),
-          onChanged: (val) {
-            setState(() => _selectedCountry = val ?? '');
-          },
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: "Nome stazione...",
-            hintStyle: TextStyle(color: theme.secondaryTextColor),
-            prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
-            filled: true,
-            fillColor: theme.surfaceColor.withOpacity(0.06),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          style: TextStyle(color: theme.textColor),
-          onChanged: (val) {
-             if (_selectedCountry == 'EU') {
-               trainProvider.searchTrainByNumber(val);
-             } else if (_selectedCountry.isNotEmpty) {
-               trainProvider.searchStations(val, country: _selectedCountry);
-             } else {
-               trainProvider.searchStations(val);
-             }
-          },
-        ),
-        const SizedBox(height: 20),
-        if (trainProvider.isSearchingByNumber || trainProvider.searchResults.isNotEmpty)
-          _buildNumberSearchResults(trainProvider)
-        else if (trainProvider.isLoadingSuggestions || trainProvider.stationSuggestions.isNotEmpty)
-          _buildStationSuggestions(trainProvider)
-        else
-          Padding(
-            padding: const EdgeInsets.only(top: 20),
-            child: Center(
-              child: Text(
-                "Inserisci almeno 2 caratteri per la ricerca",
-                style: TextStyle(color: theme.secondaryTextColor, fontStyle: FontStyle.italic),
-                textAlign: TextAlign.center,
-              ),
+          
+          const SizedBox(height: 24),
+          
+          // Country Filter - Horizontal Scroll
+          Text("Filtra per Paese", style: TextStyle(color: theme.secondaryTextColor, fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: displayedCountries.map((c) {
+                final isSelected = _selectedCountry == c['code'];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: FilterChip(
+                    label: Text(c['name']!),
+                    selected: isSelected,
+                    onSelected: (bool selected) {
+                      setState(() => _selectedCountry = selected ? c['code']! : '');
+                    },
+                    backgroundColor: theme.surfaceColor.withOpacity(0.05),
+                    selectedColor: theme.primaryColor.withOpacity(0.2),
+                    labelStyle: TextStyle(
+                      color: isSelected ? theme.primaryColor : theme.textColor,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: isSelected ? theme.primaryColor : Colors.transparent, 
+                        width: 1
+                      ),
+                    ),
+                    showCheckmark: false,
+                  ),
+                );
+              }).toList(),
             ),
           ),
-      ],
+          
+          const SizedBox(height: 20),
+          
+          // Toggle Partenze / Arrivi (Pre-Search)
+          Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: [
+                Expanded(child: _buildSegmentButton(context, "Partenze", !trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(false))),
+                Expanded(child: _buildSegmentButton(context, "Arrivi", trainProvider.isArrivalMode, () => trainProvider.setArrivalMode(true))),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          if (trainProvider.isSearchingByNumber || trainProvider.searchResults.isNotEmpty)
+            SizedBox(
+              height: 400, // Fixed height for list in scroll view
+              child: _buildNumberSearchResults(trainProvider)
+            )
+          else if (trainProvider.isLoadingSuggestions || trainProvider.stationSuggestions.isNotEmpty)
+            SizedBox(
+               height: 400,
+               child: _buildStationSuggestions(trainProvider)
+            )
+          else
+            Container(
+              padding: const EdgeInsets.only(top: 40),
+              alignment: Alignment.center,
+              child: Column(
+                children: [
+                   Icon(Icons.train_outlined, size: 48, color: theme.secondaryTextColor.withOpacity(0.3)),
+                   const SizedBox(height: 16),
+                   Text(
+                    "Cerca una stazione per visualizzare il tabellone",
+                    style: TextStyle(color: theme.secondaryTextColor, fontStyle: FontStyle.italic),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildModeToggle(BuildContext context, String label, bool active, VoidCallback onTap) {
+  // --- Helper Widgets ---
+
+  Widget _buildSegmentButton(BuildContext context, String label, bool active, VoidCallback onTap) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return FilledButton(
-      onPressed: onTap,
-      style: FilledButton.styleFrom(
-        backgroundColor: active ? theme.primaryColor : theme.surfaceColor.withOpacity(0.06),
-        foregroundColor: active ? theme.textColor : theme.secondaryTextColor,
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? theme.surfaceColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))] : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? theme.textColor : theme.secondaryTextColor,
+            fontWeight: active ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14
+          ),
+        ),
       ),
-      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: active ? FontWeight.bold : FontWeight.normal)),
+    );
+  }
+
+  Widget _buildTrainCard(BuildContext context, dynamic dep, ThemeProvider theme) {
+     // Helper to parse time string safely
+    final scheduleTime = dep.scheduledTime != null 
+        ? DateFormat('HH:mm').format(dep.scheduledTime!.toUtc().add(Duration(hours: 1))) // Simple offset correction, adjust as needed
+        : '--:--';
+        
+    final delayMin = dep.delayMinutes ?? 0;
+    final isDelayed = delayMin > 0;
+    final isCancelled = dep.status == 'CANCELED';
+    final platform = dep.platform ?? '-';
+    
+    return Card(
+      elevation: 0,
+      color: theme.surfaceColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(0),
+        side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1), width: 0.5)
+      ),
+      margin: const EdgeInsets.only(bottom: 1),
+      child: InkWell(
+        onTap: () {
+           // ... logic to open sheet ...
+           final String? targetId = dep.tripId;
+           final String? targetNum = dep.trainNumber;
+           // Fetch details if empty (placeholder for existing logic)
+           if (dep.stops == null) {} 
+           
+           showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              barrierColor: Theme.of(context).disabledColor.withOpacity(0.5),
+              builder: (ctx) => FractionallySizedBox(
+                heightFactor: 0.92,
+                child: TrainDetailsSheet(
+                  departure: dep,
+                  isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
+                  selectedCountry: _selectedCountry,
+                ),
+              ),
+           );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Time Column
+              SizedBox(
+                width: 50,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      scheduleTime,
+                      style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    if (isDelayed)
+                       Text(
+                        "+$delayMin'",
+                        style: TextStyle(color: theme.errorColor, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Main Info Column
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: theme.surfaceColor.withOpacity(0.1),
+                            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.3)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            dep.category ?? 'REG',
+                            style: TextStyle(fontSize: 10, color: theme.secondaryTextColor, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                         Text(
+                          dep.trainNumber ?? '',
+                          style: TextStyle(fontSize: 12, color: theme.secondaryTextColor),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dep.destination ?? 'Destinazione sconosciuta',
+                      style: TextStyle(color: theme.textColor, fontSize: 15, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (isCancelled)
+                      Text("CANCELLATO", style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              // Platform Column
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                   Text(
+                    platform,
+                    style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    "Binario",
+                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 10),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
