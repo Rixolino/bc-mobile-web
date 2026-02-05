@@ -2,7 +2,9 @@
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
@@ -73,6 +75,30 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        val id = notificationId ?: ((System.currentTimeMillis() % Int.MAX_VALUE).toInt())
+        nm.notify(id, builder.build())
+    }
+
+    fun showTrainNotification(context: Context, channelId: String, title: String, body: String, tripId: String, notificationId: Int? = null) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            // make expandable
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        // Add "Stop following" action button
+        val stopIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = "STOP_FOLLOWING_TRIP"
+            putExtra("tripId", tripId)
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(context, tripId.hashCode(), stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Smetti di seguire", stopPendingIntent)
 
         val id = notificationId ?: ((System.currentTimeMillis() % Int.MAX_VALUE).toInt())
         nm.notify(id, builder.build())

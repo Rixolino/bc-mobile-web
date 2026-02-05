@@ -606,9 +606,14 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     return IconButton.filledTonal(
       icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
       onPressed: _toggle,
+      style: IconButton.styleFrom(
+        backgroundColor: theme.primaryColor.withOpacity(0.15),
+        foregroundColor: theme.primaryColor,
+      ),
     );
   }
 }

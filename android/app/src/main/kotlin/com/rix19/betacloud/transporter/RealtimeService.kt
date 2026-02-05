@@ -1050,7 +1050,7 @@ class RealtimeService : Service() {
                                         bodyText = "\uD83D\uDE89 Sei arrivato a $destinationStop. Ricordati di scendere dal treno!"
                                         // Final arrival: show final notification and remove monitor
                                         val nid = NotificationHelper.getIdForKey("train:$tId")
-                                        NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, nid)
+                                        NotificationHelper.showTrainNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, tId, nid)
                                         removeMonitoredTrip(tId)
                                         prefs.edit().putString("trip:$tId", body).apply()
                                         return@use
@@ -1347,7 +1347,7 @@ class RealtimeService : Service() {
                                                 else -> "RATE LIMIT PASSED"
                                             }
                                             Log.d("RealtimeService", ">>> NOTIFYING Trip $tId: nextStop='$nextStop' delay=${nextDelaySeconds?.let { it/60 } ?: "?"}min eventType=$nextEventType remaining=$remaining [$reason]")
-                                            NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, nid)
+                                            NotificationHelper.showTrainNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, tId, nid)
                                             prefs.edit().putLong("trip:notif_ts:$tId", now).apply()
                                             prefs.edit().putString("trip:state:$tId", newState).apply()
                                         } else {

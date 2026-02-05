@@ -33,6 +33,14 @@
             </intent-filter>
         </activity>
         <service android:name=".RealtimeService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="STOP_FOLLOWING_TRIP" />
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
