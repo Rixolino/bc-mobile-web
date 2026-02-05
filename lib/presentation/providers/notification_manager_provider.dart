@@ -535,15 +535,15 @@ class NotificationManagerProvider extends ChangeNotifier {
         // Platform for destination (if available)
         String destPlatform = '';
         try { destPlatform = (dr['platform'] ?? dr['plannedPlatform'] ?? '').toString(); } catch (e) {}
-        final platformPart = destPlatform.isNotEmpty ? ' • Binario: $destPlatform' : '';
+        final platformPart = destPlatform.isNotEmpty ? ' \u2022 Binario: $destPlatform' : '';
 
         final destArrStr = _formatTimeToHHmm(dr['scheduledArrival'] ?? dr['arrival'] ?? dr['time']) ?? at;
         final calcAt = at;
 
         String delayLine;
-        if (computedDelay > 0) delayLine = '• Ritardo: +${computedDelay} min';
-        else if (computedDelay < 0) delayLine = '• Anticipo: ${-computedDelay} min';
-        else delayLine = '• In orario';
+        if (computedDelay > 0) delayLine = '\u2022 Ritardo: +${computedDelay} min';
+        else if (computedDelay < 0) delayLine = '\u2022 Anticipo: ${-computedDelay} min';
+        else delayLine = '\u2022 In orario';
 
         final stateLine = 'Stato attuale: ${lastPassed.isNotEmpty ? lastPassed : 'In transito'}';
         final remainingLine = 'Fermate rimanenti: $remaining';
@@ -554,7 +554,7 @@ class NotificationManagerProvider extends ChangeNotifier {
           targetLine = '\nTarget destinazione: ${destinationStop}';
         }
 
-        final body = '⚠️ Prepara i bagagli! $label: $destinationStop$platformPart • In arrivo alle $destArrStr. Arrivo calcolato: $calcAt $delayLine\\n$stateLine\\n$remainingLine$targetLine';
+        final body = '\u26A0\uFE0F Prepara i bagagli! $label: $destinationStop$platformPart \u2022 In arrivo alle $destArrStr. Arrivo calcolato: $calcAt $delayLine\\n$stateLine\\n$remainingLine$targetLine';
 
         if (kDebugMode) {
           final observed = <String, dynamic>{};
@@ -590,9 +590,9 @@ class NotificationManagerProvider extends ChangeNotifier {
         final timeRaw = d['time'] ?? d['scheduledTime'] ?? d['departureTime'] ?? '';
         final time = _formatTimeToHHmm(timeRaw) ?? timeRaw.toString();
         final dest = d['destination'] ?? d['to'] ?? d['headsign'] ?? '';
-        return '${line ?? ''} ${time ?? ''}${dest != '' ? ' → $dest' : ''}';
+        return '${line ?? ''} ${time ?? ''}${dest != '' ? ' \u2192 $dest' : ''}';
       }).toList();
-      return items.join(' • ');
+      return items.join(' \u2022 ');
     } catch (e) {
       return 'Errore nel parsing';
     }

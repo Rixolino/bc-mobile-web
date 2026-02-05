@@ -43,8 +43,9 @@ class TrainDetailsSheet extends StatefulWidget {
   final TrainDeparture departure;
   final bool isArrivalMode;
   final String? selectedCountry;
+  final ScrollController? scrollController;
 
-  const TrainDetailsSheet({super.key, required this.departure, required this.isArrivalMode, this.selectedCountry});
+  const TrainDetailsSheet({super.key, required this.departure, required this.isArrivalMode, this.selectedCountry, this.scrollController});
 
   @override
   State<TrainDetailsSheet> createState() => _TrainDetailsSheetState();
@@ -288,17 +289,17 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     // If user's destination is cancelled, return informative message
     if (userDestination != null && userDestination.trim().isNotEmpty) {
       final destIdx = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
-      if (destIdx != -1 && stops[destIdx].cancelled) return '⚠️ La tua fermata ($userDestination) è stata annullata.';
+      if (destIdx != -1 && stops[destIdx].cancelled) return '\u26A0\uFE0F La tua fermata ($userDestination) \u00E8 stata annullata.';
       if (isAtStation && lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
         // keep neutral informational message for main channel
-        return '⚠️ Treno in stazione: $userDestination. Ricordati di scendere.';
+        return '\u26A0\uFE0F Treno in stazione: $userDestination. Ricordati di scendere.';
       }
       if (nextStop.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
         // do not instruct to "prepare bags" here; proximity alerts will be sent on a dedicated channel
-        return '⚠️ Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
+        return '\u26A0\uFE0F Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
       }
       if (lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase() && nextIndex == -1) {
-        return '🚉 Sei arrivato a $userDestination. Ricordati di scendere dal treno!';
+        return '\uD83D\uDE89 Sei arrivato a $userDestination. Ricordati di scendere dal treno!';
       }
     }
 
@@ -312,14 +313,14 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       if (nextIndex >= 0 && nextIndex < stops.length) {
         platform = stops[nextIndex].platform ?? '';
       }
-      final platformPart = platform.isNotEmpty ? ' • Binario: $platform' : '';
+      final platformPart = platform.isNotEmpty ? ' \u2022 Binario: $platform' : '';
       String eventLabel = '';
       if (depStr.isNotEmpty) {
         eventLabel = 'In partenza alle $depStr';
       } else if (arrStr.isNotEmpty) {
         eventLabel = 'In arrivo alle $arrStr';
       }
-      buffer.writeln('Prossima fermata: $nextStop$platformPart${eventLabel.isNotEmpty ? ' • $eventLabel' : ''}');
+      buffer.writeln('Prossima fermata: $nextStop$platformPart${eventLabel.isNotEmpty ? ' \u2022 $eventLabel' : ''}');
     } else {
       buffer.writeln('Prossima fermata: --');
     }
@@ -396,12 +397,12 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                           }
                           final bool isCancelled = s.cancelled;
                           final titleStyle = isCancelled ? TextStyle(color: Colors.red, fontStyle: FontStyle.italic) : (isPassed ? TextStyle(color: Colors.grey) : (isCurrent ? TextStyle(fontWeight: FontWeight.w700) : null));
-                          final subtitleParts = <String>[];
-                          if (s.country.isNotEmpty) subtitleParts.add(s.country);
-                          if (isPassed) subtitleParts.add('già passata');
-                          else if (isCurrent) subtitleParts.add('attuale');
-                          if (isCancelled) subtitleParts.add('annullata');
-                          final subtitleText = subtitleParts.join(' • ');
+                          final subParts = <String>[];
+                          if (s.country.isNotEmpty) subParts.add(s.country);
+                          if (isPassed) subParts.add('gi\u00E0 passata');
+                          else if (isCurrent) subParts.add('attuale');
+                          if (isCancelled) subParts.add('annullata');
+                          final subtitleText = subParts.join(' \u2022 ');
                           final disabled = isPassed || isCancelled;
                           return RadioListTile<String>(
                             value: s.stationName,
@@ -517,7 +518,11 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     final prodBase = 'https://prod.cuzimmartin.dev/api';
     // Try to refresh details in provider to let it populate metadata/endpoint if possible
     final trainProvider = Provider.of<TrainProvider>(ctx, listen: false);
-    final idx = tripId != null ? trainProvider.departures.indexWhere((d) => d.tripId == tripId || (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)) : -1;
+    // Always search for the train, whether by tripId or by trainNumber/destination combo
+    final idx = trainProvider.departures.indexWhere((d) => 
+      (tripId != null && (d.tripId == tripId || d.trainNumber == tripId)) || 
+      (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
+    );
     if (idx != -1) {
       try {
         await trainProvider.expandTrainDetails(idx);
@@ -649,7 +654,18 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
     );
-    if (index != -1) trainProvider.expandTrainDetails(index);
+    if (index != -1) {
+       // Force update via provider (which re-uses last know country or station country)
+       trainProvider.expandTrainDetails(index);
+       // Check if we need to locally update local widget state if not watching provider fully?
+       // Actually, the build method relies on `widget.departure`. 
+       // If standard MVP, we should be using `Consumer` or refetching a fresh object from the provider into the state.
+       // However, `ListView.builder` in `build` uses `widget.departure.stops`. 
+       // `widget.departure` is final. IT DOES NOT UPDATE when provider updates!
+       // START FIX: We need to pull the LATEST departure object from provider
+       final freshDep = trainProvider.departures[index];
+       // We can't update `widget.departure`. We should probably wrap the body in a Consumer or check provider here.
+    }
   }
 
   String _formatStationTime(DateTime? date, String countryCode) {
@@ -664,10 +680,76 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final List<TrainStop> stops = widget.departure.stops ?? [];
-    final trainName = "${widget.departure.category ?? ''} ${widget.departure.trainNumber ?? ''}".trim();
+    // FIX: Listen to provider to get updates for THIS train
+    return Consumer<TrainProvider>(
+      builder: (context, provider, child) {
+        // Find the most up-to-date version of this departure
+        final currentDep = provider.departures.firstWhere(
+           (d) => (d.tripId != null && d.tripId == widget.departure.tripId) || 
+                  (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
+           orElse: () => widget.departure // fallback to initial
+        );
+
+    // ERROR STATE HANDLING
+    if (currentDep.error != null && currentDep.error!.isNotEmpty) {
+      return Consumer<ThemeProvider>(
+        builder: (context, theme, child) {
+          return Container(
+            decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+            child: Column(
+              children: [
+                _buildHeader(context, "Informazioni non disponibili", 0, theme, currentDep),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
+                          const SizedBox(height: 24),
+                          Text(
+                            "Ops! Qualcosa è andato storto",
+                            style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            currentDep.error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+                          ),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            width: 200,
+                            child: ElevatedButton.icon(
+                              onPressed: _refreshTrainDetails,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text("Riprova"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              ],
+            ),
+          );
+        }
+      );
+    }
+
+    final List<TrainStop> stops = currentDep.stops ?? [];
+    final trainName = "${currentDep.category ?? ''} ${currentDep.trainNumber ?? ''}".trim();
     
-    final lastDetection = widget.departure.metadata?['lastDetection'];
+    final lastDetection = currentDep.metadata?['lastDetection'];
     final DateTime nowUtc = (lastDetection != null && lastDetection['timestamp'] != null)
         ? DateTime.parse(lastDetection['timestamp']).toUtc()
         : DateTime.now().toUtc();
@@ -678,8 +760,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
     if (stops.isNotEmpty) {
       for (int i = 0; i < stops.length - 1; i++) {
-        final curTimes = _estimateStopTimesGlobal(stops[i], widget.departure.delayMinutes ?? 0);
-        final nextTimes = _estimateStopTimesGlobal(stops[i+1], widget.departure.delayMinutes ?? 0);
+        final curTimes = _estimateStopTimesGlobal(stops[i], currentDep.delayMinutes ?? 0);
+        final nextTimes = _estimateStopTimesGlobal(stops[i+1], currentDep.delayMinutes ?? 0);
 
         final _ActualTime? depCurrent = curTimes['dep'] != null ? _ActualTime(curTimes['dep']!, isEstimated: stops[i].estimatedDeparture != null) : null;
         final _ActualTime? arrCurrent = curTimes['arr'] != null ? _ActualTime(curTimes['arr']!, isEstimated: stops[i].estimatedArrival != null) : null;
@@ -707,7 +789,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       }
     }
 
-    final int totalDelay = widget.departure.delayMinutes ?? 0;
+    final int totalDelay = currentDep.delayMinutes ?? 0;
     final String fullDisplayName = "$trainName";
 
     return Consumer<ThemeProvider>(
@@ -716,11 +798,12 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
       child: Column(
         children: [
-          _buildHeader(context, fullDisplayName, totalDelay, theme),
+          _buildHeader(context, fullDisplayName, totalDelay, theme, currentDep),
           Expanded(
             child: stops.isEmpty 
               ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
               : ListView.builder(
+                  controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   itemCount: stops.length,
                   itemBuilder: (context, index) {
@@ -746,9 +829,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
       },
     );
+   }); // End Consumer
   }
 
-  Widget _buildHeader(BuildContext context, String displayName, int delay, ThemeProvider theme) {
+  Widget _buildHeader(BuildContext context, String displayName, int delay, ThemeProvider theme, TrainDeparture departure) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
@@ -764,7 +848,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   children: [
                     Text(displayName, style: TextStyle(color: theme.textColor, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
                     const SizedBox(height: 4),
-                    Text(widget.isArrivalMode ? "Origine: ${widget.departure.origin}" : "Destinazione: ${widget.departure.destination}", 
+                    Text(widget.isArrivalMode ? "Origine: ${departure.origin}" : "Destinazione: ${departure.destination}", 
                          style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w500)),
                   ],
                 ),
@@ -775,28 +859,28 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   
                   final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
                   final isFavorite = favoritesProvider.isTrainFavorite(
-                    widget.departure.trainNumber ?? '',
-                    widget.departure.origin ?? '',
-                    widget.departure.destination ?? '',
+                    departure.trainNumber ?? '',
+                    departure.origin ?? '',
+                    departure.destination ?? '',
                   );
                   return IconButton.filledTonal(
                     icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
                     onPressed: () async {
                       if (isFavorite) {
                         await favoritesProvider.removeTrainFavorite(
-                          widget.departure.trainNumber ?? '',
-                          widget.departure.origin ?? '',
-                          widget.departure.destination ?? '',
+                          departure.trainNumber ?? '',
+                          departure.origin ?? '',
+                          departure.destination ?? '',
                         );
                       } else {
                         final favoriteTrain = FavoriteTrain(
-                          id: '${userId}_train_${widget.departure.trainNumber}_${widget.departure.origin}_${widget.departure.destination}',
+                          id: '${userId}_train_${departure.trainNumber}_${departure.origin}_${departure.destination}',
                           addedAt: DateTime.now(),
                           userId: userId,
-                          trainNumber: widget.departure.trainNumber ?? '',
-                          departureStation: widget.departure.origin ?? '',
-                          arrivalStation: widget.departure.destination ?? '',
-                          departureTime: widget.departure.scheduledTime?.toIso8601String() ?? '',
+                          trainNumber: departure.trainNumber ?? '',
+                          departureStation: departure.origin ?? '',
+                          arrivalStation: departure.destination ?? '',
+                          departureTime: departure.scheduledTime?.toIso8601String() ?? '',
                           arrivalTime: '', // Non disponibile
                           operator: null, // Non disponibile
                           category: widget.departure.category,

@@ -189,8 +189,17 @@ class TrainProvider with ChangeNotifier {
   }
 
   Future<void> expandTrainDetails(int index) async {
+    if (index < 0 || index >= _departures.length) return;
+    
     final dep = _departures[index];
-    if (dep.stops != null && dep.stops!.isNotEmpty) return; // Già caricati
+    // If stops are loaded and there is no error, return. If error present, retry is allowed.
+    if ((dep.stops != null && dep.stops!.isNotEmpty) && dep.error == null) return; 
+
+    // Clear error state before fetching
+    if (dep.error != null) {
+       _departures[index] = dep.copyWith(clearError: true);
+       notifyListeners(); // Update UI to show loading again
+    }
 
     try {
       TrainDeparture? details;
@@ -211,15 +220,28 @@ class TrainProvider with ChangeNotifier {
 
       if (details != null && details.stops != null) {
         // Preserve previous fields but include fetched stops, country and metadata to allow downstream features to use correct country
-        _departures[index] = dep.copyWith(
+        _departures[index] = _departures[index].copyWith(
           stops: details.stops,
           country: details.country,
           metadata: details.metadata,
+          clearError: true,
         );
         notifyListeners();
       }
     } catch (e) {
       print("Provider Error: $e");
+      String friendlyError = "Impossibile caricare i dettagli.";
+      final s = e.toString();
+      if (s.contains("500")) {
+        friendlyError = "Servizio momentaneamente non disponibile (500).";
+      } else if (s.contains("TRIP_ERROR")) {
+        friendlyError = "Dettagli corsa non trovati.";
+      } else if (s.contains("SocketException") || s.contains("Network")) {
+        friendlyError = "Errore di connessione. Controlla la rete.";
+      }
+      
+      _departures[index] = _departures[index].copyWith(error: friendlyError);
+      notifyListeners();
     }
   }
 }

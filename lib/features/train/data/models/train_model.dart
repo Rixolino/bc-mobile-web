@@ -99,6 +99,7 @@ class TrainDeparture {
   final String country;
   final Map<String, dynamic>? metadata;
   final List<Map<String, dynamic>>? messages; // optional messages/alerts for the trip
+  final String? error; // Error message if fetch failed
 
   TrainDeparture({
     this.trainNumber,
@@ -115,6 +116,7 @@ class TrainDeparture {
     this.country = '',
     this.metadata,
     this.messages,
+    this.error,
   });
 
   factory TrainDeparture.fromJson(Map<String, dynamic> json, {bool isDeparture = true}) {
@@ -212,6 +214,8 @@ class TrainDeparture {
     List<TrainStop>? stops,
     String? country,
     Map<String, dynamic>? metadata,
+    String? error,
+    bool clearError = false,
   }) {
     return TrainDeparture(
       trainNumber: trainNumber,
@@ -227,6 +231,8 @@ class TrainDeparture {
       stops: stops ?? this.stops,
       country: country ?? this.country,
       metadata: metadata ?? this.metadata,
+      messages: messages,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }

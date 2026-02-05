@@ -430,7 +430,7 @@ class RealtimeService : Service() {
                                         ?: "-"
 
                                     val trainName = listOf(category, trainNum).filter { it.isNotBlank() }.joinToString(" ")
-                                    val title = if (origin == "-" && dest == "-") trainName else "$trainName (${origin} â†’ ${dest})"
+                                    val title = if (origin == "-" && dest == "-") trainName else "$trainName (${origin} \u2192 ${dest})"
 
                                     // Parse stops (support multiple key names and fallback arrays)
                                     val stopsArr = json.optJSONArray("stops")
@@ -903,7 +903,7 @@ class RealtimeService : Service() {
                                             if (name.trim().equals(destinationStop.trim(), ignoreCase = true)) {
                                                 val cancelled = (s?.optBoolean("cancelled", false) == true) || (s?.optBoolean("canceled", false) == true) || (s?.optString("status")?.equals("cancelled", ignoreCase = true) == true)
                                                 if (cancelled) {
-                                                    bodyText = "âš ï¸ La tua fermata ($destinationStop) Ã¨ stata annullata."
+                                                    bodyText = "\u26A0\uFE0F La tua fermata ($destinationStop) \u00E8 stata annullata."
                                                 }
                                                 break
                                             }
@@ -970,13 +970,13 @@ class RealtimeService : Service() {
                                                 }
 
                                                 val delayPart = when {
-                                                    delayToShowSeconds == null -> "â€¢ In orario"
-                                                    delayToShowSeconds > 0 -> "â€¢ Ritardo: +${formatDelaySeconds(delayToShowSeconds)}"
-                                                    delayToShowSeconds < 0 -> "â€¢ Anticipo: ${formatDelaySeconds(-delayToShowSeconds)}"
-                                                    else -> "â€¢ In orario"
+                                                    delayToShowSeconds == null -> "\u2022 In orario"
+                                                    delayToShowSeconds > 0 -> "\u2022 Ritardo: +${formatDelaySeconds(delayToShowSeconds)}"
+                                                    delayToShowSeconds < 0 -> "\u2022 Anticipo: ${formatDelaySeconds(-delayToShowSeconds)}"
+                                                    else -> "\u2022 In orario"
                                                 }
 
-                                                var proxBody = "âš ï¸ Prepara i bagagli! Arrivo a $destinationStop in circa ${minutesToArrival} min (alle $atStr). $delayPart"
+                                                var proxBody = "\u26A0\uFE0F Prepara i bagagli! Arrivo a $destinationStop in circa ${minutesToArrival} min (alle $atStr). $delayPart"
                                                 if (notifyMode == "to_destination" && destinationStop.isNotBlank()) {
                                                     proxBody = proxBody + "\nTarget destinazione: ${destinationStop}"
                                                 }
@@ -1002,7 +1002,7 @@ class RealtimeService : Service() {
                                             val timeStr = nextArrivalInstant?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
                                             val eventLabel = if (nextEventType == "departure") "In partenza alle $timeStr" else "In arrivo alle $timeStr"
 
-                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "â€¢ Binario: $platformStr " else ""}â€¢ $eventLabel\n")
+                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "\u2022 Binario: $platformStr " else ""}\u2022 $eventLabel\n")
                                         } else {
                                             sb.append("Prossima fermata: --\n")
                                         }
@@ -1047,7 +1047,7 @@ class RealtimeService : Service() {
                                         sb.append("Fermate rimanenti: $remaining")
                                         bodyText = sb.toString().trim()
                                     } else if (bodyText.isEmpty() && notifyMode == "to_destination" && destinationStop.isNotBlank() && lastPassed.trim().equals(destinationStop.trim(), ignoreCase = true) && nextIndex == -1) {
-                                        bodyText = "ðŸš‰ Sei arrivato a $destinationStop. Ricordati di scendere dal treno!"
+                                        bodyText = "\uD83D\uDE89 Sei arrivato a $destinationStop. Ricordati di scendere dal treno!"
                                         // Final arrival: show final notification and remove monitor
                                         val nid = NotificationHelper.getIdForKey("train:$tId")
                                         NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, nid)
@@ -1194,7 +1194,7 @@ class RealtimeService : Service() {
                                             val timeStr = arrStr
                                             val eventLabel = if (nextEventType == "departure") "In partenza alle $timeStr" else "In arrivo alle $timeStr"
 
-                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "â€¢ Binario: $platformStr " else ""}â€¢ $eventLabel\n")
+                                            sb.append("Prossima fermata: $nextStop ${if (platformStr.isNotEmpty()) "\u2022 Binario: $platformStr " else ""}\u2022 $eventLabel\n")
                                         } else {
                                             sb.append("Prossima fermata: --\n")
                                         }
@@ -1205,18 +1205,18 @@ class RealtimeService : Service() {
                                             delayForNotifySeconds != null -> {
                                                 val dmin = delayForNotifySeconds / 60
                                                 when {
-                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Ritardo: +${dmin} min\n"
-                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Anticipo: ${-dmin} min\n"
-                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ In orario\n"
+                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Ritardo: +${dmin} min\n"
+                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Anticipo: ${-dmin} min\n"
+                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 In orario\n"
                                                 }
                                             }
                                             // Fallback to trip-level delay (seconds)
                                             delaySeconds != 0 -> {
                                                 val dmin = delaySeconds / 60
                                                 when {
-                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Ritardo: +${dmin} min\n"
-                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ Anticipo: ${-dmin} min\n"
-                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} â€¢ In orario\n"
+                                                    dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Ritardo: +${dmin} min\n"
+                                                    dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Anticipo: ${-dmin} min\n"
+                                                    else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 In orario\n"
                                                 }
                                             }
                                             else -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \n"
@@ -1241,7 +1241,7 @@ class RealtimeService : Service() {
                                                     }
                                                 }
                                                 val depTimeStr = depTime?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
-                                                "Stato attuale: In stazione a $currentStationName (partirÃ  alle $depTimeStr)"
+                                                "Stato attuale: In stazione a $currentStationName (partir\u00E0 alle $depTimeStr)"
                                             }
                                             lastPassed.isNotEmpty() -> {
                                                 // Train is in transit from lastPassed station
@@ -1392,5 +1392,6 @@ class RealtimeService : Service() {
         super.onDestroy()
     }
 }
+
 
 

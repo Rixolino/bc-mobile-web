@@ -16,9 +16,6 @@ class BusPanelContent extends StatefulWidget {
 
 class _BusPanelContentState extends State<BusPanelContent> {
   final TextEditingController _searchController = TextEditingController();
-  bool _expandedCitySelector = true;
-  bool _expandedOptions = true;
-  bool _expandedResults = true;
 
   @override
   Widget build(BuildContext context) {
@@ -347,63 +344,149 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     return ListView.builder(
       itemCount: busProvider.vehicles.length,
+      padding: const EdgeInsets.only(bottom: 80, top: 4),
       itemBuilder: (context, index) {
         final v = busProvider.vehicles[index];
-        return ListTile(
-          leading: Icon(Icons.directions_bus, color: _getCityColor(busProvider.selectedCity)),
-          title: Text("Linea ${v.line}", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-          subtitle: Text(v.destination ?? 'Destinazione non disponibile', style: TextStyle(color: theme.secondaryTextColor)),
-          trailing: Icon(Icons.map, color: theme.secondaryTextColor.withOpacity(0.3)),
-          onTap: () async {
-            if (v.latitude != 0) {
-              mapState.flyTo(v.latitude, v.longitude, zoom: 15);
-            }
-            // Fetch bus details from API and show details sheet
-            try {
-              final tripId = v.tripId ?? '';
-              final lineCode = v.line;
-              final provider = busProvider.selectedProvider!.name.toLowerCase();
-              final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/$provider/realtime?tripId=$tripId&lineCode=$lineCode';
-              print('Fetching bus details from URL: $url');
-
-              final response = await http.get(Uri.parse(url));
-              if (response.statusCode == 200) {
-                final jsonData = jsonDecode(response.body);
-                if (jsonData['vehicles'] != null && jsonData['vehicles'].isNotEmpty) {
-                  final vehicleData = jsonData['vehicles'][0];
-                  final stops = vehicleData['stops'] as List<dynamic>? ?? [];
-
-                  // Update bus destination if available
-                  final destination = vehicleData['destination'] as String?;
-                  if (destination != null && destination.isNotEmpty) {
-                    busProvider.updateBusDestination(v.id, destination);
-                  }
-
-                  // Convert stops to BusTripUpdate
-                  final tripUpdates = stops.map((stop) {
-                    return BusTripUpdate(
-                      stopId: stop['stopId']?.toString() ?? '',
-                      stopName: stop['stopName'] ?? '',
-                      expectedTime: stop['scheduledTime'] ?? '',
-                      delay: stop['delay'] ?? 0,
-                      isRealtime: stop['isRealtime'] ?? false,
-                      status: stop['status'] ?? 'future',
-                      arrivalEstimate: stop['estimatedArrivalUnix']?.toString(),
-                    );
-                  }).toList();
-
-                  // Set the trip updates in the provider
-                  busProvider.setApiTripUpdates(tripUpdates);
+        final cityColor = _getCityColor(busProvider.selectedCity);
+        
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3)
+              )
+            ],
+            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () async {
+                if (v.latitude != 0) {
+                  mapState.flyTo(v.latitude, v.longitude, zoom: 15);
                 }
-              }
-              // Select the bus to show details sheet
-              await busProvider.selectBus(v);
-            } catch (e) {
-              print('Error fetching bus details: $e');
-              // On error, fallback to just selecting the bus
-              await busProvider.selectBus(v);
-            }
-          },
+                // Fetch bus details from API and show details sheet
+                try {
+                  final tripId = v.tripId ?? '';
+                  final lineCode = v.line;
+                  final provider = busProvider.selectedProvider!.name.toLowerCase();
+                  final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/$provider/realtime?tripId=$tripId&lineCode=$lineCode';
+                  print('Fetching bus details from URL: $url');
+    
+                  final response = await http.get(Uri.parse(url));
+                  if (response.statusCode == 200) {
+                    final jsonData = jsonDecode(response.body);
+                    if (jsonData['vehicles'] != null && jsonData['vehicles'].isNotEmpty) {
+                      final vehicleData = jsonData['vehicles'][0];
+                      final stops = vehicleData['stops'] as List<dynamic>? ?? [];
+    
+                      // Update bus destination if available
+                      final destination = vehicleData['destination'] as String?;
+                      if (destination != null && destination.isNotEmpty) {
+                        busProvider.updateBusDestination(v.id, destination);
+                      }
+    
+                      // Convert stops to BusTripUpdate
+                      final tripUpdates = stops.map((stop) {
+                        return BusTripUpdate(
+                          stopId: stop['stopId']?.toString() ?? '',
+                          stopName: stop['stopName'] ?? '',
+                          expectedTime: stop['scheduledTime'] ?? '',
+                          delay: stop['delay'] ?? 0,
+                          isRealtime: stop['isRealtime'] ?? false,
+                          status: stop['status'] ?? 'future',
+                          arrivalEstimate: stop['estimatedArrivalUnix']?.toString(),
+                        );
+                      }).toList();
+    
+                      // Set the trip updates in the provider
+                      busProvider.setApiTripUpdates(tripUpdates);
+                    }
+                  }
+                  // Select the bus to show details sheet
+                  await busProvider.selectBus(v);
+                } catch (e) {
+                  print('Error fetching bus details: $e');
+                  // On error, fallback to just selecting the bus
+                  await busProvider.selectBus(v);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    // Line Number Box
+                    Container(
+                      width: 50,
+                      height: 50,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: cityColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: cityColor.withOpacity(0.3), width: 1.5)
+                      ),
+                      child: Text(
+                        "${v.line}",
+                        style: TextStyle(
+                          fontSize: 16, 
+                          fontWeight: FontWeight.w900, 
+                          color: cityColor
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(width: 16),
+                    
+                    // Destination Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            v.destination ?? 'Destinazione non disponibile',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8, 
+                                height: 8, 
+                                decoration: BoxDecoration(color: theme.successColor, shape: BoxShape.circle)
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                "In viaggio", // Placeholder for status
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.successColor),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                    
+                    // Action Icon
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: theme.surfaceColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.primaryColor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         );
       },
     );
@@ -448,40 +531,6 @@ class _BusPanelContentState extends State<BusPanelContent> {
       case "Emilia-Romagna": return Provider.of<ThemeProvider>(context, listen: false).warningColor;
       default: return Provider.of<ThemeProvider>(context, listen: false).primaryColor;
     }
-  }
-
-  Widget _buildCityChip(BuildContext context, String city, BusProvider provider) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    final mapState = Provider.of<MapStateProvider>(context, listen: false);
-    final isSelected = provider.selectedCity == city;
-
-    return FilterChip(
-      label: Text(city),
-      selected: isSelected,
-      onSelected: (_) {
-        provider.selectCity(city);
-        // Sposta la mappa alle coordinate della città selezionata
-        final selectedProvider = provider.providers.firstWhere(
-          (p) => p.name == city,
-          orElse: () => BusProviderConfig(
-            name: city,
-            provider: '',
-            endpoints: {},
-          ),
-        );
-        if (selectedProvider.latitude != null && selectedProvider.longitude != null) {
-          mapState.flyTo(
-            selectedProvider.latitude!,
-            selectedProvider.longitude!,
-            zoom: selectedProvider.zoom ?? 12.0,
-          );
-        }
-      },
-      backgroundColor: theme.surfaceColor.withOpacity(0.1),
-      selectedColor: theme.primaryColor.withOpacity(0.5),
-      labelStyle: TextStyle(color: theme.textColor),
-      checkmarkColor: theme.textColor,
-    );
   }
 
   BusProviderConfig? _getSelectedProvider(BusProvider busProvider) {

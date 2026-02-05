@@ -110,15 +110,21 @@ class TrainRepository {
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
         return TrainDeparture.fromJson(data);
+      } else {
+        throw Exception("Fetch Train Details Failed: ${response.statusCode}");
       }
     } catch (e) {
       print("Error fetching train details: $e");
+      rethrow;
     }
     return null;
   }
 
   Future<TrainDeparture?> fetchTrip(String tripId, {String country = 'IT', String service = 'trainboardeu'}) async {
-    final encodedTripId = Uri.encodeComponent(tripId);
+    // The new logic requires tripId NOT to be encoded if it's already properly formatted or if the server expects raw
+    // However, usually parameters should be encoded. 
+    // The user says: https://prod.cuzimmartin.dev/api/{country}/trip?tripId=[trip]
+    
     String url;
     final String tbUrl = "https://prod.cuzimmartin.dev/api";
 
@@ -126,18 +132,43 @@ class TrainRepository {
       // For RFI direct, tripId might be different or we need separate structure
       url = "${ApiConstants.baseUrl}/api/rfi-train-progress?trainNumber=$tripId"; // Fallback placeholder
     } else {
-      url = "$tbUrl/$country/trip?tripId=$encodedTripId";
+       // Using raw tripId as per user request (sometimes double encoding breaks things)
+       // If the tripId contains special chars like '/', they are usually delimiters in some APIs but here it is a query param
+       // Let's try to encode it because it's a query param.
+       final encodedTripId = Uri.encodeComponent(tripId);
+       url = "$tbUrl/$country/trip?tripId=$encodedTripId";
     }
+
+    print("Fetching Trip URL: $url"); // Debug log
 
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-        final dynamic tripData = (data is Map && data.containsKey('data')) ? data['data'] : data;
-        return TrainDeparture.fromJson(tripData);
+        // Sometimes the response IS the object, sometimes it's wrapped in 'data'
+        // Check both
+        dynamic tripData;
+        if (data is Map) {
+             if (data.containsKey('data')) {
+                 tripData = data['data'];
+             } else {
+                 tripData = data;
+             }
+        } else {
+             tripData = data;
+        }
+        
+        // Ensure tripData is a Map before parsing
+        if (tripData is Map<String, dynamic>) {
+            return TrainDeparture.fromJson(tripData);
+        }
+      } else {
+         print("Fetch Trip Failed: ${response.statusCode} | ${response.body}");
+         throw Exception("Fetch Trip Failed: ${response.statusCode} | ${response.body}");
       }
     } catch (e) {
       print("Error fetching trip details: $e");
+      rethrow;
     }
     return null;
   }
