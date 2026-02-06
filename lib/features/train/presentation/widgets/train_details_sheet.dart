@@ -703,7 +703,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
             child: Column(
               children: [
-                _buildHeader(context, "Informazioni non disponibili", 0, theme, currentDep),
+                _buildHeader(context, "N/D", 0, theme, currentDep),
                 Expanded(
                   child: Center(
                     child: Padding(
@@ -934,7 +934,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
               // Notifications button
               Builder(builder: (ctx) {
-                return _TrainNotificationsButton(departure: widget.departure, selectedCountry: widget.selectedCountry);
+                return _TrainNotificationsButton(departure: departure, selectedCountry: widget.selectedCountry);
               }),
               IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
               IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),

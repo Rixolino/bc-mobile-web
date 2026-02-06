@@ -112,24 +112,25 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
 
   Future<void> _fetchTripUpdates({bool showLoading = false}) async {
     final provider = Provider.of<BusProvider>(context, listen: false);
-    if (provider.selectedProvider?.name != 'bari') return;
-
+    
     if (showLoading) {
       setState(() => _isLoadingUpdates = true);
     }
     try {
-
-      // Check if we have API trip updates available
+      // Check if we have API trip updates available (works for any provider)
       if (provider.apiTripUpdates.isNotEmpty) {
         setState(() => _tripUpdates = provider.apiTripUpdates);
 
-        // Scroll alla fermata corrente solo al primo caricamento
+        // Scroll to current stop if needed
         if (showLoading && !_hasScrolledToCurrent && _tripUpdates.isNotEmpty) {
           _scrollToCurrentStop(_tripUpdates);
           _hasScrolledToCurrent = true;
         }
         return;
       }
+
+      // Bari-specific fallback logic
+      if (provider.selectedProvider?.name != 'bari') return;
 
       // Fallback to fetching trip updates for this specific bus using the provider method
       print('Fetching trip updates for bus ${widget.bus.id}, line ${widget.bus.line}');

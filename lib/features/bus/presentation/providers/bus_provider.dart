@@ -74,6 +74,15 @@ class BusProvider with ChangeNotifier {
   bool get isLoadingTripStops => _isLoadingTripStops;
 
   List<BusTripUpdate> get apiTripUpdates => _apiTripUpdates;
+  
+  // Saved search query to restore view
+  String _savedStopSearchQuery = "";
+  String get savedStopSearchQuery => _savedStopSearchQuery;
+  
+  void setSavedStopSearchQuery(String query) {
+    _savedStopSearchQuery = query;
+    notifyListeners();
+  }
 
   void setApiTripUpdates(List<BusTripUpdate> updates) {
     _apiTripUpdates = updates;

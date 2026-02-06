@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -12,10 +11,9 @@ import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
 import '../providers/map_state_provider.dart';
 import '../providers/theme_provider.dart';
-import '../../features/bus/presentation/widgets/bus_panel_content.dart';
-import '../../features/plane/presentation/widgets/plane_panel_content.dart';
-import '../../features/train/presentation/widgets/train_panel_content.dart';
 import '../../features/train/presentation/screens/train_search_screen.dart';
+import '../../features/bus/presentation/screens/bus_search_screen.dart';
+import '../../features/plane/presentation/screens/plane_search_screen.dart';
 import '../widgets/map_background.dart';
 
 import 'settings_screen.dart';
@@ -32,7 +30,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final PanelController _panelController = PanelController();
   final TextEditingController _searchController = TextEditingController();
   
   // 0: Trains, 1: Buses, 2: Planes
@@ -123,11 +120,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final planeProvider = Provider.of<PlaneProvider>(context, listen: false);
       planeProvider.searchAirports(query);
     }
+    
+    // Navigate to Search Screen instead of opening panel
+    _openSearchScreenForMode(_selectedModeIndex);
+  }
 
-    // Apri il pannello per mostrare i risultati
-    if (!_panelController.isPanelOpen) {
-      _panelController.open();
-    }
+  void _openSearchScreenForMode(int mode) {
+     if (mode == 0) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrainSearchScreen()));
+     } else if (mode == 1) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BusSearchScreen()));
+     } else if (mode == 2) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlaneSearchScreen()));
+     }
   }
 
   Future<int> _getMonitoredCount() async {
@@ -575,47 +580,26 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final configProvider = Provider.of<ConfigProvider>(context);
-    final config = configProvider.config;
+    // final config = configProvider.config; // Unused
 
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
         return Consumer<BusProvider>(
           builder: (context, busProvider, child) {
-            // Quando c'è un bus o una fermata selezionati, nascondi il panel
-            final hasSelectedBus = busProvider.selectedBus != null;
-            final hasSelectedStop = busProvider.selectedStop != null;
-            final shouldHidePanel = hasSelectedBus || hasSelectedStop;
-            final panelMinHeight = shouldHidePanel ? 0.0 : 148.0;
-            final panelMaxHeight = shouldHidePanel ? 0.0 : MediaQuery.of(context).size.height * 0.7;
+            // Quando c'è un bus o una fermata selezionati, nascondi il panel (non più usato, ma manteniamo la logica di pulizia se serve)
+            // final hasSelectedBus = busProvider.selectedBus != null;
+            // final hasSelectedStop = busProvider.selectedStop != null;
             
             return Scaffold(
-              body: SlidingUpPanel(
-                controller: _panelController,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(24.0),
-                  topRight: Radius.circular(24.0),
-                ),
-                minHeight: panelMinHeight,
-                maxHeight: panelMaxHeight,
-                color: theme.backgroundColor.withOpacity(0.95),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 20.0,
-                    color: theme.textColor.withOpacity(0.12),
-                  ),
-                ],
-                // IL CONTENT DEL PANNELLO (SHEET)
-                panel: shouldHidePanel ? const SizedBox() : _buildPanelContent(config),
-                
-                // LA MAPPA E L'UI DI SFONDO
-                body: Stack(
-                  children: [
-                    // 1. Mappa a schermo intero
-                    MapBackground(),
+              resizeToAvoidBottomInset: false, // Prevents map from squeezing when keyboard opens
+              body: Stack(
+                children: [
+                  // 1. Mappa a schermo intero
+                  MapBackground(),
 
-                    // 2. Barra di ricerca Floating
-            // Logo BC.T - positioned above the search bar at top-left; map/style & settings on the right
-            Positioned(
+                  // 2. Logo e Bottoni Top Right
+                  // Logo BC.T - positioned above the search bar at top-left; map/style & settings on the right
+                  Positioned(
               top: MediaQuery.of(context).padding.top + 10,
               left: 16,
               right: 16,
@@ -815,90 +799,219 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
+            // Widget Fermata Selezionata (Bus)
+            if (busProvider.selectedStop != null)
+               Positioned(
+                 top: MediaQuery.of(context).padding.top + 60 + (_searchExpanded ? 80 : 0),
+                 left: 16,
+                 right: 16,
+                 child: _buildSelectedStopBanner(busProvider, theme),
+               ),
+
             // 3. Loading Indicator se necessario
             if (configProvider.isLoading)
               const Center(
                 child: CircularProgressIndicator(),
               ),
 
-            // 4. Indicatore di trascinamento (debug)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 20,
-                color: theme.primaryColor.withOpacity(0.3),
-                child: Center(
-                  child: Text(
-                    'Scorri verso l\'alto',
-                    style: TextStyle(color: theme.textColor, fontSize: 10),
-                  ),
-                ),
-              ),
-            ),
+             // 4. Mode Buttons (Floating at bottom center)
+             Positioned(
+               bottom: 24,
+               left: 16,
+               right: 16,
+               child: Center(
+                 child: GlassmorphicContainer(
+                   width: double.infinity,
+                   height: 76,
+                   borderRadius: 38,
+                   blur: 30,
+                   alignment: Alignment.center,
+                   border: 1.5,
+                   linearGradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF222831).withOpacity(0.85),
+                        const Color(0xFF15191E).withOpacity(0.95),
+                      ],
+                   ),
+                   borderGradient: LinearGradient(
+                     begin: Alignment.topLeft,
+                     end: Alignment.bottomRight,
+                     colors: [
+                       Colors.white.withOpacity(0.15),
+                       Colors.white.withOpacity(0.05),
+                     ],
+                   ),
+                   child: Padding(
+                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                     child: Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+                         _buildRoundModeButton(Icons.train, "Treno", 0, theme),
+                         _buildRoundModeButton(Icons.directions_bus, "Bus", 1, theme),
+                         _buildRoundModeButton(Icons.flight, "Aereo", 2, theme),
+                         Container(width: 1, height: 24, color: Colors.white.withOpacity(0.1)),
+                         _buildActionButton(Icons.star_outline, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()))),
+                         _buildActionButton(Icons.settings_outlined, _openSettings),
+                       ],
+                     ),
+                   ),
+                 ),
+               ),
+             ),
           ],
         ),
-      ),
-    );
+      );
           },
         );
       },
     );
   }
 
-  Widget _buildMapStyleButton() {
-    final mapState = Provider.of<MapStateProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    
-    IconData styleIcon;
-    String nextStyle;
-    String toastMessage;
+  Widget _buildRoundModeButton(IconData icon, String label, int index, ThemeProvider theme) {
+     final isSelected = _selectedModeIndex == index;
+     // Colore azzurro acceso per lo stato attivo, simile a un neon
+     final activeColor = const Color(0xFF00E5FF); 
 
-    if (mapState.mapStyle == 'streets-v12') {
-      styleIcon = Icons.dark_mode;
-      nextStyle = 'dark-v11';
-      toastMessage = "Mappa Scura";
-    } else if (mapState.mapStyle == 'dark-v11') {
-      styleIcon = Icons.terrain;
-      nextStyle = 'satellite-streets-v12';
-      toastMessage = "Mappa 3D / Satellite";
-    } else {
-      styleIcon = Icons.map;
-      nextStyle = 'streets-v12';
-      toastMessage = "Mappa Normale";
-    }
+     return GestureDetector(
+       onTap: () {
+         if (_selectedModeIndex != index) {
+            if (index != 0) Provider.of<TrainProvider>(context, listen: false).clearAll();
+            if (index != 1) Provider.of<BusProvider>(context, listen: false).clearAll();
+            
+            setState(() => _selectedModeIndex = index);
+            Provider.of<MapStateProvider>(context, listen: false).setCategory(index);
+         }
+         _openSearchScreenForMode(index);
+       },
+       child: GlassmorphicContainer(
+         width: 52, 
+         height: 52,
+         borderRadius: 20,
+         blur: 20,
+         alignment: Alignment.center,
+         border: 1.0,
+         linearGradient: isSelected
+             ? LinearGradient(
+                 begin: Alignment.topLeft,
+                 end: Alignment.bottomRight,
+                 colors: [
+                   activeColor.withOpacity(0.5),
+                   activeColor.withOpacity(0.2),
+                 ],
+               )
+             : LinearGradient(
+                 begin: Alignment.topLeft,
+                 end: Alignment.bottomRight,
+                 colors: [
+                   Colors.white.withOpacity(0.0), 
+                   Colors.white.withOpacity(0.0),
+                 ],
+               ),
+         borderGradient: LinearGradient(
+           begin: Alignment.topLeft,
+           end: Alignment.bottomRight,
+           colors: isSelected 
+             ? [activeColor.withOpacity(0.6), activeColor.withOpacity(0.1)]
+             : [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.05)],
+         ),
+         child: Icon(
+           icon, 
+           color: isSelected ? Colors.white : Colors.grey.shade400,
+           size: 26,
+           shadows: isSelected 
+             ? [BoxShadow(color: activeColor.withOpacity(0.8), blurRadius: 8)] 
+             : null,
+         ),
+       ),
+     );
+  }
 
+  Widget _buildActionButton(IconData icon, VoidCallback onTap) {
     return GestureDetector(
-      onTap: () {
-        mapState.setMapStyle(nextStyle);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(toastMessage),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            width: 200,
-          ),
-        );
-      },
+      onTap: onTap,
       child: Container(
-        padding: _scaledButtonPadding(context, factor: 1.25),
-        decoration: BoxDecoration(
-          color: theme.surfaceColor.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: theme.textColor.withOpacity(0.18),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ]
-        ),
-        child: Icon(styleIcon, size: _scaledIconSize(context, factor: 1.25), color: theme.textColor),
+        width: 50,
+        height: 50,
+        alignment: Alignment.center,
+        child: Icon(icon, color: Colors.grey.shade400, size: 26),
       ),
     );
   }
+
+  Widget _buildSelectedStopBanner(BusProvider busProvider, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+             padding: const EdgeInsets.all(10),
+             decoration: BoxDecoration(
+               color: theme.primaryColor.withOpacity(0.1),
+               shape: BoxShape.circle,
+             ),
+             child: Icon(Icons.place, color: theme.primaryColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Fermata Selezionata",
+                  style: TextStyle(color: theme.secondaryTextColor, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  busProvider.selectedStop?.stopName ?? "Fermata",
+                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 15),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+               busProvider.clearStopSelection();
+               // Se avevamo salvato una ricerca (e quindi eravamo probabilmente in piena ricerca)
+               // Riapriamo la BusSearchScreen
+               if (busProvider.savedStopSearchQuery.isNotEmpty) {
+                 Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const BusSearchScreen())
+                 );
+               } else {
+                 // Open panel logic removed, just clear selection
+                 // If we were just browsing map, staying here is fine
+               }
+            },
+            icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+            label: const Text("Apri"),
+            style: TextButton.styleFrom(
+              foregroundColor: theme.primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              backgroundColor: theme.primaryColor.withOpacity(0.08),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+
 
   Widget _buildSearchBar() {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
@@ -1041,235 +1154,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildPanelContent(dynamic config) {
-    if (config == null) return const SizedBox();
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        // Handle per il drag
-        Container(
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: theme.secondaryTextColor,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 20),
-        
-        // Selettore Modalità (Treni/Bus/Aerei) - Material segmented style
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          child: Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            color: theme.surfaceColor,
-            child: Padding(
-              padding: const EdgeInsets.all(6.0),
-              child: Row(
-                children: [
-                  _buildModeButton(0, Icons.train, "Treni", true),
-                  const SizedBox(width: 8),
-                  _buildModeButton(1, Icons.directions_bus, "Bus", true),
-                  const SizedBox(width: 8),
-                  _buildModeButton(2, Icons.flight, "Aerei", true),
-                ],
-              ),
-            ),
-          ),
-        ),
-        
-        Divider(color: theme.secondaryTextColor.withOpacity(0.12), height: 40),
-
-        // Contenuto dinamico in base alla selezione
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              bottom: MediaQuery.of(context).padding.top + 36, // Padding per evitare sovrapposizione con barra navigazione
-            ),
-            child: _buildDynamicList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildModeButton(int index, IconData icon, String label, bool enabled) {
-    if (!enabled) return const SizedBox.shrink();
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    final isSelected = _selectedModeIndex == index;
-
-    return Expanded(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        // Slight elevation/scale effect when selected
-        transform: Matrix4.identity()..scale(isSelected ? 1.02 : 1.0),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 0.0),
-          child: ElevatedButton.icon(
-            onPressed: () {
-              if (index == 0) {
-                 // Naviga alla schermata treni separata
-                 Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const TrainSearchScreen())
-                 );
-                 return;
-              }
-
-              if (_selectedModeIndex != index) {
-                // Cancella elementi dalla mappa quando si cambia trasporto
-                Provider.of<TrainProvider>(context, listen: false).clearAll();
-                Provider.of<BusProvider>(context, listen: false).clearAll();
-                Provider.of<PlaneProvider>(context, listen: false).clearAll();
-                _searchController.clear();
-                // Nasconde il dropdown delle fermate quando si cambia modalità
-                _showStopDropdown = false;
-              }
-
-              setState(() {
-                _selectedModeIndex = index;
-                // Apriamo leggermente il pannello se si cambia modalità
-                _panelController.open();
-              });
 
 
-              // Notifichiamo il MapStateProvider per resettare la vista
-              Provider.of<MapStateProvider>(context, listen: false).setCategory(index);
 
-              // Carichiamo automaticamente le fermate quando si seleziona la categoria bus
-              if (index == 1) {
-                final busProvider = Provider.of<BusProvider>(context, listen: false);
-                if (busProvider.stops.isEmpty && !busProvider.isLoadingStops) {
-                  busProvider.fetchStops();
-                }
-              }
-            },
-            icon: Icon(
-              icon,
-              color: isSelected ? Colors.white : theme.primaryColor,
-              size: 20,
-            ),
-            label: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : theme.primaryColor,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              elevation: isSelected ? 4 : 0,
-              backgroundColor: isSelected ? theme.primaryColor : theme.surfaceColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: isSelected ? theme.primaryColor : Colors.transparent),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildDynamicList() {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
-    if (_selectedModeIndex == 0) {
-      return const TrainPanelContent();
-    }
-    if (_selectedModeIndex == 1) {
-      return const BusPanelContent();
-    }
-    if (_selectedModeIndex == 2) {
-      return PlanePanelContent(
-        onRefresh: () {
-          final planeProvider = Provider.of<PlaneProvider>(context, listen: false);
-          final mapState = Provider.of<MapStateProvider>(context, listen: false);
-          // Scansiona l'area visibile sulla mappa
-          planeProvider.scanAreaForFlights(mapState.lat, mapState.lng, mapState.zoom);
-        },
-      );
-    }
-  
-    // Default / Recenti
-    return ListView(
-      children: [
-        Text(
-          "Recenti",
-          style: TextStyle(
-            color: theme.textColor.withOpacity(0.8),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildListItem(Icons.history, "Bari Centrale -> Roma Termini", "Treno • Ieri"),
-        _buildListItem(Icons.history, "Piazza Moro -> Via Sparano", "Bus • Oggi"),
-        const SizedBox(height: 24),
-        Text(
-          "Vicino a te",
-          style: TextStyle(
-            color: theme.textColor.withOpacity(0.8),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildListItem(Icons.location_on, "Fermata Via Capruzzi", "200m • Bus"),
-        _buildListItem(Icons.local_airport, "Aeroporto Karol Wojtyła", "10km • Aereo"),
-      ],
-    );
-  }
 
-  Widget _buildListItem(IconData icon, String title, String subtitle) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.surfaceColor.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: theme.secondaryTextColor),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: theme.textColor,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: theme.secondaryTextColor.withOpacity(0.5),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, color: theme.secondaryTextColor.withOpacity(0.3)),
-        ],
-      ),
-    );
-  }
+
 }

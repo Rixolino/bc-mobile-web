@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import '../providers/train_provider.dart';
 import '../../data/models/train_model.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
@@ -186,161 +187,169 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     // View 2: Search Form & Suggestions
     return Column(
       children: [
-        // Material 3 Search Header Container
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.surfaceColor,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              )
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-               // Search Bar
-               TextField(
-                 controller: _searchController,
-                 style: TextStyle(fontSize: 18, color: theme.textColor),
-                 decoration: InputDecoration(
-                   hintText: "Cerca stazione...",
-                   hintStyle: TextStyle(color: theme.secondaryTextColor, fontSize: 18),
-                   prefixIcon: Padding(
-                     padding: const EdgeInsets.only(left: 16, right: 12),
-                     child: Icon(Icons.search, color: theme.textColor),
+        // Professional Glass Search Header
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: GlassmorphicContainer(
+            width: double.infinity,
+            height: 120, // Increased to fit chips inside or just below nicely
+            borderRadius: 24,
+            blur: 20,
+            alignment: Alignment.center,
+            border: 1.5,
+            linearGradient: LinearGradient(
+               begin: Alignment.topLeft,
+               end: Alignment.bottomRight,
+                colors: [
+                  theme.surfaceColor.withOpacity(0.8),
+                  theme.surfaceColor.withOpacity(0.5),
+                ],
+            ),
+            borderGradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                theme.secondaryTextColor.withOpacity(0.2),
+                theme.secondaryTextColor.withOpacity(0.05),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                 // Search Bar
+                 TextField(
+                   controller: _searchController,
+                   style: TextStyle(fontSize: 18, color: theme.textColor),
+                   decoration: InputDecoration(
+                     hintText: "Cerca stazione...",
+                     hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7), fontSize: 18),
+                     prefixIcon: Icon(Icons.search, color: theme.primaryColor),
+                     suffixIcon: Row(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         if (_searchController.text.isNotEmpty)
+                            IconButton(
+                              icon: Icon(Icons.close, color: theme.secondaryTextColor),
+                              onPressed: () {
+                                _searchController.clear();
+                                trainProvider.clearStationSuggestions();
+                              },
+                            ),
+                         
+                         // Service Filter Menu
+                         PopupMenuButton<String>(
+                           icon: Icon(Icons.tune_rounded, color: theme.primaryColor),
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                           color: theme.surfaceColor,
+                           onSelected: (val) => trainProvider.setService(val),
+                           itemBuilder: (context) => [
+                             PopupMenuItem(
+                               value: 'direct',
+                               child: Row(
+                                 children: [
+                                   Icon(Icons.check, color: trainProvider.selectedService == 'direct' ? theme.primaryColor : Colors.transparent, size: 18),
+                                   const SizedBox(width: 8),
+                                   Text("BC Transporter", style: TextStyle(color: theme.textColor)),
+                                 ],
+                               ),
+                             ),
+                             PopupMenuItem(
+                               value: 'trainboardeu',
+                               child: Row(
+                                 children: [
+                                   Icon(Icons.check, color: trainProvider.selectedService == 'trainboardeu' ? theme.primaryColor : Colors.transparent, size: 18),
+                                   const SizedBox(width: 8),
+                                   Text("Trainboard.eu", style: TextStyle(color: theme.textColor)),
+                                 ],
+                               ),
+                             ),
+                           ],
+                         ),
+                         const SizedBox(width: 8),
+                       ],
+                     ),
+                     border: InputBorder.none,
+                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                    ),
-                   suffixIcon: Row(
-                     mainAxisSize: MainAxisSize.min,
+                   onChanged: (val) {
+                      setState(() {});
+                       if (_selectedCountry == 'EU') {
+                         trainProvider.searchTrainByNumber(val);
+                       } else if (_selectedCountry.isNotEmpty) {
+                         trainProvider.searchStations(val, country: _selectedCountry);
+                       } else {
+                         _searchStationsMultipleCountries(val, displayedCountries, trainProvider);
+                       }
+                   },
+                 ),
+                 
+                 // Filters Row (Chips)
+                 SizedBox(
+                   height: 48,
+                   child: ListView(
+                     scrollDirection: Axis.horizontal,
+                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                     physics: const BouncingScrollPhysics(),
                      children: [
-                       if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            icon: Icon(Icons.close, color: theme.secondaryTextColor),
-                            onPressed: () {
-                              _searchController.clear();
-                              trainProvider.clearStationSuggestions();
-                            },
+                       if (_selectedCountry.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ActionChip(
+                               avatar: Icon(Icons.close, size: 16, color: theme.errorColor),
+                               label: Text("Reset", style: TextStyle(color: theme.errorColor)),
+                               backgroundColor: theme.errorColor.withOpacity(0.1),
+                               side: BorderSide.none,
+                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                               onPressed: () {
+                                 setState(() => _selectedCountry = '');
+                                 _searchStationsMultipleCountries(_searchController.text, displayedCountries, trainProvider);
+                               },
+                            ),
                           ),
-                       
-                       // Service Filter Menu (replaces clunky dropdown)
-                       PopupMenuButton<String>(
-                         icon: Icon(Icons.tune_rounded, color: theme.primaryColor),
-                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                         color: theme.surfaceColor,
-                         onSelected: (val) => trainProvider.setService(val),
-                         itemBuilder: (context) => [
-                           PopupMenuItem(
-                             value: 'direct',
-                             child: Row(
-                               children: [
-                                 Icon(Icons.check, color: trainProvider.selectedService == 'direct' ? theme.primaryColor : Colors.transparent, size: 18),
-                                 const SizedBox(width: 8),
-                                 Text("BC Transporter", style: TextStyle(color: theme.textColor)),
-                               ],
-                             ),
-                           ),
-                           PopupMenuItem(
-                             value: 'trainboardeu',
-                             child: Row(
-                               children: [
-                                 Icon(Icons.check, color: trainProvider.selectedService == 'trainboardeu' ? theme.primaryColor : Colors.transparent, size: 18),
-                                 const SizedBox(width: 8),
-                                 Text("Trainboard.eu", style: TextStyle(color: theme.textColor)),
-                               ],
-                             ),
-                           ),
-                         ],
-                       ),
-                       const SizedBox(width: 8),
+
+                       ...displayedCountries.map((c) {
+                          final isSelected = _selectedCountry == c['code'];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(c['name']!),
+                              selected: isSelected, 
+                              onSelected: (val) {
+                                 setState(() => _selectedCountry = val ? c['code']! : '');
+                                 final query = _searchController.text;
+                                 if (query.isNotEmpty) {
+                                    if (val && c['code'] == 'EU') {
+                                      trainProvider.searchTrainByNumber(query);
+                                    } else if (val) {
+                                      trainProvider.searchStations(query, country: c['code']!);
+                                    } else {
+                                      _searchStationsMultipleCountries(query, displayedCountries, trainProvider);
+                                    }
+                                 }
+                              },
+                              showCheckmark: false,
+                              backgroundColor: Colors.transparent,
+                              selectedColor: theme.primaryColor.withOpacity(0.2),
+                              side: BorderSide(
+                                color: isSelected ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.2),
+                                width: 1.0,
+                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), 
+                              labelStyle: TextStyle(
+                                color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontSize: 13,
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                            ),
+                          );
+                       }).toList(),
                      ],
                    ),
-                   border: InputBorder.none,
-                   contentPadding: const EdgeInsets.symmetric(vertical: 16),
                  ),
-                 onChanged: (val) {
-                    setState(() {});
-                     if (_selectedCountry == 'EU') {
-                       trainProvider.searchTrainByNumber(val);
-                     } else if (_selectedCountry.isNotEmpty) {
-                       trainProvider.searchStations(val, country: _selectedCountry);
-                     } else {
-                       _searchStationsMultipleCountries(val, displayedCountries, trainProvider);
-                     }
-                 },
-               ),
-               
-               // Filters Row (Chips)
-               SizedBox(
-                 height: 48,
-                 child: ListView(
-                   scrollDirection: Axis.horizontal,
-                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                   physics: const BouncingScrollPhysics(),
-                   children: [
-                     // Optional: "All" or Reset chip
-                     if (_selectedCountry.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ActionChip(
-                             avatar: Icon(Icons.close, size: 16, color: theme.errorColor),
-                             label: Text("Reset", style: TextStyle(color: theme.errorColor)),
-                             backgroundColor: theme.errorColor.withOpacity(0.1),
-                             side: BorderSide.none,
-                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                             onPressed: () {
-                               setState(() => _selectedCountry = '');
-                               _searchStationsMultipleCountries(_searchController.text, displayedCountries, trainProvider);
-                             },
-                          ),
-                        ),
-
-                     ...displayedCountries.map((c) {
-                        final isSelected = _selectedCountry == c['code'];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(c['name']!),
-                            selected: isSelected, 
-                            onSelected: (val) {
-                               setState(() => _selectedCountry = val ? c['code']! : '');
-                               final query = _searchController.text;
-                               if (query.isNotEmpty) {
-                                  if (val && c['code'] == 'EU') {
-                                    trainProvider.searchTrainByNumber(query);
-                                  } else if (val) {
-                                    trainProvider.searchStations(query, country: c['code']!);
-                                  } else {
-                                    _searchStationsMultipleCountries(query, displayedCountries, trainProvider);
-                                  }
-                               }
-                            },
-                            showCheckmark: false, // Cleaner look
-                            // Material 3 Style colors
-                            backgroundColor: theme.surfaceColor,
-                            selectedColor: theme.primaryColor.withOpacity(0.12),
-                            side: isSelected 
-                                ? BorderSide(color: theme.primaryColor, width: 1.5)
-                                : BorderSide(color: theme.secondaryTextColor.withOpacity(0.2)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), // M3 uses smaller radius for suggestion chips sometimes, but let's stick to rounded
-                            labelStyle: TextStyle(
-                              color: isSelected ? theme.primaryColor : theme.textColor,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                            elevation: isSelected ? 1 : 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                          ),
-                        );
-                     }).toList(),
-                   ],
-                 ),
-               ),
-               const SizedBox(height: 12),
-            ],
+                 const SizedBox(height: 12),
+              ],
+            ),
           ),
         ),
         

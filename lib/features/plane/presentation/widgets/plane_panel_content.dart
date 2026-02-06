@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import '../providers/plane_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -36,19 +37,30 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Mode Selector (Tabs)
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: theme.surfaceColor.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(child: _buildTabButton(context, "Radar Live", !_showSkyscanner, () => setState(() => _showSkyscanner = false))),
-                  Expanded(child: _buildTabButton(context, "Orari Aeroporti", _showSkyscanner, () => setState(() => _showSkyscanner = true))),
-                ],
+            // 1. Mode Selector (Glass Tabs)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: GlassmorphicContainer(
+                width: double.infinity,
+                height: 56,
+                borderRadius: 20,
+                blur: 15,
+                alignment: Alignment.center,
+                border: 1.0,
+                linearGradient: LinearGradient(
+                   begin: Alignment.topLeft,
+                   end: Alignment.bottomRight,
+                   colors: [theme.surfaceColor.withOpacity(0.7), theme.surfaceColor.withOpacity(0.5)],
+                ),
+                borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildGlassTab(context, "Radar Live", Icons.radar, !_showSkyscanner, () => setState(() => _showSkyscanner = false)),
+                    Container(width: 1, height: 20, color: theme.secondaryTextColor.withOpacity(0.2)),
+                    _buildGlassTab(context, "Orari Aeroporti", Icons.schedule, _showSkyscanner, () => setState(() => _showSkyscanner = true)),
+                  ],
+                ),
               ),
             ),
 
@@ -70,26 +82,26 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
     );
   }
 
-  Widget _buildTabButton(BuildContext context, String label, bool active, VoidCallback onTap) {
+  Widget _buildGlassTab(BuildContext context, String label, IconData icon, bool active, VoidCallback onTap) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: active ? theme.surfaceColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))] : null,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? theme.textColor : theme.secondaryTextColor,
-            fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
-          ),
+      child: Container(
+        color: Colors.transparent, 
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: active ? theme.primaryColor : theme.secondaryTextColor),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? theme.primaryColor : theme.secondaryTextColor,
+                fontWeight: active ? FontWeight.bold : FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ),
     );
