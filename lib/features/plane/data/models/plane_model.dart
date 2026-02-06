@@ -27,6 +27,11 @@ class Flight {
   final double? heading;
   final double? altitude;
   final double? speed;
+
+  int get delayMinutes {
+    if (scheduledTime == null || estimatedTime == null) return 0;
+    return estimatedTime!.difference(scheduledTime!).inMinutes;
+  }
   
   Flight({
     required this.id,

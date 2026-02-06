@@ -109,37 +109,61 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildRealtimeHeader(BuildContext context, PlaneProvider planeProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: theme.surfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1))
+    return GlassmorphicContainer(
+      width: double.infinity,
+      height: 90,
+      borderRadius: 20,
+      blur: 20,
+      alignment: Alignment.center,
+      border: 1.5,
+      linearGradient: LinearGradient(
+         begin: Alignment.topLeft,
+         end: Alignment.bottomRight,
+         colors: [theme.primaryColor.withOpacity(0.15), theme.primaryColor.withOpacity(0.05)],
       ),
-      child: Row(
-        children: [
-           Icon(Icons.radar, color: theme.primaryColor, size: 32),
-           const SizedBox(width: 16),
-           Expanded(
-             child: Column(
-               crossAxisAlignment: CrossAxisAlignment.start,
-               children: [
-                 Text("Monitoraggio Aereo", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
-                 Text("Scansiona l'area visibile", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-               ],
-             )
-           ),
-           FilledButton(
-             onPressed: planeProvider.isLoading ? null : widget.onRefresh,
-             style: FilledButton.styleFrom(
-               shape: const StadiumBorder(),
-               backgroundColor: theme.primaryColor
+      borderGradient: LinearGradient(colors: [theme.primaryColor.withOpacity(0.3), theme.primaryColor.withOpacity(0.1)]),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: [
+             Container(
+               padding: const EdgeInsets.all(12),
+               decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.2), shape: BoxShape.circle),
+               child: Icon(Icons.radar, color: theme.primaryColor, size: 28),
              ),
-             child: planeProvider.isLoading 
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text("Scan"),
-           )
-        ],
+             const SizedBox(width: 16),
+             Expanded(
+               child: Column(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                   Text("Radar Live", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 18)),
+                   Text("Monitoraggio traffico aereo", style: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7), fontSize: 13)),
+                 ],
+               )
+             ),
+             GestureDetector(
+               onTap: planeProvider.isLoading ? null : widget.onRefresh,
+               child: Container(
+                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                 decoration: BoxDecoration(
+                   gradient: LinearGradient(colors: [theme.primaryColor, theme.primaryColor.withOpacity(0.8)]),
+                   borderRadius: BorderRadius.circular(12),
+                   boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                 ),
+                 child: planeProvider.isLoading 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Row(
+                        children: [
+                          Icon(Icons.refresh, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text("Scan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+               ),
+             )
+          ],
+        ),
       ),
     );
   }
@@ -148,17 +172,20 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return Column(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            color: theme.surfaceColor,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))],
-          ),
+        GlassmorphicContainer(
+          width: double.infinity,
+          height: 60,
+          borderRadius: 16,
+          blur: 15,
+          alignment: Alignment.center,
+          border: 1.0,
+          linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.8), theme.surfaceColor.withOpacity(0.5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.2), theme.secondaryTextColor.withOpacity(0.05)]),
           child: TextField(
             controller: _airportController,
             decoration: InputDecoration(
               hintText: "Cerca aeroporto (e.g. Fiumicino)...",
-              hintStyle: TextStyle(color: theme.secondaryTextColor),
+              hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
               prefixIcon: Icon(Icons.flight_takeoff, color: theme.primaryColor),
               suffixIcon: planeProvider.selectedAirport != null 
                 ? IconButton(
@@ -170,9 +197,9 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
                   )
                 : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.all(16),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
-            style: TextStyle(color: theme.textColor),
+            style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w500),
             onChanged: (val) {
               if (val.length > 2) planeProvider.searchAirports(val);
             },
@@ -180,12 +207,22 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         ),
         if (planeProvider.selectedAirport != null) ...[
           const SizedBox(height: 16),
-          Row(
-            children: [
-               _buildFilterChip("Partenze", !planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(false)),
-               const SizedBox(width: 10),
-               _buildFilterChip("Arrivi", planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(true)),
-            ],
+          GlassmorphicContainer(
+             width: double.infinity,
+             height: 48,
+             borderRadius: 12,
+             blur: 15,
+             alignment: Alignment.center,
+             border: 1.0,
+             linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.6), theme.surfaceColor.withOpacity(0.3)]),
+             borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
+             child: Row(
+               children: [
+                  _buildFilterChip("Partenze", !planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(false)),
+                  Container(width: 1, height: 20, color: theme.secondaryTextColor.withOpacity(0.1)),
+                  _buildFilterChip("Arrivi", planeProvider.isArrivalMode, () => planeProvider.setArrivalMode(true)),
+               ],
+             ),
           ),
         ],
       ],
@@ -198,18 +235,14 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected ? theme.primaryColor.withOpacity(0.1) : theme.surfaceColor.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: isSelected ? theme.primaryColor : Colors.transparent),
-            ),
+            color: Colors.transparent,
             alignment: Alignment.center,
             child: Text(
               label,
               style: TextStyle(
                 color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                fontSize: 14
               ),
             ),
           ),
@@ -250,35 +283,49 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
     if (planeProvider.selectedAirport != null) {
       if (planeProvider.scheduledFlights.isEmpty) {
-        return Center(child: Text("Nessun volo trovato", style: TextStyle(color: theme.secondaryTextColor)));
+        return Center(
+          child: Column(
+             mainAxisAlignment: MainAxisAlignment.center,
+             children: [
+               Icon(Icons.search_off, size: 48, color: theme.secondaryTextColor.withOpacity(0.3)),
+               const SizedBox(height: 12),
+               Text("Nessun volo in programma", style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w500)),
+             ],
+          )
+        );
       }
       return ListView.builder(
         itemCount: planeProvider.scheduledFlights.length,
         padding: const EdgeInsets.only(top: 8, bottom: 80),
+        physics: const BouncingScrollPhysics(),
         itemBuilder: (context, index) {
           final f = planeProvider.scheduledFlights[index];
           final isDeparture = !planeProvider.isArrivalMode;
-          // Build refined flight card
+          // Build refined glass flight card
           return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: theme.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
+              // Using a subtle gradient/glass effect instead of plain surface color
+              gradient: LinearGradient(
+                colors: [theme.surfaceColor.withOpacity(0.9), theme.surfaceColor.withOpacity(0.7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
               boxShadow: [
                 BoxShadow(
                    color: Colors.black.withOpacity(0.04),
-                   blurRadius: 8, 
-                   offset: const Offset(0, 3)
+                   blurRadius: 10, 
+                   offset: const Offset(0, 4)
                 )
               ],
-              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
             ),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 onTap: () {
-                   // ... sheet logic ...
                    final target = f;
                    planeProvider.selectFlight(f);
                    showModalBottomSheet(
@@ -293,54 +340,91 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
+                       // Time Pill
                        Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
                           color: theme.surfaceColor,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]
                         ),
-                        child: Text(
-                           _formatTime(isDeparture ? f.scheduledDeparture : f.scheduledArrival),
-                           style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w800, fontSize: 18),
+                        child: Column(
+                          children: [
+                            Text(
+                               _formatTime(isDeparture ? f.scheduledDeparture : f.scheduledArrival),
+                               style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w900, fontSize: 16),
+                            ),
+                            if ((f.delayMinutes ?? 0) > 0)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  "+${f.delayMinutes}'",
+                                  style: TextStyle(color: theme.errorColor, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              )
+                          ],
                         ),
                        ),
                       const SizedBox(width: 16),
+                      // Flight Info
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Row(
                               children: [
-                                Icon(isDeparture ? Icons.flight_takeoff : Icons.flight_land, size: 14, color: theme.secondaryTextColor),
-                                const SizedBox(width: 4),
+                                Icon(isDeparture ? Icons.flight_takeoff : Icons.flight_land, size: 16, color: theme.primaryColor),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     isDeparture ? f.destination : f.origin, 
-                                    style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16),
+                                    style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 0.3),
                                     maxLines: 1, 
                                     overflow: TextOverflow.ellipsis
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "${f.airline} • ${f.flightNumber}", 
-                              style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w500)
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Text(
+                                  f.airline, 
+                                  style: TextStyle(color: theme.secondaryTextColor, fontSize: 13, fontWeight: FontWeight.w600)
+                                ),
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                                  width: 4, height: 4, 
+                                  decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.5), shape: BoxShape.circle)
+                                ),
+                                Text(
+                                  f.flightNumber, 
+                                  style: TextStyle(color: theme.textColor.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.bold)
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 8),
+                      // Status Badge
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _getStatusColor(f.statusLocalized, theme).withOpacity(0.1),
+                          // Glassy badge
+                          gradient: LinearGradient(
+                            colors: [
+                               _getStatusColor(f.statusLocalized, theme).withOpacity(0.15),
+                               _getStatusColor(f.statusLocalized, theme).withOpacity(0.05),
+                            ]
+                          ),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: _getStatusColor(f.statusLocalized, theme).withOpacity(0.2))
                         ),
                         child: Text(
-                          (f.statusLocalized ?? 'Schedulato').toUpperCase(),
+                          (f.statusLocalized ?? 'Programmato').toUpperCase(),
                           style: TextStyle(color: _getStatusColor(f.statusLocalized, theme), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                         ),
                       )
