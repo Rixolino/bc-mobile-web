@@ -229,9 +229,16 @@ class TrainProvider with ChangeNotifier {
       }
 
       if (details != null && details.stops != null) {
+        // Automatically determine Origin if missing (from first stop)
+        String? newOrigin = details.origin;
+        if ((newOrigin == null || newOrigin.isEmpty) && details.stops!.isNotEmpty) {
+           newOrigin = details.stops!.first.stationName;
+        }
+
         // Preserve previous fields but include fetched stops, country and metadata to allow downstream features to use correct country
         _departures[index] = _departures[index].copyWith(
           stops: details.stops,
+          origin: newOrigin, // Update origin from details
           country: details.country,
           metadata: details.metadata,
           clearError: true,

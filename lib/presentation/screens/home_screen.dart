@@ -45,9 +45,36 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BusProvider>(context, listen: false).loadProviders();
+      
+      // Initialize favorites based on auth state
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      authProvider.addListener(_onAuthChange);
+      // Trigger once in case already initialized
+      _onAuthChange();
     });
+  }
+
+  void _onAuthChange() {
+    if (!mounted) return;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final favs = Provider.of<FavoritesProvider>(context, listen: false);
+    
+    if (auth.isInitialized) {
+      if (auth.isAuthenticated) {
+         final userId = auth.currentUser!.id.toString();
+         // Basic check to avoid redundant reloads, though a dedicated currentUserId check in provider would be better
+         if (!favs.hasFavorites && !favs.isLoading) { 
+             favs.loadFavorites(userId);
+         }
+      } else {
+         if (favs.hasFavorites) {
+             favs.clearFavorites();
+         }
+      }
+    }
   }
 
   void _onSearchChanged() {
@@ -70,6 +97,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    try {
+      Provider.of<AuthProvider>(context, listen: false).removeListener(_onAuthChange);
+    } catch (_) {} // Context might be invalid if unmounting
     super.dispose();
   }
 

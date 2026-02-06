@@ -211,6 +211,8 @@ class TrainDeparture {
   bool get isDelayed => (delayMinutes ?? 0) > 0;
 
   TrainDeparture copyWith({
+    String? origin,
+    String? destination, // Added destination just in case
     List<TrainStop>? stops,
     String? country,
     Map<String, dynamic>? metadata,
@@ -220,8 +222,8 @@ class TrainDeparture {
     return TrainDeparture(
       trainNumber: trainNumber,
       category: category,
-      destination: destination,
-      origin: origin,
+      destination: destination ?? this.destination,
+      origin: origin ?? this.origin,
       scheduledTime: scheduledTime,
       estimatedTime: estimatedTime,
       platform: platform,

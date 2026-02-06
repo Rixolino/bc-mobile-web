@@ -99,10 +99,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            station.name,
+                          ScrollingText(
+                            text: station.name,
                             style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             station.country,
@@ -560,15 +559,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              dep.destination ?? 'Destinazione Sconosciuta',
-                              style: TextStyle(
-                                fontSize: 17, 
-                                fontWeight: FontWeight.w700, 
-                                color: theme.textColor
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: _SmartTrainRouteText(
+                              departure: dep,
+                              index: index,
+                              theme: theme,
+                              isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
                             ),
                           ),
                         ],
@@ -779,5 +774,87 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
     // Aggiorna il provider con i risultati unici
     trainProvider.setStationSuggestions(uniqueResults);
+  }
+}
+
+class _SmartTrainRouteText extends StatefulWidget {
+  final dynamic departure; // TrainDeparture
+  final int index;
+  final ThemeProvider theme;
+  final bool isArrivalMode;
+
+  const _SmartTrainRouteText({
+    required this.departure,
+    required this.index,
+    required this.theme,
+    required this.isArrivalMode,
+  });
+
+  @override
+  State<_SmartTrainRouteText> createState() => _SmartTrainRouteTextState();
+}
+
+class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
+  @override
+  void initState() {
+    super.initState();
+    _checkAndFetch();
+  }
+
+  @override
+  void didUpdateWidget(_SmartTrainRouteText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isArrivalMode != widget.isArrivalMode || 
+        oldWidget.departure != widget.departure) {
+      _checkAndFetch();
+    }
+  }
+
+  void _checkAndFetch() {
+    // If in Arrivi mode and Origin is missing, fetch details
+    if (widget.isArrivalMode) {
+      final origin = widget.departure.origin;
+      // If origin is missing AND we haven't fetched stops yet (stops empty or null)
+      if ((origin == null || origin.isEmpty) && 
+          (widget.departure.stops == null || widget.departure.stops.isEmpty)) {
+        
+        // Prevent cycling if already error
+        if (widget.departure.error != null) return;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(widget.index);
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String textVal;
+    
+    if (widget.isArrivalMode) {
+       final origin = widget.departure.origin;
+       if (origin != null && origin.isNotEmpty) {
+         textVal = origin;
+       } else if (widget.departure.stops != null && widget.departure.stops.isNotEmpty) {
+         // Fallback to first stop if origin field is still null but stops loaded
+         textVal = widget.departure.stops.first.stationName;
+       } else {
+         textVal = "Caricamento origine...";
+       }
+    } else {
+      textVal = widget.departure.destination ?? 'Destinazione Sconosciuta';
+    }
+
+    return ScrollingText(
+      text: textVal,
+      style: TextStyle(
+        fontSize: 17, 
+        fontWeight: FontWeight.w700, 
+        color: widget.theme.textColor
+      ),
+    );
   }
 }
