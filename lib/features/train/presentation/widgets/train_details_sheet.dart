@@ -128,7 +128,9 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     final stopStates = <Map<String, dynamic>>[];
     for (int i = 0; i < stops.length; i++) {
       final s = stops[i];
-      final DateTime? arrUtc = _stopActual(s.arrival, s.estimatedArrival, s.arrivalDelay)?.time;
+      // FIX: Notification delay should never use arrivalDelay (user request). 
+      // We pass 0 so _stopActual will rely on trainDelay or 0.
+      final DateTime? arrUtc = _stopActual(s.arrival, s.estimatedArrival, 0)?.time;
       final DateTime? depUtc = _stopActual(s.departure, s.estimatedDeparture, s.departureDelay)?.time;
       stopStates.add({
         'index': i,
@@ -223,8 +225,28 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       for (var ss in stopStates) {
         final DateTime? depUtc = ss['depUtc'] as DateTime?;
         final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
-        if ((depUtc != null && depUtc.isBefore(now)) || (arrUtc != null && arrUtc.isBefore(now))) {
-          lastIdx = ss['index'] as int;
+        
+        // FIX: Consider passed ONLY if departure is past (if exists), or arrival is past (if terminus).
+        bool isPassed = false;
+        if (depUtc != null) {
+          if (depUtc.isBefore(now)) isPassed = true;
+        } else if (arrUtc != null && arrUtc.isBefore(now)) {
+          isPassed = true;
+        }
+        
+        // Also detect "At Station" if we are here (arr < now < dep)
+        if (arrUtc != null && depUtc != null && !arrUtc.isAfter(now) && !depUtc.isBefore(now)) {
+           isAtStation = true;
+           lastPassed = (ss['stop'] as TrainStop).stationName; // Ensure 'lastPassed' reflects current station for display
+           // Do NOT mark as passed if we want "Next Stop" to be the NEXT one?
+           // Actually, if we are AT station X, Next Stop usually implies X+1.
+           // But if user complains about skipping, maybe they want Next Stop to be X while arriving?
+           // If 'isAtStation' is true, we usually display "Treno in stazione: X".
+           // In that case nextIndex SHOULD be X+1.
+           // But let's stick to standard logic: if At Station, lastIdx = X.
+           lastIdx = ss['index'] as int;
+        } else if (isPassed) {
+           lastIdx = ss['index'] as int;
         }
       }
       bool found = false;
@@ -256,7 +278,22 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       for (var ss in stopStates) {
         final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
         final DateTime? depUtc = ss['depUtc'] as DateTime?;
-        if ((depUtc != null && depUtc.isBefore(now)) || (arrUtc != null && arrUtc.isBefore(now))) lastIdx = ss['index'] as int;
+        
+        // Same robust logic for lastPassed
+        bool isPassed = false;
+        if (depUtc != null) {
+          if (depUtc.isBefore(now)) isPassed = true;
+        } else if (arrUtc != null && arrUtc.isBefore(now)) {
+           isPassed = true;
+        }
+        
+        // If at station, use that
+        if (arrUtc != null && depUtc != null && !arrUtc.isAfter(now) && !depUtc.isBefore(now)) {
+           lastIdx = ss['index'] as int;
+           isAtStation = true;
+        } else if (isPassed) {
+           lastIdx = ss['index'] as int;
+        }
       }
       if (lastIdx >= 0) lastPassed = (stopStates[lastIdx]['stop'] as TrainStop).stationName;
     }
