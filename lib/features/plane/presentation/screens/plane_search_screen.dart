@@ -4,6 +4,7 @@ import '../widgets/plane_panel_content.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../providers/plane_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
+import '../../../../core/utils/navigation_helper.dart';
 
 class PlaneSearchScreen extends StatelessWidget {
   const PlaneSearchScreen({super.key});
@@ -18,13 +19,20 @@ class PlaneSearchScreen extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new, color: theme.primaryColor),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => context.navigateToMap(),
         ),
         title: Text(
           "Ricerca Voli", 
           style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.map, color: theme.primaryColor),
+            onPressed: () => context.navigateToPlane(),
+            tooltip: 'Vai alla mappa',
+          ),
+        ],
       ),
       body: SafeArea(
         child: PlanePanelContent(

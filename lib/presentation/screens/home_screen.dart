@@ -21,9 +21,15 @@ import 'notifications_manager_screen.dart';
 import '../../features/favorites/screens/favorites_page.dart';
 import '../../features/favorites/providers/favorites_provider.dart';
 import '../../core/services/android_background_service.dart';
+import '../widgets/map_widget.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialMode; // Modalità iniziale (0=Viaggio, 1=Treno, 2=Bus, 3=Aereo)
+
+  const HomeScreen({
+    super.key,
+    this.initialMode = 0,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -32,8 +38,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   
-  // 0: Trains, 1: Buses, 2: Planes
-  int _selectedModeIndex = 0; 
+  // 0: Viaggio (mappa), 1: Trains, 2: Buses, 3: Planes
+  late int _selectedModeIndex;
+  late int _previousModeIndex;
   bool _searchByNumber = false;
   bool _showStopDropdown = false;
   bool _searchExpanded = true;
@@ -41,6 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedModeIndex = widget.initialMode;
+    _previousModeIndex = widget.initialMode;
     _searchController.addListener(_onSearchChanged);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onSearchChanged() {
-    if (_selectedModeIndex == 1) {
+    if (_selectedModeIndex == 2) { // Bus (ora è index 2)
       final busProvider = Provider.of<BusProvider>(context, listen: false);
       final query = _searchController.text;
       busProvider.searchStops(query);
@@ -103,36 +112,50 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onSearch(String query) {
     if (query.isEmpty) return;
 
-    if (_selectedModeIndex == 0) {
+    // Non navighiamo più, cambiamo solo il contenuto nella stessa schermata
+    if (_selectedModeIndex == 1) { // Treno
       final trainProvider = Provider.of<TrainProvider>(context, listen: false);
       if (_searchByNumber) {
         trainProvider.searchTrainByNumber(query);
       } else {
         trainProvider.searchStations(query);
       }
-    } else if (_selectedModeIndex == 1) {
+    } else if (_selectedModeIndex == 2) { // Bus
       final busProvider = Provider.of<BusProvider>(context, listen: false);
       busProvider.searchStops(query);
       setState(() {
         _showStopDropdown = query.isNotEmpty && busProvider.stopSearchResults.isNotEmpty;
       });
-    } else if (_selectedModeIndex == 2) {
+    } else if (_selectedModeIndex == 3) { // Aereo
       final planeProvider = Provider.of<PlaneProvider>(context, listen: false);
       planeProvider.searchAirports(query);
     }
-    
-    // Navigate to Search Screen instead of opening panel
-    _openSearchScreenForMode(_selectedModeIndex);
   }
 
-  void _openSearchScreenForMode(int mode) {
-     if (mode == 0) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrainSearchScreen()));
-     } else if (mode == 1) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BusSearchScreen()));
-     } else if (mode == 2) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlaneSearchScreen()));
-     }
+  void _setMode(int mode) {
+    if (_selectedModeIndex != mode) {
+      // Pulisce i provider quando si cambia modalità
+      if (mode == 0) { // Viaggio - pulisce tutto
+        Provider.of<TrainProvider>(context, listen: false).clearAll();
+        Provider.of<BusProvider>(context, listen: false).clearAll();
+        Provider.of<PlaneProvider>(context, listen: false).clearAll();
+      } else if (mode == 1) { // Treno
+        Provider.of<BusProvider>(context, listen: false).clearAll();
+        Provider.of<PlaneProvider>(context, listen: false).clearAll();
+      } else if (mode == 2) { // Bus  
+        Provider.of<TrainProvider>(context, listen: false).clearAll();
+        Provider.of<PlaneProvider>(context, listen: false).clearAll();
+      } else if (mode == 3) { // Aereo
+        Provider.of<TrainProvider>(context, listen: false).clearAll();
+        Provider.of<BusProvider>(context, listen: false).clearAll();
+      }
+      
+      setState(() {
+        _previousModeIndex = _selectedModeIndex;
+        _selectedModeIndex = mode;
+      });
+      Provider.of<MapStateProvider>(context, listen: false).setCategory(mode == 0 ? -1 : mode - 1);
+    }
   }
 
   Future<int> _getMonitoredCount() async {
@@ -577,6 +600,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildPanelForMode(int mode) {
+    switch (mode) {
+      case 1:
+        return const TrainSearchScreen();
+      case 2:
+        return const BusSearchScreen();
+      case 3:
+        return const PlaneSearchScreen();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final configProvider = Provider.of<ConfigProvider>(context);
@@ -594,8 +630,8 @@ class _HomeScreenState extends State<HomeScreen> {
               resizeToAvoidBottomInset: false, // Prevents map from squeezing when keyboard opens
               body: Stack(
                 children: [
-                  // 1. Mappa a schermo intero
-                  MapBackground(),
+                  // 1. Mappa a schermo intero usando il nuovo componente
+                  const MapWidget(),
 
                   // 2. Logo e Bottoni Top Right
                   // Logo BC.T - positioned above the search bar at top-left; map/style & settings on the right
@@ -785,7 +821,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Search bar moved down below the logo
+            // Search bar - visibile in tutte le modalità quando espanso
             if (_searchExpanded)
               Positioned(
                 // Added extra top margin to avoid overlap with status bar / logo
@@ -807,6 +843,35 @@ class _HomeScreenState extends State<HomeScreen> {
                  right: 16,
                  child: _buildSelectedStopBanner(busProvider, theme),
                ),
+
+            // Pannelli di ricerca per i trasporti - occupano lo schermo intero con animazione elegante
+            if (_selectedModeIndex > 0)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (child, animation) {
+                    // Animazione elegante con fade + slide dal basso (stile Preferiti)
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.1),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey(_selectedModeIndex),
+                    child: _buildPanelForMode(_selectedModeIndex),
+                  ),
+                ),
+              ),
 
             // 3. Loading Indicator se necessario
             if (configProvider.isLoading)
@@ -848,9 +913,10 @@ class _HomeScreenState extends State<HomeScreen> {
                      child: Row(
                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                        children: [
-                         _buildRoundModeButton(Icons.train, "Treno", 0, theme),
-                         _buildRoundModeButton(Icons.directions_bus, "Bus", 1, theme),
-                         _buildRoundModeButton(Icons.flight, "Aereo", 2, theme),
+                         _buildRoundModeButton(Icons.map, "Viaggio", 0, theme),
+                         _buildRoundModeButton(Icons.train, "Treno", 1, theme),
+                         _buildRoundModeButton(Icons.directions_bus, "Bus", 2, theme),
+                         _buildRoundModeButton(Icons.flight, "Aereo", 3, theme),
                          Container(width: 1, height: 24, color: Colors.white.withOpacity(0.1)),
                          _buildActionButton(Icons.star_outline, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()))),
                          _buildActionButton(Icons.settings_outlined, _openSettings),
@@ -875,16 +941,7 @@ class _HomeScreenState extends State<HomeScreen> {
      final activeColor = const Color(0xFF00E5FF); 
 
      return GestureDetector(
-       onTap: () {
-         if (_selectedModeIndex != index) {
-            if (index != 0) Provider.of<TrainProvider>(context, listen: false).clearAll();
-            if (index != 1) Provider.of<BusProvider>(context, listen: false).clearAll();
-            
-            setState(() => _selectedModeIndex = index);
-            Provider.of<MapStateProvider>(context, listen: false).setCategory(index);
-         }
-         _openSearchScreenForMode(index);
-       },
+       onTap: () => _setMode(index),
        child: GlassmorphicContainer(
          width: 52, 
          height: 52,
@@ -986,15 +1043,12 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton.icon(
             onPressed: () {
                busProvider.clearStopSelection();
-               // Se avevamo salvato una ricerca (e quindi eravamo probabilmente in piena ricerca)
-               // Riapriamo la BusSearchScreen
+               // Se avevamo salvato una ricerca, naviga alla modalità bus
                if (busProvider.savedStopSearchQuery.isNotEmpty) {
-                 Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const BusSearchScreen())
-                 );
+                 _setMode(2); // Passa alla modalità Bus
                } else {
-                 // Open panel logic removed, just clear selection
-                 // If we were just browsing map, staying here is fine
+                 // Se non c'è ricerca salvata, resta in modalità mappa
+                 _setMode(0);
                }
             },
             icon: const Icon(Icons.arrow_upward_rounded, size: 18),
@@ -1042,7 +1096,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Row(
           children: [
-            if (_selectedModeIndex == 0) // Solo per treni mostriamo il toggle numero
+            if (_selectedModeIndex == 1) // Solo per treni mostriamo il toggle numero
               IconButton(
                 icon: Icon(
                   _searchByNumber ? Icons.pin : Icons.location_on,
@@ -1082,7 +1136,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     // Add dropdown for bus stops if visible
-    if (_showStopDropdown && _selectedModeIndex == 1) {
+    if (_showStopDropdown && _selectedModeIndex == 2) {
       final busProvider = Provider.of<BusProvider>(context);
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -1147,9 +1201,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _getSearchHint() {
     switch (_selectedModeIndex) {
-      case 0: return _searchByNumber ? "N. Treno (es: 9610)" : "Stazione (es: Roma Termini)";
-      case 1: return "Cerca fermata bus...";
-      case 2: return "Cerca volo o aeroporto...";
+      case 1: return _searchByNumber ? "N. Treno (es: 9610)" : "Stazione (es: Roma Termini)";
+      case 2: return "Cerca fermata bus...";
+      case 3: return "Cerca volo o aeroporto...";
       default: return "Cerca destinazione...";
     }
   }
