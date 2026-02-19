@@ -97,9 +97,85 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 16),
 
               _buildStopsClusteringToggle(context, settings, theme),
+
+              const SizedBox(height: 32),
+              
+              _buildSectionTitle('Stile Mappa', theme),
+              const SizedBox(height: 16),
+              
+              _buildMapStyleSelector(context, settings, theme),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildMapStyleSelector(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.map, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Stile Mappa',
+                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Scrollable row for styles
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildMapStyleOption(context, 'Standard', 'osm', Icons.map_outlined, settings, theme),
+                _buildMapStyleOption(context, 'Scuro', 'cartodb_dark', Icons.nightlight_round, settings, theme),
+                _buildMapStyleOption(context, 'Chiaro', 'cartodb_positron', Icons.wb_sunny_outlined, settings, theme),
+                _buildMapStyleOption(context, 'Voyager', 'cartodb_voyager', Icons.explore, settings, theme),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapStyleOption(BuildContext context, String label, String value, IconData icon, SettingsProvider settings, ThemeProvider theme) {
+    final isSelected = settings.mapStyle == value;
+    return GestureDetector(
+      onTap: () => settings.setMapStyle(value),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? theme.primaryColor.withOpacity(0.2) : theme.surfaceColor.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.1)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? theme.primaryColor : theme.secondaryTextColor, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

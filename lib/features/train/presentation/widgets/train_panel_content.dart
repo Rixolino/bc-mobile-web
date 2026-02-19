@@ -422,9 +422,14 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Widget _buildTrainCard(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
-     // Helper to parse time string safely
-    final scheduleTime = dep.scheduledTime != null 
-        ? DateFormat('HH:mm').format(dep.scheduledTime!.toUtc().add(Duration(hours: 1))) // Simple offset correction, adjust as needed
+     // Always use estimated time (scheduled + delay), never just scheduled
+    final displayTime = dep.estimatedTime ?? 
+        (dep.scheduledTime != null && dep.delayMinutes != null 
+            ? dep.scheduledTime!.add(Duration(minutes: dep.delayMinutes!))
+            : dep.scheduledTime);
+    
+    final scheduleTime = displayTime != null 
+        ? DateFormat('HH:mm').format(displayTime.toUtc().add(Duration(hours: 1)))
         : '--:--';
         
     final delayMin = dep.delayMinutes ?? 0;
@@ -610,8 +615,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Color _getTrainColor(String? type, ThemeProvider theme) {
     if (type == null) return theme.primaryColor;
     final t = type.toLowerCase();
-    if (t.contains('fr') || t.contains('ic') || t.contains('ec') || t.contains('av')) return const Color(0xFFC62828); // Red for High Speed
-    if (t.contains('rg') || t.contains('r')) return const Color(0xFF00695C); // Teal for Regional
+    if (t.contains('fr') || t.contains('ic') || t.contains('ec') || t.contains('av') || t.contains('rj')) return const Color(0xFFC62828); // Red for High Speed
+    if (t.contains('rg') || t.contains('r') || t.contains('rb') || t.contains('re') || t.contains('regional') || t.contains('wb')  ) return const Color(0xFF00695C); // Teal for Regional
+    if (t.contains('icn') || t.contains('nj')) return const Color.fromARGB(255, 124, 105, 124); // Green for S trains
     if (t.contains('intercity')) return Colors.blue.shade800;
     return theme.primaryColor;
   }

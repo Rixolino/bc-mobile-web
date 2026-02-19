@@ -14,6 +14,7 @@ import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
+import '../pages/train_map_page.dart';
 
 const Map<String, int> countryTimezoneOffsets = {
   'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
@@ -973,6 +974,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               Builder(builder: (ctx) {
                 return _TrainNotificationsButton(departure: departure, selectedCountry: widget.selectedCountry);
               }),
+              IconButton.filledTonal(
+                icon: const Icon(Icons.map_rounded),
+                onPressed: () {
+                  // Push map page on top of existing sheet. 
+                  // When map is popped (back button), this sheet will be revealed again.
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (ctx) => TrainMapPage(departure: departure, isArrivalMode: widget.isArrivalMode, currentDelay: delay)),
+                  );
+                },
+                style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor),
+              ),
               IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
               IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),
             ],
@@ -1208,11 +1220,26 @@ class _TimelineRow extends StatelessWidget {
 
     String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int delay) {
       if (scheduled == null && estimated == null) return '';
-      final effective = estimated ?? scheduled!.add(Duration(minutes: delay));
-      final effStr = timeFormatter(effective, stop.country);
-      final delayStr = delay != 0 ? " (${delay > 0 ? '+' : ''}${delay}min)" : "";
       
-      if (scheduled != null && (estimated != null || delay != 0)) {
+      // FIX: If we are at the current station (isActiveStop), we should likely force using the totalDelay 
+      // if specific stop delay is missing, to ensure we show the real-time status and not just Scheduled.
+      // However, usually 'delay' passed here is stop.arrivalDelay. If that's null/0 but totalDelay is high, we have a problem.
+      
+      // If we have an explicit estimate properly parsed, utilize it.
+      // If estimated is null, we fallback to scheduled + delay.
+      
+      // The issue reported is: "At station I see scheduled time...".
+      // This implies estimated is null AND delay is 0.
+      
+      final int effectiveDelay = (estimated == null && delay == 0 && isActiveStop && totalDelay != 0) 
+          ? totalDelay 
+          : delay;
+
+      final effective = estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
+      final effStr = timeFormatter(effective, stop.country);
+      final delayStr = effectiveDelay != 0 ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)" : "";
+      
+      if (scheduled != null && (estimated != null || effectiveDelay != 0)) {
         return '$type: $effStr$delayStr (Previsto: ${timeFormatter(scheduled, stop.country)})';
       }
       return '$type: $effStr';

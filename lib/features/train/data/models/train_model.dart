@@ -99,6 +99,7 @@ class TrainDeparture {
   final String country;
   final Map<String, dynamic>? metadata;
   final List<Map<String, dynamic>>? messages; // optional messages/alerts for the trip
+  final Map<String, dynamic>? polyline; // GeoJSON FeatureCollection for the route path
   final String? error; // Error message if fetch failed
 
   TrainDeparture({
@@ -116,6 +117,7 @@ class TrainDeparture {
     this.country = '',
     this.metadata,
     this.messages,
+    this.polyline,
     this.error,
   });
 
@@ -161,6 +163,11 @@ class TrainDeparture {
       tripMessages = rawTripMsgs.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? e : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})).toList();
     }
 
+    Map<String, dynamic>? polylineData;
+    if (actualData['polyline'] is Map<String, dynamic>) {
+      polylineData = actualData['polyline'];
+    }
+
     return TrainDeparture(
       trainNumber: num,
       category: _getStringValue(actualData['category'] ?? actualData['type'] ?? actualData['operator']),
@@ -176,6 +183,7 @@ class TrainDeparture {
       country: actualData['country']?.toString() ?? '',
       metadata: actualData['metadata'] as Map<String, dynamic>?,
       messages: tripMessages,
+      polyline: polylineData,
     );
   }
 
@@ -183,10 +191,13 @@ class TrainDeparture {
     if (value == null) return null;
     if (value is String) return value;
     if (value is Map) {
-      return value['name']?.toString() ?? 
-             value['text']?.toString() ?? 
-             value['id']?.toString() ?? 
-             value['stationName']?.toString();
+      if (value['name'] is String) return value['name'];
+      if (value['text'] is String) return value['text'];
+      if (value['id'] is String) return value['id'];
+      if (value['stationName'] is String) return value['stationName'];
+      
+      // Fallback for nested maps or objects inside 'stop'
+      return value.toString();
     }
     return value.toString();
   }
@@ -216,6 +227,7 @@ class TrainDeparture {
     List<TrainStop>? stops,
     String? country,
     Map<String, dynamic>? metadata,
+    Map<String, dynamic>? polyline,
     String? error,
     bool clearError = false,
   }) {
@@ -234,12 +246,14 @@ class TrainDeparture {
       country: country ?? this.country,
       metadata: metadata ?? this.metadata,
       messages: messages,
+      polyline: polyline ?? this.polyline,
       error: clearError ? null : (error ?? this.error),
     );
   }
 }
 
 class TrainStop {
+  final String? id; // Station ID for API calls
   final String stationName;
   final DateTime? arrival;
   final DateTime? departure;
@@ -254,6 +268,7 @@ class TrainStop {
   final List<Map<String, dynamic>>? messages; // optional messages/alerts for this stop
 
   TrainStop({
+    this.id,
     required this.stationName,
     this.arrival,
     this.departure,
@@ -277,6 +292,7 @@ class TrainStop {
 
   factory TrainStop.fromJson(Map<String, dynamic> json) {
     return TrainStop(
+      id: TrainDeparture._getStringValue(json['stationId'] ?? json['id'] ?? json['stop']?['id'] ?? json['stopId']),
       stationName: TrainDeparture._getStringValue(json['station'] ?? json['stop'] ?? json['stationName'] ?? json['name']) ?? '',
       arrival: _parse(json['scheduledArrival'] ?? json['arrival'] ?? json['arrivalTime'] ?? json['time']),
       departure: _parse(json['scheduledDeparture'] ?? json['departure'] ?? json['departureTime'] ?? json['time']),

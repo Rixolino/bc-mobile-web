@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">tiles.openrailwaymap.org</domain>
+        <domain includeSubdomains="true">api.mapbox.com</domain>
+        <domain includeSubdomains="true">overpass-api.de</domain>
+        <domain includeSubdomains="true">overpass.kumi.systems</domain>
+        <domain includeSubdomains="true">overpass.openstreetmap.ru</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

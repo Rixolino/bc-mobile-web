@@ -770,7 +770,8 @@ class RealtimeService : Service() {
                                     }
                                     // **RIGID DELAY CALCULATION:** Always use next stop's ARRIVAL (estimated - scheduled)
                                     // This is the canonical delay source - NEVER use departure for delay
-                                    var nextDelaySeconds: Int? = null
+                                    // Keep delay in MINUTES (never convert to seconds)
+                                    var nextDelayMinutes: Int? = null
                                     if (stopsArr != null && nextIndex >= 0) {
                                         val nextStopObj = stopsArr.optJSONObject(nextIndex)
                                         if (nextStopObj != null) {
@@ -782,15 +783,60 @@ class RealtimeService : Service() {
                                             val estimatedArr = nextStopObj.optString("estimatedArrival", nextStopObj.optString("expectedArrival", nextStopObj.optString("arrival", "")))
                                             val estimatedArrInst = if (estimatedArr.isNotBlank()) parseToInstant(estimatedArr) else null
                                             
-                                            // Calculate rigidly: estimated arrival - scheduled arrival (in seconds)
+                                            // Calculate rigidly: estimated arrival - scheduled arrival (in minutes)
                                             if (scheduledArrInst != null && estimatedArrInst != null) {
-                                                val delayInSeconds = java.time.Duration.between(scheduledArrInst, estimatedArrInst).seconds.toInt()
-                                                nextDelaySeconds = delayInSeconds
-                                                Log.d("RealtimeService", "Trip $tId RIGID delay calc (ARRIVAL): nextStop='$nextStop' scheduled=${scheduledArr} estimated=${estimatedArr} delay=${delayInSeconds}s (${delayInSeconds/60}min)")
+                                                val delayInMinutes = java.time.Duration.between(scheduledArrInst, estimatedArrInst).seconds.toInt() / 60
+                                                nextDelayMinutes = delayInMinutes
+                                                Log.d("RealtimeService", "Trip $tId RIGID delay calc (ARRIVAL): nextStop='$nextStop' scheduled=${scheduledArr} estimated=${estimatedArr} delay=${delayInMinutes}min")
                                             } else if (scheduledArrInst != null) {
-                                                // If no estimate, nextDelaySeconds remains null (so strict fallbacks apply)
-                                                // REMOVED assignment to 0 to avoid freezing at 0 if real delay exists elsewhere
+                                                // If no estimate, nextDelayMinutes remains null
                                                 Log.d("RealtimeService", "Trip $tId: no estimate for next stop arrival, keeping delay=null")
+                                            }
+
+                                            // **ENHANCEMENT:** Fetch fresh delay from Next Station Departures API
+                                            // This provides the most up-to-date delay specifically for the upcoming station
+                                            val nextStationId = nextStopObj.optString("stationId").takeIf { it.isNotBlank() }
+                                                ?: nextStopObj.optString("id").takeIf { it.isNotBlank() }
+                                                ?: nextStopObj.optString("code").takeIf { it.isNotBlank() }
+                                            
+                                            if (!nextStationId.isNullOrBlank()) {
+                                                try {
+                                                    val depUrl = "https://prod.cuzimmartin.dev/api/${country}/departures?stationId=${nextStationId}"
+                                                    Log.d("RealtimeService", "Trip $tId: Fetching departures for next station $nextStop ($nextStationId) -> $depUrl")
+                                                    val depRequest = Request.Builder().url(depUrl).get().build()
+                                                    client.newCall(depRequest).execute().use { depResp ->
+                                                        if (depResp.isSuccessful) {
+                                                            val depBody = depResp.body?.string() ?: ""
+                                                            val depJson = JSONObject(depBody)
+                                                            val depList = depJson.optJSONArray("data")
+                                                            if (depList != null) {
+                                                                for (i in 0 until depList.length()) {
+                                                                    val d = depList.optJSONObject(i)
+                                                                    // Match train by tripId or tripNumber/line
+                                                                    val dTripId = d.optString("tripId")
+                                                                    val dTripNum = d.optString("tripNumber")
+                                                                    val dLine = d.optString("line")
+                                                                    
+                                                                    // Check strict match on tripId first, then fallback to number
+                                                                    val match = (dTripId.isNotEmpty() && (dTripId == tId || tId.startsWith(dTripId) || dTripId.startsWith(tId))) ||
+                                                                                (dTripNum.isNotEmpty() && dTripNum == trainNum) ||
+                                                                                (dLine.isNotEmpty() && dLine.contains(trainNum))
+                                                                    
+                                                                    if (match) {
+                                                                        val dDelay = d.optInt("delay", -999) // API returns minutes
+                                                                        if (dDelay != -999) {
+                                                                            nextDelayMinutes = dDelay
+                                                                            Log.d("RealtimeService", "Trip $tId: Updated delay from next station departures ($nextStop): ${dDelay}min")
+                                                                        }
+                                                                        break
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.e("RealtimeService", "Trip $tId: Failed to fetch next station departures", e)
+                                                }
                                             }
                                         }
                                     }
@@ -815,30 +861,22 @@ class RealtimeService : Service() {
                                     // and proceed to update state.
 
                                     // Prepare effective/delay for notifications (start with next-specific values - in seconds)
-                                    var delayForNotifySeconds: Int? = nextDelaySeconds
+                                    var delayForNotifyMinutes: Int? = nextDelayMinutes
                                     var effectiveForNotify: java.time.Instant? = nextArrivalInstant
 
-                                    // Helper to format seconds into user visible string (minutes [+ seconds]) without rounding
-                                    fun formatDelaySeconds(sec: Int): String {
-                                        val absSec = kotlin.math.abs(sec)
-                                        val m = absSec / 60
-                                        val s = absSec % 60
-                                        return if (s == 0) {
-                                            "${m} min"
-                                        } else {
-                                            "${m} min ${s}s"
-                                        }
+                                    // Helper to format minutes into user visible string
+                                    fun formatDelayMinutes(min: Int): String {
+                                        return "${kotlin.math.abs(min)} min"
                                     }
 
+                                    // CALCULATE DELAY STATUS (Using next stop delay in minutes)
+                                    val globalDelayMinutes = nextDelayMinutes ?: 0
                                     val status = when {
-                                        delayForNotifySeconds != null -> when {
-                                            delayForNotifySeconds!! > 0 -> "Ritardo ${formatDelaySeconds(delayForNotifySeconds!!)}"
-                                            delayForNotifySeconds!! < 0 -> "In anticipo di ${formatDelaySeconds(-delayForNotifySeconds!!)}"
-                                            else -> "In orario"
-                                        }
-                                        delaySeconds > 0 -> "Ritardo ${formatDelaySeconds(delaySeconds)}"
-                                        delaySeconds < 0 -> "In anticipo di ${formatDelaySeconds(-delaySeconds)}"
-                                        else -> "In orario"
+                                        globalDelayMinutes < 0 -> "In anticipo: $globalDelayMinutes min"
+                                        globalDelayMinutes == 0 -> "In orario"
+                                        globalDelayMinutes <= 5 -> "Lieve ritardo: +$globalDelayMinutes min"
+                                        globalDelayMinutes <= 15 -> "Ritardo medio: +$globalDelayMinutes min"
+                                        else -> "Forte ritardo: +$globalDelayMinutes min"
                                     }
 
                                     // Compute remaining stops (ignore cancelled stops)
@@ -939,48 +977,13 @@ class RealtimeService : Service() {
                                             if (System.currentTimeMillis() - lastProxTs > 60_000L) {
                                                 val atStr = nextArrivalInstant?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"
                                                 // Compute delay to show (prefer per-stop nextDelaySeconds, otherwise propagate earlier stops, else fallback to global delaySeconds)
-                                                // Find a precise seconds-based delay to show in proximity notification
-                                                var delayToShowSeconds: Int? = nextDelaySeconds
-
-                                                if ((delayToShowSeconds == null || delayToShowSeconds == 0) && stopsArr != null && nextIndex >= 0) {
-                                                    for (i in 0..nextIndex) {
-                                                        val sCheck = stopsArr.optJSONObject(i)
-                                                        if (sCheck == null) continue
-                                                        var candidateSeconds: Int? = null
-                                                        when {
-                                                            sCheck.has("departureDelay") -> candidateSeconds = normalizeDelaySeconds(sCheck.optDouble("departureDelay"), country)
-                                                            sCheck.has("arrivalDelay") -> candidateSeconds = normalizeDelaySeconds(sCheck.optDouble("arrivalDelay"), country)
-                                                            sCheck.has("delayMinutes") -> candidateSeconds = normalizeDelaySeconds(sCheck.optDouble("delayMinutes"), country)
-                                                            sCheck.has("delay") -> candidateSeconds = normalizeDelaySeconds(sCheck.optDouble("delay"), country)
-                                                            sCheck.has("delaySeconds") -> candidateSeconds = sCheck.optInt("delaySeconds")
-                                                        }
-                                                        if (candidateSeconds != null && candidateSeconds != 0) { delayToShowSeconds = candidateSeconds; break }
-
-                                                        // If none explicit, try estimated vs scheduled on that stop (compute exact seconds)
-                                                        try {
-                                                            val est = sCheck.optString("estimatedArrival", sCheck.optString("estimatedDeparture", ""))
-                                                            val sched = sCheck.optString("scheduledArrival", sCheck.optString("scheduledDeparture", ""))
-                                                            val estInst = parseToInstant(if (est.isNotBlank()) est else null)
-                                                            val schedInst = parseToInstant(if (sched.isNotBlank()) sched else null)
-                                                            if (estInst != null && schedInst != null) {
-                                                                val calcSec = java.time.Duration.between(schedInst, estInst).seconds.toInt()
-                                                                if (calcSec != 0) { delayToShowSeconds = calcSec; break }
-                                                            }
-                                                        } catch (e: Exception) {
-                                                            // ignore and continue
-                                                        }
-                                                    }
-                                                }
-
-                                                if (delayToShowSeconds == null || (delayToShowSeconds == 0 && delaySeconds != 0)) {
-                                                    // prefer global delay if it indicates real delay
-                                                    delayToShowSeconds = if (delaySeconds != 0) delaySeconds else delayToShowSeconds
-                                                }
+                                                // Use delay from next station API
+                                                var delayToShowMinutes: Int? = nextDelayMinutes
 
                                                 val delayPart = when {
-                                                    delayToShowSeconds == null -> "\u2022 In orario"
-                                                    delayToShowSeconds > 0 -> "\u2022 Ritardo: +${formatDelaySeconds(delayToShowSeconds)}"
-                                                    delayToShowSeconds < 0 -> "\u2022 Anticipo: ${formatDelaySeconds(-delayToShowSeconds)}"
+                                                    delayToShowMinutes == null -> "\u2022 In orario"
+                                                    delayToShowMinutes > 0 -> "\u2022 Ritardo: +${formatDelayMinutes(delayToShowMinutes)}"
+                                                    delayToShowMinutes < 0 -> "\u2022 Anticipo: ${formatDelayMinutes(-delayToShowMinutes)}"
                                                     else -> "\u2022 In orario"
                                                 }
 
@@ -991,7 +994,7 @@ class RealtimeService : Service() {
                                                 val nidProx = NotificationHelper.getIdForKey(proxKey)
                                                 NotificationHelper.showNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAIN_PROXIMITY, title, proxBody, nidProx)
                                                 prefs.edit().putLong("trip_prox_ts:$tId", System.currentTimeMillis()).apply()
-                                                Log.d("RealtimeService","Proximity notify for $tId dest=$destinationStop now=$nowInstant arrival=${nextArrivalInstant} mins=${minutesToArrival} delay=${delayToShowSeconds?.let { formatDelaySeconds(it) } ?: "In orario"}")
+                                                Log.d("RealtimeService","Proximity notify for $tId dest=$destinationStop now=$nowInstant arrival=${nextArrivalInstant} mins=${minutesToArrival} delay=${delayToShowMinutes?.let { formatDelayMinutes(it) } ?: "In orario"}")
                                             }
                                         }
 
@@ -1054,8 +1057,9 @@ class RealtimeService : Service() {
                                         }
                                         sb.append(statualLine + "\n")
                                         // Show explicit delay/advance lines
-                                        if (nextDelaySeconds != null) {
-                                            val ndMin = nextDelaySeconds / 60
+                                        val safeNextDelayMinutes = nextDelayMinutes
+                                        if (safeNextDelayMinutes != null) {
+                                            val ndMin = safeNextDelayMinutes
                                             when {
                                                 ndMin > 0 -> sb.append("Ritardo: ${ndMin} min\n")
                                                 ndMin < 0 -> sb.append("Anticipo: ${-ndMin} min\n")
@@ -1086,7 +1090,7 @@ class RealtimeService : Service() {
                                         // Compute an effective arrival instant and delay to show for the trains channel
                                         // Prefer explicit destination estimate; otherwise compute from scheduled + most recent observed delay up to destination
                                         var effectiveForNotify: java.time.Instant? = nextArrivalInstant
-                                        var delayForNotify: Int? = nextDelaySeconds?.div(60) // minutes legacy value derived from canonical seconds
+                                        var delayForNotify: Int? = nextDelayMinutes
 
                                         // If there's an estimate for the next stop use it
                                         if (effectiveForNotify == null && stopsArr != null && nextIndex >= 0) {
@@ -1101,7 +1105,7 @@ class RealtimeService : Service() {
                                                     if (schedInst != null) {
                                                         val calcSec = java.time.Duration.between(schedInst, estInst).seconds.toInt()
                                                         delayForNotify = calcSec / 60 // keep minute-based legacy value for text where needed (floor)
-                                                        delayForNotifySeconds = calcSec
+                                                        delayForNotifyMinutes = calcSec / 60
                                                         effectiveForNotify = estInst
                                                     } else {
                                                         effectiveForNotify = estInst
@@ -1110,103 +1114,16 @@ class RealtimeService : Service() {
                                             }
                                         }
 
-                                        // If still null or delay missing, try to derive the most recent real delay observed up to destination
-                                        if (stopsArr != null && nextIndex >= 0) {
-                                            var observedDelay: Int? = null
-                                            // try to use metadata lastDetection station as a hint (prefer closer to current observation)
-                                            var detectionIndex = -1
-                                            try {
-                                                val lastDet = json.optJSONObject("metadata")?.optJSONObject("lastDetection")
-                                                val detStation = lastDet?.optString("station")
-                                                if (!detStation.isNullOrBlank()) {
-                                                    for (i in 0 until stopsArr.length()) {
-                                                        val s = stopsArr.optJSONObject(i)
-                                                        val name = s?.optString("stationName") ?: s?.optString("name") ?: ""
-                                                        if (name.equals(detStation, ignoreCase = true)) { detectionIndex = i; break }
-                                                    }
-                                                }
-                                            } catch (e: Exception) { /* ignore */ }
-
-                                            val scanStart = if (detectionIndex != -1) detectionIndex else 0
-                                            for (i in scanStart..nextIndex) {
-                                                val sCheck = stopsArr.optJSONObject(i) ?: continue
-                                                var candidate: Int? = null
-                                                // USER REQUEST: Ignore arrivalDelay/departureDelay native fields as they are unreliable.
-                                                // Only use global delay logic or precision calculation.
-                                                /*
-                                                if (sCheck.has("departureDelay")) candidate = sCheck.optInt("departureDelay")
-                                                else if (sCheck.has("arrivalDelay")) candidate = sCheck.optInt("arrivalDelay")
-                                                else
-                                                */ 
-                                                if (sCheck.has("delayMinutes")) candidate = sCheck.optInt("delayMinutes")
-                                                else if (sCheck.has("delay")) candidate = sCheck.optInt("delay")
-                                                else if (sCheck.has("delaySeconds")) candidate = (sCheck.optInt("delaySeconds") / 60)
-
-                                                if (candidate != null && candidate != 0) observedDelay = candidate
-
-                                                // also test estimated vs scheduled if explicit delay not found
-                                                if (observedDelay == null) {
-                                                    val est = sCheck.optString("estimatedArrival", sCheck.optString("estimatedDeparture", ""))
-                                                    val sched = sCheck.optString("scheduledArrival", sCheck.optString("scheduledDeparture", ""))
-                                                    val estInst = parseToInstant(if (est.isNotBlank()) est else null)
-                                                    val schedInst = parseToInstant(if (sched.isNotBlank()) sched else null)
-                                                    if (estInst != null && schedInst != null) {
-                                                        val calcSec = java.time.Duration.between(schedInst, estInst).seconds.toInt()
-                                                        if (calcSec != 0) observedDelay = calcSec / 60 // store minutes legacy value
-                                                        if (calcSec != 0 && observedDelay != null) {
-                                                            // keep canonical seconds copy in sync
-                                                            // observedDelay is in minutes; convert back to seconds for canonical copy
-                                                            // but we will set delayForNotifySeconds later when observedDelay is used
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            if (observedDelay != null) {
-                                                // Only use observed fallback if we don't have a precise calculation
-                                                if (delayForNotifySeconds == null) {
-                                                    delayForNotify = observedDelay
-                                                    // If provider country returns seconds for delays, convert to minutes for 'de'
-                                                    if (country.equals("de", ignoreCase = true)) {
-                                                        delayForNotify = Math.round(delayForNotify!!.toDouble() / 60.0).toInt()
-                                                    }
-                                                    // Keep canonical seconds copy in sync so notifications and state use the same unit
-                                                    delayForNotifySeconds = normalizeDelaySeconds(delayForNotify.toDouble(), country)
-                                                    // compute effective based on destination scheduled if present
-                                                    val sObj = stopsArr.optJSONObject(nextIndex)
-                                                    val sched = sObj?.optString("scheduledArrival", sObj?.optString("scheduledDeparture", ""))
-                                                    val schedInst = parseToInstant(if (!sched.isNullOrBlank()) sched else null)
-                                                    if (schedInst != null) {
-                                                        effectiveForNotify = schedInst.plusSeconds((delayForNotify * 60).toLong())
-                                                    }
-                                                }
-                                            }
-
-                                            // If trip-level delay is available, use it as fallback (only if no precise calculation)
-                                            if (delaySeconds != 0) {
-                                                if (delayForNotifySeconds == null) {
-                                                    delayForNotifySeconds = delaySeconds
-                                                    // recompute effective with trip-level delay (seconds) if scheduled exists
-                                                    val sObj = stopsArr?.optJSONObject(nextIndex)
-                                                    val sched = sObj?.optString("scheduledArrival", sObj?.optString("scheduledDeparture", ""))
-                                                    val schedInst = parseToInstant(if (!sched.isNullOrBlank()) sched else null)
-                                                    if (schedInst != null) {
-                                                        effectiveForNotify = schedInst.plusSeconds(delayForNotifySeconds!!.toLong())
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // If still null, fallback to scheduled + global delayMin
+                                        // If still null, fallback to scheduled + delay in minutes
                                         if (effectiveForNotify == null && stopsArr != null && nextIndex >= 0) {
                                             val sObj = stopsArr.optJSONObject(nextIndex)
                                             if (sObj != null) {
                                                 val sched = sObj.optString("scheduledArrival", sObj.optString("scheduledDeparture", ""))
                                                 val schedInst = parseToInstant(if (sched.isNotBlank()) sched else null)
                                                 if (schedInst != null) {
-                                                    val dm = if (delayForNotifySeconds != null && delayForNotifySeconds != 0) delayForNotifySeconds else delaySeconds
-                                                    effectiveForNotify = schedInst.plusSeconds(dm.toLong())
-                                                    if (delayForNotifySeconds == null) delayForNotifySeconds = dm
+                                                    val dm = delayForNotifyMinutes ?: 0
+                                                    effectiveForNotify = schedInst.plusSeconds((dm * 60).toLong())
+                                                    if (delayForNotifyMinutes == null) delayForNotifyMinutes = dm
                                                 }
                                             }
                                         }
@@ -1237,8 +1154,8 @@ class RealtimeService : Service() {
                                         // Show the computed arrival line (calculated time + explicit delay)
                                         val arrivalLine = when {
                                             // Prefer explicit per-stop delay (seconds)
-                                            delayForNotifySeconds != null -> {
-                                                val dmin = delayForNotifySeconds / 60
+                                            delayForNotifyMinutes != null -> {
+                                                val dmin = delayForNotifyMinutes
                                                 when {
                                                     dmin > 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Ritardo: +${dmin} min\n"
                                                     dmin < 0 -> "Arrivo calcolato: ${effectiveForNotify?.let { sdf.format(java.util.Date.from(it)) } ?: "--:--"} \u2022 Anticipo: ${-dmin} min\n"
@@ -1301,7 +1218,7 @@ class RealtimeService : Service() {
                                         
                                         // Show explicit delay/advance lines (use the same delay value used for arrivalLine to keep consistency)
                                         val displayDelayMin = when {
-                                            delayForNotifySeconds != null -> delayForNotifySeconds / 60
+                                            delayForNotifyMinutes != null -> delayForNotifyMinutes
                                             else -> delaySeconds / 60
                                         }
                                         when {
@@ -1318,11 +1235,11 @@ class RealtimeService : Service() {
 
                                     // Debug log for parsed fields
                                     val delayForStateMinutes = when {
-                                        delayForNotifySeconds != null -> delayForNotifySeconds / 60
-                                        else -> delaySeconds / 60
+                                        delayForNotifyMinutes != null -> delayForNotifyMinutes
+                                        else -> 0
                                     }
                                     Log.d("RealtimeService", "Trip parsed: id=$tId title='${title}' nextStop='$nextStop' lastPassed='$lastPassed' delay=$delayForStateMinutes remaining=$remaining notifyMode=$notifyMode destination='$destinationStop'")
-                                    Log.d("RealtimeService", "Trip delays debug: nextDelaySeconds=${nextDelaySeconds ?: "null"} delayForNotifySeconds=${delayForNotifySeconds ?: "null"} tripDelaySeconds=${delaySeconds} effective=${effectiveForNotify?.toString() ?: "null"} nextArrival=${nextArrivalInstant?.toString() ?: "null"}")
+                                    Log.d("RealtimeService", "Trip delays debug: nextDelayMinutes=${nextDelayMinutes ?: "null"} delayForNotifyMinutes=${delayForNotifyMinutes ?: "null"} effective=${effectiveForNotify?.toString() ?: "null"} nextArrival=${nextArrivalInstant?.toString() ?: "null"}")
 
                                     val nid = NotificationHelper.getIdForKey("train:$tId")
 
@@ -1332,8 +1249,8 @@ class RealtimeService : Service() {
                                     timesFingerprint.put("nextArrivalTime", nextArrivalInstant?.toString() ?: "")
                                     timesFingerprint.put("effectiveForNotify", effectiveForNotify?.toString() ?: "")
                                     timesFingerprint.put("delaySeconds", delaySeconds)
-                                    timesFingerprint.put("delayForNotifySeconds", delayForNotifySeconds ?: -999)
-                                    timesFingerprint.put("nextDelaySeconds", nextDelaySeconds ?: -999)
+                                    timesFingerprint.put("delayForNotifyMinutes", delayForNotifyMinutes ?: -999)
+                                    timesFingerprint.put("nextDelayMinutes", nextDelayMinutes ?: -999)
                                     
                                     val currentTimesStr = timesFingerprint.toString()
                                     val prevTimesStr = prefs.getString("trip:times:$tId", null)
@@ -1354,7 +1271,7 @@ class RealtimeService : Service() {
                                     stateObj.put("nextEventType", nextEventType ?: "")
                                     stateObj.put("nextArrival", nextArrivalInstant?.toString() ?: "")
                                     stateObj.put("lastPassed", lastPassed)
-                                    stateObj.put("nextDelaySeconds", nextDelaySeconds ?: -999)  // Use exact canonical seconds delay
+                                    stateObj.put("nextDelayMinutes", nextDelayMinutes ?: -999)
                                     stateObj.put("remaining", remaining)
                                     stateObj.put("fetchTimestampMs", System.currentTimeMillis()) // Force state change at every poll to ensure notification updates
 
@@ -1381,7 +1298,7 @@ class RealtimeService : Service() {
                                                 shouldNotifyDueToTimeChange -> "TIME CHANGED (delay/arrival updated)"
                                                 else -> "RATE LIMIT PASSED"
                                             }
-                                            Log.d("RealtimeService", ">>> NOTIFYING Trip $tId: nextStop='$nextStop' delay=${nextDelaySeconds?.let { it/60 } ?: "?"}min eventType=$nextEventType remaining=$remaining [$reason]")
+                                            Log.d("RealtimeService", ">>> NOTIFYING Trip $tId: nextStop='$nextStop' delay=${nextDelayMinutes}min eventType=$nextEventType remaining=$remaining [$reason]")
                                             NotificationHelper.showTrainNotification(this@RealtimeService, NotificationHelper.CHANNEL_TRAINS, title, bodyText, tId, nid)
                                             prefs.edit().putLong("trip:notif_ts:$tId", now).apply()
                                             prefs.edit().putString("trip:state:$tId", newState).apply()

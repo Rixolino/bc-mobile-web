@@ -198,12 +198,12 @@ class TrainProvider with ChangeNotifier {
     }
   }
 
-  Future<void> expandTrainDetails(int index) async {
+  Future<void> expandTrainDetails(int index, {bool forceRefresh = false}) async {
     if (index < 0 || index >= _departures.length) return;
     
     final dep = _departures[index];
-    // If stops are loaded and there is no error, return. If error present, retry is allowed.
-    if ((dep.stops != null && dep.stops!.isNotEmpty) && dep.error == null) return; 
+    // If stops are loaded and there is no error, return, unless forced.
+    if (!forceRefresh && (dep.stops != null && dep.stops!.isNotEmpty) && dep.error == null) return; 
 
     // Clear error state before fetching
     if (dep.error != null) {

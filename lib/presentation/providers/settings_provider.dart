@@ -13,6 +13,8 @@ class SettingsProvider with ChangeNotifier {
   static const String keyBusesWorker = 'buses_worker_enabled';
   static const String keyFunctionsWorker = 'functions_worker_enabled';
 
+  static const String keyMapStyle = 'map_style';
+
   // Configurable parameters for background workers
   static const String keyTrainStationId = 'train_station_id';
   static const String keyTrainService = 'train_service';
@@ -24,6 +26,7 @@ class SettingsProvider with ChangeNotifier {
   int _trainRefreshSeconds = 0;
   int _planeRefreshSeconds = 0;
   ThemeMode _themeMode = ThemeMode.dark;
+  String _mapStyle = 'osm'; // 'osm', 'cartodb_dark', 'cartodb_voyager', etc.
   bool _busClusteringEnabled = false;
   bool _stopsClusteringEnabled = false;
   bool _trainsWorkerEnabled = false;
@@ -43,6 +46,7 @@ class SettingsProvider with ChangeNotifier {
   int get trainRefreshSeconds => _trainRefreshSeconds;
   int get planeRefreshSeconds => _planeRefreshSeconds;
   ThemeMode get themeMode => _themeMode;
+  String get mapStyle => _mapStyle;
   bool get busClusteringEnabled => _busClusteringEnabled;
   bool get stopsClusteringEnabled => _stopsClusteringEnabled;
   bool get trainsWorkerEnabled => _trainsWorkerEnabled;
@@ -68,6 +72,13 @@ class SettingsProvider with ChangeNotifier {
     _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? 0;
     final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
+    
+    // Default Map Style based on theme
+    final sysThemeMode = ThemeMode.values[themeIndex]; 
+    final isDark = sysThemeMode == ThemeMode.dark; 
+    // Or check system brightness if system... but let's stick to stored string
+    _mapStyle = prefs.getString(keyMapStyle) ?? (isDark ? 'cartodb_dark' : 'osm');
+    
     _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     _stopsClusteringEnabled = prefs.getBool(keyStopsClustering) ?? false;
     _trainsWorkerEnabled = prefs.getBool(keyTrainsWorker) ?? false;
@@ -82,6 +93,13 @@ class SettingsProvider with ChangeNotifier {
     _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
 
     notifyListeners();
+  }
+
+  Future<void> setMapStyle(String style) async {
+    _mapStyle = style;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyMapStyle, style);
   }
 
   Future<void> setBusRefreshSeconds(int seconds) async {
