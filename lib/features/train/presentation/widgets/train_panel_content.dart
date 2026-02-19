@@ -23,6 +23,8 @@ class TrainPanelContent extends StatefulWidget {
 class _TrainPanelContentState extends State<TrainPanelContent> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedCountry = '';
+  String _favoriteSortOrder = 'country'; // 'country', 'alphabetic', 'recent'
+  final Map<String, int> _stationVisits = {}; // Traccia numero di visite per stazione
 
   // Mappa dei fusi orari (Offset rispetto a UTC)
   final Map<String, int> countryTimezoneOffsets = {
@@ -362,6 +364,110 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           ),
         ),
 
+        // Stazioni Preferite Section
+        Consumer2<FavoritesProvider, AuthProvider>(
+          builder: (context, favoritesProvider, authProvider, child) {
+            if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+            
+            final favoriteStops = favoritesProvider.favoriteStops
+                .where((fav) => fav.stopType == StopType.trainStation)
+                .toList();
+            
+            if (favoriteStops.isEmpty) return const SizedBox.shrink();
+            
+            // Ordina le stazioni preferite
+            List<dynamic> sortedStops = List.from(favoriteStops);
+            if (_favoriteSortOrder == 'country') {
+              sortedStops.sort((a, b) => (a.country ?? '').compareTo(b.country ?? ''));
+            } else if (_favoriteSortOrder == 'alphabetic') {
+              sortedStops.sort((a, b) => a.name.compareTo(b.name));
+            } else if (_favoriteSortOrder == 'recent') {
+              // I preferiti recenti vengono mantenuti nell'ordine di caricamento
+            }
+            
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header con titolo e menu ordinamento
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Stazioni Preferite",
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          icon: Icon(Icons.sort_rounded, color: theme.primaryColor, size: 20),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          color: theme.surfaceColor,
+                          onSelected: (val) {
+                            setState(() => _favoriteSortOrder = val);
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'country',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.public, color: _favoriteSortOrder == 'country' ? theme.primaryColor : Colors.transparent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text("Per Paese", style: TextStyle(color: theme.textColor)),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'alphabetic',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.sort_by_alpha, color: _favoriteSortOrder == 'alphabetic' ? theme.primaryColor : Colors.transparent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text("Alfabetico", style: TextStyle(color: theme.textColor)),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'recent',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.schedule, color: _favoriteSortOrder == 'recent' ? theme.primaryColor : Colors.transparent, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text("Recenti", style: TextStyle(color: theme.textColor)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Horizontal scroll delle stazioni preferite
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: sortedStops.length,
+                      itemBuilder: (context, index) {
+                        final stop = sortedStops[index];
+                        return _buildFavoriteStationCard(theme, trainProvider, stop);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
         // Results Area
         Expanded(
           child: Builder(
@@ -394,7 +500,79 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   }
 
+  // Traccia e incrementa le visite della stazione
+  int _trackStationVisit(String stationId, String country) {
+    final key = '$stationId-$country';
+    _stationVisits[key] = (_stationVisits[key] ?? 0) + 1;
+    return _stationVisits[key] ?? 1;
+  }
+
   // --- Helper Widgets ---
+
+  Widget _buildFavoriteStationCard(ThemeProvider theme, TrainProvider trainProvider, dynamic stop) {
+    return GestureDetector(
+      onTap: () {
+        _trackStationVisit(stop.code, stop.country ?? 'Unknown');
+        // Simula la selezione della stazione da favoriti
+        final station = TrainStation(
+          id: stop.code,
+          name: stop.name,
+          country: stop.country ?? 'Unknown',
+          type: 'train',
+        );
+        trainProvider.selectStation(station);
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.primaryColor.withOpacity(0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            )
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(Icons.location_city_rounded, color: theme.primaryColor, size: 28),
+            const SizedBox(height: 6),
+            Text(
+              stop.name.length > 12 ? '${stop.name.substring(0, 12)}.' : stop.name,
+              style: TextStyle(
+                color: theme.textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                stop.country ?? 'Unknown',
+                style: TextStyle(
+                  color: theme.primaryColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildSegmentButton(BuildContext context, String label, bool active, VoidCallback onTap) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
@@ -627,80 +805,117 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (provider.isLoadingSuggestions) {
       return ShimmerLoading(baseColor: theme.secondaryTextColor);
     }
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 80),
-      itemCount: provider.stationSuggestions.length,
-      separatorBuilder: (context, index) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.08), indent: 72, endIndent: 24),
-      itemBuilder: (context, index) {
-          final s = provider.stationSuggestions[index];
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: div(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: theme.surfaceColor,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset:const Offset(0, 2))],
+    
+    return Consumer<FavoritesProvider>(
+      builder: (context, favoritesProvider, child) {
+        final suggestions = provider.stationSuggestions;
+        final favoriteStations = <dynamic>[];
+        final visitedStations = <dynamic>[];
+        final otherStations = <dynamic>[];
+        
+        // Separa stazioni in tre categorie
+        for (final station in suggestions) {
+          final key = '${station.id}-${station.country}';
+          final isFavorite = favoritesProvider.isStopFavorite(station.id, StopType.trainStation, country: station.country);
+          
+          if (isFavorite) {
+            favoriteStations.add(station);
+          } else if (_stationVisits.containsKey(key)) {
+            visitedStations.add(station);
+          } else {
+            otherStations.add(station);
+          }
+        }
+        
+        // Ordina stazioni visitate per numero di visite (decrescente)
+        visitedStations.sort((a, b) {
+          final keyA = '${a.id}-${a.country}';
+          final keyB = '${b.id}-${b.country}';
+          return (_stationVisits[keyB] ?? 0).compareTo(_stationVisits[keyA] ?? 0);
+        });
+        
+        // Combina: preferite, poi visitate, poi resto - SENZA DIVISORI
+        final orderedStations = [...favoriteStations, ...visitedStations, ...otherStations];
+        
+        return ListView.separated(
+          padding: const EdgeInsets.only(bottom: 80),
+          itemCount: orderedStations.length,
+          separatorBuilder: (context, index) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.08), indent: 72, endIndent: 24),
+          itemBuilder: (context, index) {
+            final s = orderedStations[index];
+            
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: div(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.surfaceColor,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
+                ),
+                child: Icon(Icons.location_city_rounded, color: theme.primaryColor, size: 22),
               ),
-              child: Icon(Icons.location_city_rounded, color: theme.primaryColor, size: 22),
-            ),
-            title: Text(
-              s.name, 
-              style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w600, fontSize: 16)
-            ),
-            subtitle: Row(
-              children: [
-                if (s.country.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: theme.secondaryTextColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4)
+              title: Text(
+                s.name, 
+                style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w600, fontSize: 16)
+              ),
+              subtitle: Row(
+                children: [
+                  if (s.country.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.secondaryTextColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4)
+                      ),
+                      child: Text(s.country, style: TextStyle(fontSize: 10, color: theme.textColor, fontWeight: FontWeight.bold)),
                     ),
-                    child: Text(s.country, style: TextStyle(fontSize: 10, color: theme.textColor, fontWeight: FontWeight.bold)),
-                  ),
-              ],
-            ),
-            onTap: () => provider.selectStation(s),
-            trailing: Consumer2<FavoritesProvider, AuthProvider>(
-              builder: (context, favoritesProvider, authProvider, child) {
-                if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                final isFavorite = favoritesProvider.isStopFavorite(s.id, StopType.trainStation, country: s.country);
-                return IconButton(
-                  icon: Icon(
-                    isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, 
-                    color: isFavorite ? Colors.red : theme.secondaryTextColor.withOpacity(0.5)
-                  ),
-                  onPressed: () async {
-                    try {
-                      if (isFavorite) {
-                        await favoritesProvider.removeStopFavorite(s.id, StopType.trainStation, country: s.country);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione rimossa dai preferiti')));
-                      } else {
-                        final fav = favoritesProvider.createFavoriteStop(
-                          userId: userId,
-                          name: s.name,
-                          code: s.id,
-                          stopType: StopType.trainStation,
-                          country: s.country,
-                        );
-                        await favoritesProvider.addStopFavorite(fav);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione aggiunta ai preferiti')));
-                      }
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
-                    }
-                  },
-
-                );
+                ],
+              ),
+              onTap: () {
+                _trackStationVisit(s.id, s.country);
+                provider.selectStation(s);
               },
-            ),
-          );
-        },
+              trailing: Consumer2<FavoritesProvider, AuthProvider>(
+                builder: (context, favoritesProvider, authProvider, child) {
+                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
+                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
+                  final isFavorite = favoritesProvider.isStopFavorite(s.id, StopType.trainStation, country: s.country);
+                  return IconButton(
+                    icon: Icon(
+                      isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, 
+                      color: isFavorite ? Colors.red : theme.secondaryTextColor.withOpacity(0.5)
+                    ),
+                    onPressed: () async {
+                      try {
+                        if (isFavorite) {
+                          await favoritesProvider.removeStopFavorite(s.id, StopType.trainStation, country: s.country);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione rimossa dai preferiti')));
+                        } else {
+                          final fav = favoritesProvider.createFavoriteStop(
+                            userId: userId,
+                            name: s.name,
+                            code: s.id,
+                            stopType: StopType.trainStation,
+                            country: s.country,
+                          );
+                          await favoritesProvider.addStopFavorite(fav);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stazione aggiunta ai preferiti')));
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore preferiti: $e')));
+                      }
+                    },
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
