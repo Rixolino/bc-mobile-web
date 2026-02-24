@@ -22,9 +22,11 @@ import '../../features/favorites/screens/favorites_page.dart';
 import '../../features/favorites/providers/favorites_provider.dart';
 import '../../core/services/android_background_service.dart';
 import '../widgets/map_widget.dart';
+import 'map_screen.dart';
+import '../widgets/dashboard_feed.dart';
 
 class HomeScreen extends StatefulWidget {
-  final int initialMode; // Modalità iniziale (0=Viaggio, 1=Treno, 2=Bus, 3=Aereo)
+  final int initialMode; 
 
   const HomeScreen({
     super.key,
@@ -38,12 +40,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   
-  // 0: Viaggio (mappa), 1: Trains, 2: Buses, 3: Planes
+  // 0: Home (Dashboard), 1: Trains, 2: Buses, 3: Planes
+  // Removed explicit map mode from bottom bar
   late int _selectedModeIndex;
   late int _previousModeIndex;
   bool _searchByNumber = false;
   bool _showStopDropdown = false;
-  bool _searchExpanded = true;
+  bool _searchExpanded = true; 
 
   @override
   void initState() {
@@ -55,10 +58,8 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BusProvider>(context, listen: false).loadProviders();
       
-      // Initialize favorites based on auth state
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.addListener(_onAuthChange);
-      // Trigger once in case already initialized
       _onAuthChange();
     });
   }
@@ -84,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onSearchChanged() {
-    if (_selectedModeIndex == 2) { // Bus (ora è index 2)
+    if (_selectedModeIndex == 2) { // Bus
       final busProvider = Provider.of<BusProvider>(context, listen: false);
       final query = _searchController.text;
       busProvider.searchStops(query);
@@ -95,7 +96,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSettings() {
-    // Use MaterialPageRoute to keep the same default animation as Favorites
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
@@ -105,14 +105,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchController.dispose();
     try {
       Provider.of<AuthProvider>(context, listen: false).removeListener(_onAuthChange);
-    } catch (_) {} // Context might be invalid if unmounting
+    } catch (_) {}
     super.dispose();
   }
 
   void _onSearch(String query) {
     if (query.isEmpty) return;
-
-    // Non navighiamo più, cambiamo solo il contenuto nella stessa schermata
+    
+    // Indici: 0=Home, 1=Train, 2=Bus, 3=Plane
     if (_selectedModeIndex == 1) { // Treno
       final trainProvider = Provider.of<TrainProvider>(context, listen: false);
       if (_searchByNumber) {
@@ -134,8 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _setMode(int mode) {
     if (_selectedModeIndex != mode) {
-      // Pulisce i provider quando si cambia modalità
-      if (mode == 0) { // Viaggio - pulisce tutto
+      if (mode == 0) { // Home
         Provider.of<TrainProvider>(context, listen: false).clearAll();
         Provider.of<BusProvider>(context, listen: false).clearAll();
         Provider.of<PlaneProvider>(context, listen: false).clearAll();
@@ -154,7 +153,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _previousModeIndex = _selectedModeIndex;
         _selectedModeIndex = mode;
       });
-      Provider.of<MapStateProvider>(context, listen: false).setCategory(mode == 0 ? -1 : mode - 1);
+      
+      // Update map category based on context - though map is not shown here anymore, 
+      // except maybe if we were to keep it in background but we decided to remove it.
+      // So this might be redundant unless we persist the category for when map opens
+      
+      int mapCategory = -1;
+      if (mode > 0) mapCategory = mode - 1; // 1->0 (Trains), 2->1 (Buses)...
+      
+      Provider.of<MapStateProvider>(context, listen: false).setCategory(mapCategory);
     }
   }
 
@@ -616,157 +623,124 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final configProvider = Provider.of<ConfigProvider>(context);
-    // final config = configProvider.config; // Unused
 
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
         return Consumer<BusProvider>(
           builder: (context, busProvider, child) {
-            // Quando c'è un bus o una fermata selezionati, nascondi il panel (non più usato, ma manteniamo la logica di pulizia se serve)
-            // final hasSelectedBus = busProvider.selectedBus != null;
-            // final hasSelectedStop = busProvider.selectedStop != null;
             
             return Scaffold(
-              resizeToAvoidBottomInset: false, // Prevents map from squeezing when keyboard opens
+              resizeToAvoidBottomInset: false, 
+              backgroundColor: _selectedModeIndex == 0 ? theme.backgroundColor : null,
               body: Stack(
                 children: [
-                  // 1. Mappa a schermo intero usando il nuovo componente
-                  const MapWidget(),
+                   // Remove MapWidget from here as requested. It is now on demand.
+                   
+                  // 2. Dashboard se siamo in Home (mode 0)
+                  if (_selectedModeIndex == 0)
+                    Positioned.fill(
+                      child: DashboardFeed(
+                        onOpenMap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen(initialCategory: -1))),
+                      ),
+                    ),
 
-                  // 2. Logo e Bottoni Top Right
-                  // Logo BC.T - positioned above the search bar at top-left; map/style & settings on the right
-                  Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 16,
-              right: 16,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Glass container around logo only
-                  GlassmorphicContainer(
-                    width: 150,
-                    height: 56,
-                    borderRadius: 16,
-                    blur: 20,
-                    alignment: Alignment.center,
-                    border: 2,
-                    linearGradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        theme.surfaceColor.withOpacity(0.6),
-                        theme.surfaceColor.withOpacity(0.4),
-                      ],
-                    ),
-                    borderGradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        theme.secondaryTextColor.withOpacity(0.3),
-                        theme.secondaryTextColor.withOpacity(0.1),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                  // 3. Logo e Bottoni Top Right (Solo trasporti/mappa se fosse qui)
+                  if (_selectedModeIndex > 0)
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 10,
+                      left: 16,
+                      right: 16,
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [Color(0xFFFF6B35), Color(0xFF43AA8B)],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-                            child: Text(
-                              'BC',
-                              style: GoogleFonts.syne(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
+                          GlassmorphicContainer(
+                              width: 150,
+                              height: 56,
+                              borderRadius: 16,
+                              blur: 20,
+                              alignment: Alignment.center,
+                              border: 2,
+                              linearGradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  theme.surfaceColor.withOpacity(0.6),
+                                  theme.surfaceColor.withOpacity(0.4),
+                                ],
+                              ),
+                              borderGradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  theme.secondaryTextColor.withOpacity(0.3),
+                                  theme.secondaryTextColor.withOpacity(0.1),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Row(
+                                  children: [
+                                    ShaderMask(
+                                      shaderCallback: (bounds) => const LinearGradient(
+                                        colors: [Color(0xFFFF6B35), Color(0xFF43AA8B)],
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                      ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+                                      child: Text(
+                                        'BC',
+                                        style: GoogleFonts.syne(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: _showLogoMenuSheet,
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            '.',
+                                            style: GoogleFonts.syne(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w900,
+                                              color: const Color(0xFF3b82f6),
+                                            ),
+                                          ),
+                                          Text(
+                                            'T',
+                                            style: GoogleFonts.syne(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w900,
+                                              color: theme.textColor,
+                                              shadows: [BoxShadow(color: theme.textColor.withOpacity(0.15), blurRadius: 8)],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _searchExpanded = !_searchExpanded;
+                                        });
+                                      },
+                                      child: Icon(
+                                        _searchExpanded ? Icons.expand_less : Icons.expand_more,
+                                        color: theme.textColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          GestureDetector(
-                            onTap: _showLogoMenuSheet,
-                            child: Row(
-                              children: [
-                                Text(
-                                  '.',
-                                  style: GoogleFonts.syne(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: const Color(0xFF3b82f6),
-                                  ),
-                                ),
-                                Text(
-                                  'T',
-                                  style: GoogleFonts.syne(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: theme.textColor,
-                                    shadows: [BoxShadow(color: theme.textColor.withOpacity(0.15), blurRadius: 8)],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _searchExpanded = !_searchExpanded;
-                              });
-                            },
-                            child: Icon(
-                              _searchExpanded ? Icons.expand_less : Icons.expand_more,
-                              color: theme.textColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      // More button to open the sheet (three dots)
-                      GestureDetector(
-                        onTap: _showLogoMenuSheet,
-                        child: Container(
-                          padding: _buttonPadding(context),
-                          decoration: BoxDecoration(
-                            color: theme.surfaceColor.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
-                          ),
-                          child: Icon(Icons.more_horiz, size: _iconSize(context), color: theme.textColor),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Favorites button
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()));
-                        },
-                        child: Container(
-                          padding: _buttonPadding(context),
-                          decoration: BoxDecoration(
-                            color: theme.surfaceColor.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
-                          ),
-                          child: Icon(Icons.star, size: _iconSize(context), color: theme.textColor),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FutureBuilder<int>(
-                        future: _getMonitoredCount(),
-                        builder: (context, snap) {
-                          final cnt = snap.data ?? 0;
-                          return Stack(
-                            alignment: Alignment.topRight,
+                          // Other top buttons... 
+                          Row(
                             children: [
                               GestureDetector(
-                                onTap: () { Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsManagerScreen())); },
+                                onTap: _showLogoMenuSheet,
                                 child: Container(
                                   padding: _buttonPadding(context),
                                   decoration: BoxDecoration(
@@ -774,161 +748,198 @@ class _HomeScreenState extends State<HomeScreen> {
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
                                   ),
-                                  child: Icon(Icons.notifications, size: _iconSize(context), color: theme.textColor),
+                                  child: Icon(Icons.more_horiz, size: _iconSize(context), color: theme.textColor),
                                 ),
                               ),
-                              if (cnt > 0)
-                                Positioned(
-                                  right: 2,
-                                  top: 2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                                    child: Center(child: Text('$cnt', style: const TextStyle(color: Colors.white, fontSize: 10))),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()));
+                                },
+                                child: Container(
+                                  padding: _buttonPadding(context),
+                                  decoration: BoxDecoration(
+                                    color: theme.surfaceColor.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
                                   ),
+                                  child: Icon(Icons.star, size: _iconSize(context), color: theme.textColor),
                                 ),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      // Compact account button (tap -> Dashboard/Login, long-press -> overlay)
-                      Consumer<AuthProvider>(
-                        builder: (context, authProvider, child) {
-                          final isAuth = authProvider.isAuthenticated;
-                          return GestureDetector(
-                            onTap: () {
-                              if (isAuth) Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DashboardPage()));
-                              else Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginPage()));
-                            },
-                            onLongPress: () => _showAccountOverlay(authProvider),
-                            child: Container(
-                              padding: _buttonPadding(context),
-                              decoration: BoxDecoration(
-                                color: theme.surfaceColor.withOpacity(0.9),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
                               ),
-                              child: Icon(Icons.person, size: _scaledIconSize(context, factor: 0.9), color: theme.textColor),
+                              const SizedBox(width: 8),
+                              FutureBuilder<int>(
+                                future: _getMonitoredCount(),
+                                builder: (context, snap) {
+                                  final cnt = snap.data ?? 0;
+                                  return Stack(
+                                    alignment: Alignment.topRight,
+                                    children: [
+                                      GestureDetector(
+                                        onTap: () { Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsManagerScreen())); },
+                                        child: Container(
+                                          padding: _buttonPadding(context),
+                                          decoration: BoxDecoration(
+                                            color: theme.surfaceColor.withOpacity(0.9),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                                          ),
+                                          child: Icon(Icons.notifications, size: _iconSize(context), color: theme.textColor),
+                                        ),
+                                      ),
+                                      if (cnt > 0)
+                                        Positioned(
+                                          right: 2,
+                                          top: 2,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                            child: Center(child: Text('$cnt', style: const TextStyle(color: Colors.white, fontSize: 10))),
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              Consumer<AuthProvider>(
+                                builder: (context, authProvider, child) {
+                                  final isAuth = authProvider.isAuthenticated;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      if (isAuth) Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DashboardPage()));
+                                      else Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginPage()));
+                                    },
+                                    onLongPress: () => _showAccountOverlay(authProvider),
+                                    child: Container(
+                                      padding: _buttonPadding(context),
+                                      decoration: BoxDecoration(
+                                        color: theme.surfaceColor.withOpacity(0.9),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                                      ),
+                                      child: Icon(Icons.person, size: _scaledIconSize(context, factor: 0.9), color: theme.textColor),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Search bar - visibile solo in modalità trasporti
+                  if (_selectedModeIndex > 0 && _searchExpanded)
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 10 + 36 + 12 + 12,
+                      left: 16,
+                      right: 16,
+                      child: Row(
+                        children: [
+                           Expanded(child: _buildSearchBar()),
+                        ],
+                      ),
+                    ),
+
+                  if (_selectedModeIndex == 2 && busProvider.selectedStop != null)
+                     Positioned(
+                       top: MediaQuery.of(context).padding.top + 60 + (_searchExpanded ? 80 : 0),
+                       left: 16,
+                       right: 16,
+                       child: _buildSelectedStopBanner(busProvider, theme),
+                     ),
+
+                  // Pannelli di ricerca per i trasporti
+                  if (_selectedModeIndex > 0) 
+                    Positioned(
+                      top: 0, 
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      // Aggiungi padding top per non coprire search bar ecc. se necessario, 
+                      // ma i search screen hanno i loro header solitamente. 
+                      // Dato che rimuoviamo la mappa, questi screen diventano lo sfondo.
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 500),
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.1),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                              child: child,
                             ),
                           );
                         },
+                        child: KeyedSubtree(
+                          key: ValueKey(_selectedModeIndex),
+                          child: Container(
+                            // Assicuriamo che abbiano uno sfondo se la mappa non c'è sotto
+                            color: theme.backgroundColor,
+                            child: _buildPanelForMode(_selectedModeIndex),
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                    ),
 
-            // Search bar - visibile in tutte le modalità quando espanso
-            if (_searchExpanded)
-              Positioned(
-                // Added extra top margin to avoid overlap with status bar / logo
-                top: MediaQuery.of(context).padding.top + 10 + 36 + 12 + 12,
-                left: 16,
-                right: 16,
-                child: Row(
-                  children: [
-                     Expanded(child: _buildSearchBar()),
-                  ],
-                ),
-              ),
+                  if (configProvider.isLoading)
+                    const Center(
+                      child: CircularProgressIndicator(),
+                    ),
 
-            // Widget Fermata Selezionata (Bus)
-            if (busProvider.selectedStop != null)
-               Positioned(
-                 top: MediaQuery.of(context).padding.top + 60 + (_searchExpanded ? 80 : 0),
-                 left: 16,
-                 right: 16,
-                 child: _buildSelectedStopBanner(busProvider, theme),
-               ),
-
-            // Pannelli di ricerca per i trasporti - occupano lo schermo intero con animazione elegante
-            if (_selectedModeIndex > 0)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  transitionBuilder: (child, animation) {
-                    // Animazione elegante con fade + slide dal basso (stile Preferiti)
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.1),
-                          end: Offset.zero,
-                        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey(_selectedModeIndex),
-                    child: _buildPanelForMode(_selectedModeIndex),
-                  ),
-                ),
-              ),
-
-            // 3. Loading Indicator se necessario
-            if (configProvider.isLoading)
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
-
-             // 4. Mode Buttons (Floating at bottom center)
-             Positioned(
-               bottom: 24,
-               left: 16,
-               right: 16,
-               child: Center(
-                 child: GlassmorphicContainer(
-                   width: double.infinity,
-                   height: 76,
-                   borderRadius: 38,
-                   blur: 30,
-                   alignment: Alignment.center,
-                   border: 1.5,
-                   linearGradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFF222831).withOpacity(0.85),
-                        const Color(0xFF15191E).withOpacity(0.95),
-                      ],
-                   ),
-                   borderGradient: LinearGradient(
-                     begin: Alignment.topLeft,
-                     end: Alignment.bottomRight,
-                     colors: [
-                       Colors.white.withOpacity(0.15),
-                       Colors.white.withOpacity(0.05),
-                     ],
-                   ),
-                   child: Padding(
-                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                     child: Row(
-                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                       children: [
-                         _buildRoundModeButton(Icons.map, "Viaggio", 0, theme),
-                         _buildRoundModeButton(Icons.train, "Treno", 1, theme),
-                         _buildRoundModeButton(Icons.directions_bus, "Bus", 2, theme),
-                         _buildRoundModeButton(Icons.flight, "Aereo", 3, theme),
-                         Container(width: 1, height: 24, color: Colors.white.withOpacity(0.1)),
-                         _buildActionButton(Icons.star_outline, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()))),
-                         _buildActionButton(Icons.settings_outlined, _openSettings),
-                       ],
+                   // 4. Mode Buttons (Floating at bottom center)
+                   Positioned(
+                     bottom: 24,
+                     left: 16,
+                     right: 16,
+                     child: Center(
+                       child: GlassmorphicContainer(
+                         width: double.infinity,
+                         height: 76,
+                         borderRadius: 38,
+                         blur: 30,
+                         alignment: Alignment.center,
+                         border: 1.5,
+                         linearGradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              const Color(0xFF222831).withOpacity(0.85),
+                              const Color(0xFF15191E).withOpacity(0.95),
+                            ],
+                         ),
+                         borderGradient: LinearGradient(
+                           begin: Alignment.topLeft,
+                           end: Alignment.bottomRight,
+                           colors: [
+                             Colors.white.withOpacity(0.15),
+                             Colors.white.withOpacity(0.05),
+                           ],
+                         ),
+                         child: Padding(
+                           padding: const EdgeInsets.symmetric(horizontal: 16),
+                           child: Row(
+                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                             children: [
+                               _buildRoundModeButton(Icons.home, "Home", 0, theme),
+                               _buildRoundModeButton(Icons.train, "Treno", 1, theme),
+                               _buildRoundModeButton(Icons.directions_bus, "Bus", 2, theme),
+                               _buildRoundModeButton(Icons.flight, "Aereo", 3, theme),
+                               Container(width: 1, height: 24, color: Colors.white.withOpacity(0.1)),
+                               _buildActionButton(Icons.star_outline, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()))),
+                               _buildActionButton(Icons.settings_outlined, _openSettings),
+                             ],
+                           ),
+                         ),
+                       ),
                      ),
                    ),
-                 ),
-               ),
-             ),
-          ],
-        ),
-      );
+                ],
+              ),
+            );
           },
         );
       },

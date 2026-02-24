@@ -15,10 +15,7 @@ class TrainSearchScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: theme.surfaceColor,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: theme.primaryColor),
-          onPressed: () => context.navigateToMap(),
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           "Ricerca Treni", 
           style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)

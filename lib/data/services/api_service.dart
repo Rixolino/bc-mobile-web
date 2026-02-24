@@ -4,25 +4,43 @@ import '../../core/api_constants.dart';
 import '../models/transport_config_model.dart';
 
 class ApiService {
+  static const int _maxRetries = 3;
+  static const Duration _requestTimeout = Duration(seconds: 15);
+
   Future<TransportConfig> fetchConfig() async {
-    try {
-      // Aggiungi timeout di 5 secondi
-      final response = await http
-          .get(Uri.parse(ApiConstants.configEndpoint))
-          .timeout(const Duration(seconds: 5), onTimeout: () {
-        throw TimeoutException('Config endpoint timeout');
-      });
-      
-      if (response.statusCode == 200) {
-        return TransportConfig.fromJson(json.decode(response.body));
-      } else {
-        throw Exception('Failed to load configuration: ${response.statusCode}');
+    int retryCount = 0;
+    
+    while (retryCount < _maxRetries) {
+      try {
+        print("Fetching config (attempt ${retryCount + 1}/$_maxRetries)...");
+        final response = await http
+            .get(Uri.parse(ApiConstants.configEndpoint))
+            .timeout(_requestTimeout, onTimeout: () {
+          throw TimeoutException('Config endpoint timeout after ${_requestTimeout.inSeconds}s');
+        });
+        
+        if (response.statusCode == 200) {
+          print("Config fetched successfully");
+          return TransportConfig.fromJson(json.decode(response.body));
+        } else {
+          throw Exception('Failed to load configuration: ${response.statusCode}');
+        }
+      } catch (e) {
+        retryCount++;
+        print("Error fetching config (attempt $retryCount/$_maxRetries): $e");
+        
+        if (retryCount >= _maxRetries) {
+          print("Max retries reached, using default config");
+          // Fallback config in case of error - sempre ritorna qualcosa di valido
+          return _getDefaultConfig();
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await Future.delayed(Duration(seconds: retryCount));
       }
-    } catch (e) {
-      print("Error fetching config: Exception: $e");
-      // Fallback config in case of error - sempre ritorna qualcosa di valido
-      return _getDefaultConfig();
     }
+    
+    return _getDefaultConfig();
   }
 
   TransportConfig _getDefaultConfig() {

@@ -15,8 +15,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    print("DEBUG: SplashScreen.initState");
     // Navigate to HomeScreen after 3 seconds
     Future.delayed(const Duration(seconds: 3), () {
+      print("DEBUG: SplashScreen timer done. Mounted: $mounted");
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),

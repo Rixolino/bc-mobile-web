@@ -11,6 +11,9 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_stop.dart';
 import '../../../auth/providers/auth_provider.dart';
 import 'shimmer_and_toggle.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle; // Show Partenze / Arrivi toggle when used as modal from Favorites
@@ -23,8 +26,15 @@ class TrainPanelContent extends StatefulWidget {
 class _TrainPanelContentState extends State<TrainPanelContent> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedCountry = '';
+  String _selectedCity = ''; // Città selezionata
   String _favoriteSortOrder = 'country'; // 'country', 'alphabetic', 'recent'
   final Map<String, int> _stationVisits = {}; // Traccia numero di visite per stazione
+  
+  // Variabili per paesi e città caricati da API
+  List<Map<String, String>> _countries = [];
+  Map<String, List<Map<String, String>>> _citiesByCountry = {}; // Mappa paese -> città
+  List<String> _countryOrder = []; // Ordine personalizzato dei paesi
+  bool _countriesLoaded = false;
 
   // Mappa dei fusi orari (Offset rispetto a UTC)
   final Map<String, int> countryTimezoneOffsets = {
@@ -33,29 +43,387 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     'HU': 1, 'RO': 2, 'GR': 2, 'SE': 1, 'NO': 1, 'DK': 1,
   };
 
-  final List<Map<String, String>> _countries = [
-    {'code': 'IT', 'name': 'Italia'},
-    {'code': 'DE', 'name': 'Germania'},
-    {'code': 'CH', 'name': 'Svizzera'},
-    {'code': 'FR', 'name': 'Francia'},
-    {'code': 'ES', 'name': 'Spagna'},
-    {'code': 'GB', 'name': 'Regno Unito'},
-    {'code': 'NL', 'name': 'Paesi Bassi'},
-    {'code': 'BE', 'name': 'Belgio'},
-    {'code': 'LU', 'name': 'Lussemburgo'},
-    {'code': 'CZ', 'name': 'Repubblica Ceca'},
-    {'code': 'PL', 'name': 'Polonia'},
-    {'code': 'HU', 'name': 'Ungheria'},
-    {'code': 'RO', 'name': 'Romania'},
-    {'code': 'GR', 'name': 'Grecia'},
-    {'code': 'SE', 'name': 'Svezia'},
-    {'code': 'NO', 'name': 'Norvegia'},
-    {'code': 'DK', 'name': 'Danimarca'},
-    {'code': 'FAL', 'name': 'Puglia (FAL)'},
-    {'code': 'EU', 'name': 'Continentale (Realtime)'},
-    {'code': 'UK_LONDON', 'name': 'Regno Unito'},
-    {'code': 'AT', 'name': 'Austria'},
-  ];
+  // Mappa codici paese a nazionalità
+  final Map<String, String> countryNames = {
+    'AT': 'Austria',
+    'BE': 'Belgio',
+    'CH': 'Svizzera',
+    'CZ': 'Repubblica Ceca',
+    'DE': 'Germania',
+    'DK': 'Danimarca',
+    'EE': 'Estonia',
+    'ES': 'Spagna',
+    'FI': 'Finlandia',
+    'FR': 'Francia',
+    'GB': 'Regno Unito',
+    'GR': 'Grecia',
+    'HU': 'Ungheria',
+    'IE': 'Irlanda',
+    'IT': 'Italia',
+    'LU': 'Lussemburgo',
+    'NL': 'Paesi Bassi',
+    'NO': 'Norvegia',
+    'PL': 'Polonia',
+    'RO': 'Romania',
+    'SE': 'Svezia',
+    'SI': 'Slovenia',
+    'FAL': 'Puglia (FAL)',
+    'EU': 'Continentale (Realtime)',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCountries();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveCountryOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('country_order', _countryOrder);
+    } catch (e) {
+      print('Errore salvataggio ordinamento paesi: $e');
+    }
+  }
+
+  Future<void> _loadCountryOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedOrder = prefs.getStringList('country_order') ?? [];
+      if (mounted) {
+        setState(() {
+          _countryOrder = savedOrder;
+        });
+      }
+    } catch (e) {
+      print('Errore caricamento ordinamento paesi: $e');
+    }
+  }
+
+  List<Map<String, String>> _getOrderedCountries(List<Map<String, String>> countries) {
+    if (_countryOrder.isEmpty) {
+      return countries;
+    }
+    
+    // Ordina i paesi secondo l'ordine personalizzato
+    List<Map<String, String>> ordered = [];
+    
+    // Aggiungi prima i paesi nell'ordine personalizzato
+    for (final code in _countryOrder) {
+      final country = countries.firstWhere((c) => c['code'] == code, orElse: () => {});
+      if (country.isNotEmpty) {
+        ordered.add(country);
+      }
+    }
+    
+    // Poi aggiungi i paesi non ancora ordinati
+    for (final country in countries) {
+      if (!ordered.any((c) => c['code'] == country['code'])) {
+        ordered.add(country);
+      }
+    }
+    
+    return ordered;
+  }
+
+  Future<void> _loadCountries() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedCountries = prefs.getString('countries_cache');
+      final cachedCities = prefs.getString('cities_cache');
+      
+      // Tenta di caricare da API
+      final freshData = await _fetchProvidersFromAPI();
+      
+      if (freshData.isNotEmpty) {
+        // Salva i nuovi dati nel cache
+        await prefs.setString('countries_cache', jsonEncode(freshData));
+        await prefs.setString('cities_cache', jsonEncode(_citiesByCountry));
+        if (mounted) {
+          setState(() {
+            _countries = freshData;
+            _countriesLoaded = true;
+          });
+        }
+        await _loadCountryOrder();
+      } else if (cachedCountries != null) {
+        // Fallback al cache se l'API non risponde
+        final cached = List<Map<String, String>>.from(
+          (jsonDecode(cachedCountries) as List).map((item) => Map<String, String>.from(item as Map))
+        );
+        if (mounted) {
+          setState(() {
+            _countries = cached;
+            _countriesLoaded = true;
+          });
+        }
+        await _loadCountryOrder();
+        
+        // Carica anche le città dal cache
+        if (cachedCities != null) {
+          try {
+            final cachedCitiesData = jsonDecode(cachedCities) as Map;
+            final citiesData = <String, List<Map<String, String>>>{};
+            cachedCitiesData.forEach((key, value) {
+              citiesData[key] = List<Map<String, String>>.from(
+                (value as List).map((item) => Map<String, String>.from(item as Map))
+              );
+            });
+            if (mounted) {
+              setState(() {
+                _citiesByCountry = citiesData;
+              });
+            }
+          } catch (e) {
+            print('Errore caricamento città dal cache: $e');
+          }
+        }
+      } else {
+        // Se nessun dato disponibile, imposta liste vuote
+        if (mounted) {
+          setState(() {
+            _countries = [];
+            _countriesLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('Errore caricamento paesi: $e');
+      if (mounted) {
+        setState(() {
+          _countries = [];
+          _countriesLoaded = true;
+        });
+      }
+    }
+  }
+
+  Future<List<Map<String, String>>> _fetchProvidersFromAPI() async {
+    try {
+      final response = await http
+          .get(Uri.parse('https://prod.cuzimmartin.dev/api/providers'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['success'] == true) {
+          final providers = data['data']['providers'] as List;
+          final grouped = data['data']['grouped'] as List? ?? [];
+          
+          // Carica TUTTI i provider (NATIONAL, CITY, INTERNATIONAL)
+          final Map<String, Map<String, String>> countriesMap = {};
+          final Map<String, List<Map<String, String>>> citiesMap = {};
+          
+          for (final provider in providers) {
+            final countryCode = (provider['countryCode'] as String).toUpperCase();
+            
+            // Se il paese non è già presente, aggiungilo con la nazionalità
+            if (!countriesMap.containsKey(countryCode)) {
+              countriesMap[countryCode] = {
+                'code': countryCode,
+                'name': countryNames[countryCode] ?? countryCode,
+              };
+              citiesMap[countryCode] = [];
+            }
+          }
+          
+          // Estrai le città dal'array grouped
+          for (final region in grouped) {
+            final regionCode = region['regionCode'] as String?;
+            final countryCode = region['providers']?.first?['countryCode'] as String?;
+            
+            if (regionCode != null && countryCode != null) {
+              final countryCodeUpper = countryCode.toUpperCase();
+              final providers = region['providers'] as List? ?? [];
+              
+              for (final provider in providers) {
+                final scope = provider['scope'] as String?;
+                final name = provider['name'] as String?;
+                
+                // Se è una città (CITY scope) e non è già stata aggiunta
+                if (scope == 'CITY' && name != null && citiesMap.containsKey(countryCodeUpper)) {
+                  final city = {
+                    'code': regionCode,
+                    'name': name,
+                    'countryCode': countryCodeUpper,
+                  };
+                  
+                  // Controlla se non è già nella lista
+                  final exists = citiesMap[countryCodeUpper]!.any((c) => c['code'] == regionCode);
+                  if (!exists) {
+                    citiesMap[countryCodeUpper]!.add(city);
+                  }
+                }
+              }
+            }
+          }
+          
+          // Aggiorna lo stato con le città
+          if (mounted) {
+            setState(() {
+              _citiesByCountry = citiesMap;
+            });
+          }
+          
+          return countriesMap.values.toList();
+        }
+      }
+    } catch (e) {
+      print('Errore fetch API provider: $e');
+    }
+    return [];
+  }
+
+  void _showCountryReorderDialog(List<Map<String, String>> countries, ThemeProvider theme) {
+    final orderedCountries = _getOrderedCountries(countries);
+    final reorderableCountries = List<Map<String, String>>.from(orderedCountries);
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: theme.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Ordina Nazioni",
+                    style: TextStyle(
+                      color: theme.textColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: theme.secondaryTextColor),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: theme.secondaryTextColor.withOpacity(0.1), height: 1),
+            // Reorderable List
+            Expanded(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  return ReorderableListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: reorderableCountries.length,
+                    itemBuilder: (context, index) {
+                      final country = reorderableCountries[index];
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey(country['code']),
+                        index: index,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.surfaceColor,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.drag_handle, color: theme.primaryColor, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  country['name'] ?? country['code']!,
+                                  style: TextStyle(
+                                    color: theme.textColor,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                country['code']!,
+                                style: TextStyle(
+                                  color: theme.secondaryTextColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (oldIndex < newIndex) {
+                          newIndex -= 1;
+                        }
+                        final item = reorderableCountries.removeAt(oldIndex);
+                        reorderableCountries.insert(newIndex, item);
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+            Divider(color: theme.secondaryTextColor.withOpacity(0.1), height: 1),
+            // Footer with Save Button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(
+                      "Annulla",
+                      style: TextStyle(color: theme.secondaryTextColor),
+                    ),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () async {
+                      // Salva il nuovo ordine
+                      final newOrder = reorderableCountries.map((c) => c['code']!).toList();
+                      this.setState(() {
+                        _countryOrder = newOrder;
+                      });
+                      await _saveCountryOrder();
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text("Ordine nazioni salvato"),
+                            backgroundColor: theme.successColor,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(
+                      "Salva",
+                      style: TextStyle(color: theme.surfaceColor, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +562,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: GlassmorphicContainer(
             width: double.infinity,
-            height: 120, // Increased to fit chips inside or just below nicely
+            height: _selectedCountry.isNotEmpty && (_citiesByCountry[_selectedCountry]?.isNotEmpty ?? false) ? 168 : 120,
             borderRadius: 24,
             blur: 20,
             alignment: Alignment.center,
@@ -219,75 +587,84 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               mainAxisSize: MainAxisSize.min,
               children: [
                  // Search Bar
-                 TextField(
-                   controller: _searchController,
-                   style: TextStyle(fontSize: 18, color: theme.textColor),
-                   decoration: InputDecoration(
-                     hintText: "Cerca stazione...",
-                     hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7), fontSize: 18),
-                     prefixIcon: Icon(Icons.search, color: theme.primaryColor),
-                     suffixIcon: Row(
-                       mainAxisSize: MainAxisSize.min,
-                       children: [
-                         if (_searchController.text.isNotEmpty)
-                            IconButton(
-                              icon: Icon(Icons.close, color: theme.secondaryTextColor),
-                              onPressed: () {
-                                _searchController.clear();
-                                trainProvider.clearStationSuggestions();
-                              },
-                            ),
-                         
-                         // Service Filter Menu
-                         PopupMenuButton<String>(
-                           icon: Icon(Icons.tune_rounded, color: theme.primaryColor),
-                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                           color: theme.surfaceColor,
-                           onSelected: (val) => trainProvider.setService(val),
-                           itemBuilder: (context) => [
-                             PopupMenuItem(
-                               value: 'direct',
-                               child: Row(
-                                 children: [
-                                   Icon(Icons.check, color: trainProvider.selectedService == 'direct' ? theme.primaryColor : Colors.transparent, size: 18),
-                                   const SizedBox(width: 8),
-                                   Text("BC Transporter", style: TextStyle(color: theme.textColor)),
-                                 ],
+                 Padding(
+                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                   child: TextField(
+                     controller: _searchController,
+                     style: TextStyle(fontSize: 18, color: theme.textColor),
+                     decoration: InputDecoration(
+                       hintText: "Cerca stazione...",
+                       hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7), fontSize: 18),
+                       prefixIcon: Icon(Icons.search, color: theme.primaryColor),
+                       suffixIcon: Row(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           if (_searchController.text.isNotEmpty)
+                              IconButton(
+                                icon: Icon(Icons.close, color: theme.secondaryTextColor),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  trainProvider.clearStationSuggestions();
+                                },
+                              ),
+                           
+                           // Ordina Nazioni Button
+                           IconButton(
+                             icon: Icon(Icons.drag_handle, color: theme.primaryColor),
+                             onPressed: () => _showCountryReorderDialog(displayedCountries, theme),
+                             tooltip: "Ordina nazioni",
+                           ),
+                           
+                           // Service Filter Menu
+                           PopupMenuButton<String>(
+                             icon: Icon(Icons.tune_rounded, color: theme.primaryColor),
+                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                             color: theme.surfaceColor,
+                             onSelected: (val) => trainProvider.setService(val),
+                             itemBuilder: (context) => [
+                               PopupMenuItem(
+                                 value: 'direct',
+                                 child: Row(
+                                   children: [
+                                     Icon(Icons.check, color: trainProvider.selectedService == 'direct' ? theme.primaryColor : Colors.transparent, size: 18),
+                                     const SizedBox(width: 8),
+                                     Text("BC Transporter", style: TextStyle(color: theme.textColor)),
+                                   ],
+                                 ),
                                ),
-                             ),
-                             PopupMenuItem(
-                               value: 'trainboardeu',
-                               child: Row(
-                                 children: [
-                                   Icon(Icons.check, color: trainProvider.selectedService == 'trainboardeu' ? theme.primaryColor : Colors.transparent, size: 18),
-                                   const SizedBox(width: 8),
-                                   Text("Trainboard.eu", style: TextStyle(color: theme.textColor)),
-                                 ],
+                               PopupMenuItem(
+                                 value: 'trainboardeu',
+                                 child: Row(
+                                   children: [
+                                     Icon(Icons.check, color: trainProvider.selectedService == 'trainboardeu' ? theme.primaryColor : Colors.transparent, size: 18),
+                                     const SizedBox(width: 8),
+                                     Text("Trainboard.eu", style: TextStyle(color: theme.textColor)),
+                                   ],
+                                 ),
                                ),
-                             ),
-                           ],
-                         ),
-                         const SizedBox(width: 8),
-                       ],
+                             ],
+                           ),
+                           const SizedBox(width: 8),
+                         ],
+                       ),
+                       border: InputBorder.none,
+                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
                      ),
-                     border: InputBorder.none,
-                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                     onChanged: (val) {
+                        setState(() {});
+                         if (_selectedCountry == 'EU') {
+                           trainProvider.searchTrainByNumber(val);
+                         } else if (_selectedCountry.isNotEmpty) {
+                           trainProvider.searchStations(val, country: _selectedCountry);
+                         } else {
+                           _searchStationsMultipleCountries(val, displayedCountries, trainProvider);
+                         }
+                     },
                    ),
-                   onChanged: (val) {
-                      setState(() {});
-                       if (_selectedCountry == 'EU') {
-                         trainProvider.searchTrainByNumber(val);
-                       } else if (_selectedCountry.isNotEmpty) {
-                         trainProvider.searchStations(val, country: _selectedCountry);
-                       } else {
-                         _searchStationsMultipleCountries(val, displayedCountries, trainProvider);
-                       }
-                   },
                  ),
                  
-                 // Filters Row (Chips)
-                 SizedBox(
-                   height: 48,
+                 // Filters Row (Chips) - ora scrollabile orizzontalmente
+                 Expanded(
                    child: ListView(
                      scrollDirection: Axis.horizontal,
                      padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -303,13 +680,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                side: BorderSide.none,
                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                onPressed: () {
-                                 setState(() => _selectedCountry = '');
+                                 setState(() {
+                                   _selectedCountry = '';
+                                   _selectedCity = '';
+                                 });
                                  _searchStationsMultipleCountries(_searchController.text, displayedCountries, trainProvider);
                                },
                             ),
                           ),
+                       
 
-                       ...displayedCountries.map((c) {
+                       ..._getOrderedCountries(displayedCountries).map((c) {
                           final isSelected = _selectedCountry == c['code'];
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -317,7 +698,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                               label: Text(c['name']!),
                               selected: isSelected, 
                               onSelected: (val) {
-                                 setState(() => _selectedCountry = val ? c['code']! : '');
+                                 setState(() {
+                                   _selectedCountry = val ? c['code']! : '';
+                                   _selectedCity = ''; // Reset città quando cambia paese
+                                 });
                                  final query = _searchController.text;
                                  if (query.isNotEmpty) {
                                     if (val && c['code'] == 'EU') {
@@ -349,7 +733,68 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                      ],
                    ),
                  ),
-                 const SizedBox(height: 12),
+
+                 // Città (se disponibili) - seconda riga
+                 if (_selectedCountry.isNotEmpty && (_citiesByCountry[_selectedCountry]?.isNotEmpty ?? false))
+                   Expanded(
+                     child: ListView(
+                       scrollDirection: Axis.horizontal,
+                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                       physics: const BouncingScrollPhysics(),
+                       children: [
+                         if (_selectedCity.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ActionChip(
+                                 avatar: Icon(Icons.close, size: 16, color: theme.warningColor),
+                                 label: Text("Reset città", style: TextStyle(color: theme.warningColor, fontSize: 12)),
+                                 backgroundColor: theme.warningColor.withOpacity(0.1),
+                                 side: BorderSide.none,
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                 onPressed: () {
+                                   setState(() => _selectedCity = '');
+                                   final query = _searchController.text;
+                                   if (query.isNotEmpty) {
+                                     trainProvider.searchStations(query, country: _selectedCountry);
+                                   }
+                                 },
+                              ),
+                            ),
+                         
+                         ...((_citiesByCountry[_selectedCountry] ?? []).map((city) {
+                            final isSelected = _selectedCity == city['code'];
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                label: Text(city['name']!, style: TextStyle(fontSize: 12)),
+                                selected: isSelected,
+                                onSelected: (val) {
+                                   setState(() => _selectedCity = val ? city['code']! : '');
+                                   final query = _searchController.text;
+                                   if (query.isNotEmpty) {
+                                     trainProvider.searchStations(query, country: _selectedCountry);
+                                   }
+                                },
+                                showCheckmark: false,
+                                backgroundColor: Colors.transparent,
+                                selectedColor: theme.warningColor.withOpacity(0.2),
+                                side: BorderSide(
+                                  color: isSelected ? theme.warningColor : theme.secondaryTextColor.withOpacity(0.2),
+                                  width: 1.0,
+                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                labelStyle: TextStyle(
+                                  color: isSelected ? theme.warningColor : theme.secondaryTextColor,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 11,
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0),
+                              ),
+                            );
+                         }).toList()),
+                       ],
+                     ),
+                   ),
               ],
             ),
           ),

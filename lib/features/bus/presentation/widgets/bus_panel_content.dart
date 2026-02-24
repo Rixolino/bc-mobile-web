@@ -107,7 +107,21 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                   orElse: () => BusProviderConfig(name: provider.name, provider: '', endpoints: {}),
                                 );
                                 if (p.latitude != null && p.longitude != null) {
+                                  // Imposta la categoria a Bus (1) sulla mappa
+                                  mapState.setCategory(1);
                                   mapState.flyTo(p.latitude!, p.longitude!, zoom: p.zoom ?? 12.0);
+                                  
+                                  // Carica bus e fermate quando selezioni un provider
+                                  busProvider.fetchVehicles().then((_) {
+                                    // Notifica la mappa che i dati sono pronti
+                                    mapState.notifyListeners();
+                                  });
+                                  if (provider.name != "Flixbus") {
+                                    busProvider.fetchStops().then((_) {
+                                      // Notifica la mappa che i dati delle fermate sono pronti
+                                      mapState.notifyListeners();
+                                    });
+                                  }
                                 }
                               },
                               child: AnimatedContainer(

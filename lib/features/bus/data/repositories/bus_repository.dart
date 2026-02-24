@@ -67,6 +67,7 @@ class BusRepository {
       
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
+        print('BusRepository: fetched ${provider.name} JSON keys: ${json is Map ? json.keys.toList() : "List"}');
         
         // Special handling for Emilia-Romagna (TperHellobus format)
         if (provider.name == 'Emilia-Romagna') {

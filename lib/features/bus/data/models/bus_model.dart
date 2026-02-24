@@ -68,13 +68,14 @@ class BusVehicle {
     final v = json['Vehicle'] ?? {};
     final pos = v['Position'] ?? {};
     final trip = v['Trip'] ?? {};
+    final vehicleInfo = v['Vehicle'] ?? {};
     
     return BusVehicle(
-      id: v['Id']?.toString() ?? json['id']?.toString() ?? '?',
+      id: vehicleInfo['Id']?.toString() ?? v['Id']?.toString() ?? json['Id']?.toString() ?? json['id']?.toString() ?? '?',
       line: trip['RouteId']?.toString() ?? '?',
       destination: v['Destination']?.toString(),
-      latitude: pos['Latitude']?.toDouble() ?? 0.0,
-      longitude: pos['Longitude']?.toDouble() ?? 0.0,
+      latitude: (pos['Latitude'] is String ? double.tryParse(pos['Latitude']) : (pos['Latitude'] as num?)?.toDouble()) ?? 0.0,
+      longitude: (pos['Longitude'] is String ? double.tryParse(pos['Longitude']) : (pos['Longitude'] as num?)?.toDouble()) ?? 0.0,
       heading: pos['Bearing']?.toString(),
       speed: pos['Speed']?.toString(),
       provider: 'Bari',
