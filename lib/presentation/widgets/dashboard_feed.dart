@@ -30,60 +30,13 @@ class DashboardFeed extends StatelessWidget {
       ),
       child: CustomScrollView(
         slivers: [
-          // App Bar Semplificata
-          SliverAppBar(
-            backgroundColor: theme.backgroundColor,
-            floating: true,
-            pinned: true,
-            title: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Color(0xFFFF6B35), Color(0xFF43AA8B)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-                  child: Text(
-                    'BC',
-                    style: GoogleFonts.syne(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                Text(
-                  '.',
-                  style: GoogleFonts.syne(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF3b82f6),
-                  ),
-                ),
-                Text(
-                  'TRANSPORTER',
-                  style: GoogleFonts.syne(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: theme.textColor,
-                    shadows: [BoxShadow(color: theme.textColor.withOpacity(0.15), blurRadius: 8)],
-                  ),
-                ),
-              ],
-            ),
-            centerTitle: true,
-            automaticallyImplyLeading: false,
-            actions: [
-              IconButton(icon: Icon(Icons.settings, color: theme.textColor), onPressed: () {}),
-            ],
-          ),
+          // Spacer in alto (mantiene margin) - rimosso SliverAppBar per evitare colore blu allo scroll
+          SliverToBoxAdapter(child: SizedBox(height: kToolbarHeight)),
 
-          // Benvenuto Header
+          // Benvenuto Header (aggiunta spaziatura superiore 100px)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+              padding: const EdgeInsets.only(top:65, left:24.0, right:24.0, bottom:12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -360,7 +313,8 @@ class DashboardFeed extends StatelessWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: GlassmorphicContainer(
                    width: double.infinity,
-                   height: 100,
+                   // increased height to accommodate buttons
+                   height: 160,
                    borderRadius: 20,
                    blur: 10,
                    alignment: Alignment.center,
@@ -371,8 +325,35 @@ class DashboardFeed extends StatelessWidget {
                      mainAxisAlignment: MainAxisAlignment.center,
                      children: [
                        Icon(Icons.lock_outline, color: theme.secondaryTextColor),
-                       SizedBox(height: 8),
+                       const SizedBox(height: 8),
                        Text("Accedi per vedere i preferiti", style: TextStyle(color: theme.secondaryTextColor)),
+                       const SizedBox(height: 16),
+                       Row(
+                         mainAxisAlignment: MainAxisAlignment.center,
+                         children: [
+                           ElevatedButton(
+                             style: ElevatedButton.styleFrom(
+                               backgroundColor: theme.primaryColor,
+                               foregroundColor: theme.textColor, // ensure contrast
+                             ),
+                             onPressed: () {
+                               Navigator.pushNamed(context, '/login');
+                             },
+                             child: const Text('Accedi'),
+                           ),
+                           const SizedBox(width: 12),
+                           OutlinedButton(
+                             style: OutlinedButton.styleFrom(
+                               foregroundColor: theme.primaryColor,
+                               side: BorderSide(color: theme.primaryColor),
+                             ),
+                             onPressed: () {
+                               Navigator.pushNamed(context, '/register');
+                             },
+                             child: const Text('Registrati'),
+                           ),
+                         ],
+                       ),
                      ],
                    ),
                 ),

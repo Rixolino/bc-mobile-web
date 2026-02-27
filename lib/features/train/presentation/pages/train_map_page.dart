@@ -56,18 +56,25 @@ class _TrainMapPageState extends State<TrainMapPage> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    // remove listener to avoid leaks
+    Provider.of<SettingsProvider>(context, listen: false).removeListener(_onSettingsChanged);
     super.dispose();
   }
 
   void _initWebView() {
+    // Listener invoked when settings change (for map style).
+    // defined here so it can access _webViewController and _isMapReady.
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     
-    // Select Map Style URL for Mapbox
-    String mapStyleUrl = 'mapbox://styles/mapbox/dark-v11';
-    if (settings.mapStyle == 'cartodb_positron' || theme.resolvedThemeMode == ThemeMode.light) {
-      mapStyleUrl = 'mapbox://styles/mapbox/light-v11';
+    // Map style comes directly from settings (a Mapbox style URL).
+    // provider may still contain an old string, normalize it explicitly in case
+    // the value hasn't been rewritten yet. log for debugging.
+    String mapStyleUrl = SettingsProvider.normalizeStyleUrl(settings.mapStyle);
+    if (mapStyleUrl.isEmpty) {
+      mapStyleUrl = 'mapbox://styles/mapbox/dark-v11';
     }
+    debugPrint('TrainMapPage using styleUrl: $mapStyleUrl');
 
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -90,6 +97,9 @@ class _TrainMapPageState extends State<TrainMapPage> {
         },
       )
       ..loadHtmlString(_getHtmlContent(mapStyleUrl));
+
+    // apply future style changes if user updates settings while page open
+    settings.addListener(_onSettingsChanged);
   }
 
   /// Loads Trip Polyline and Details from Backend
@@ -202,6 +212,15 @@ class _TrainMapPageState extends State<TrainMapPage> {
        _webViewController.runJavaScript('if(window.updateTrainMarker) window.updateTrainMarker(${_currentTrainPos!.latitude}, ${_currentTrainPos!.longitude});');
     }
   }
+
+  // called when SettingsProvider notifies; we care only about map style
+  void _onSettingsChanged() {
+    final raw = Provider.of<SettingsProvider>(context, listen: false).mapStyle;
+    final style = SettingsProvider.normalizeStyleUrl(raw);
+    if (_isMapReady && style.isNotEmpty) {
+      _webViewController.runJavaScript("if(window.setMapStyle) window.setMapStyle('$style');");
+    }
+  }
   
   // Clean up unused methods
   void _parsePolyline(Map<String, dynamic>? polylineData) {}
@@ -258,6 +277,15 @@ class _TrainMapPageState extends State<TrainMapPage> {
             zoom: 5,
             attributionControl: true
         });
+
+        // allow Dart code to request a style change after load
+        window.setMapStyle = function(styleUrl) {
+            try {
+                map.setStyle(styleUrl);
+            } catch (e) {
+                console.error('Failed to set map style:', e);
+            }
+        };
 
         let trainMarker = null;
         let stationMarkers = [];

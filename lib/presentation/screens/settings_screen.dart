@@ -138,10 +138,41 @@ class SettingsScreen extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildMapStyleOption(context, 'Standard', 'osm', Icons.map_outlined, settings, theme),
-                _buildMapStyleOption(context, 'Scuro', 'cartodb_dark', Icons.nightlight_round, settings, theme),
-                _buildMapStyleOption(context, 'Chiaro', 'cartodb_positron', Icons.wb_sunny_outlined, settings, theme),
-                _buildMapStyleOption(context, 'Voyager', 'cartodb_voyager', Icons.explore, settings, theme),
+                // Mapbox built-in styles (URLs). The stored setting contains the
+                // full URL so we can also support custom ones in the future.
+                _buildMapStyleOption(context, 'Scuro', 'mapbox://styles/mapbox/dark-v11', Icons.nightlight_round, settings, theme),
+                _buildMapStyleOption(context, 'Chiaro', 'mapbox://styles/mapbox/light-v11', Icons.wb_sunny_outlined, settings, theme),
+                _buildMapStyleOption(context, 'Strade', 'mapbox://styles/mapbox/streets-v11', Icons.map_outlined, settings, theme),
+                _buildMapStyleOption(context, 'Satellite', 'mapbox://styles/mapbox/satellite-v9', Icons.satellite, settings, theme),
+                _buildMapStyleOption(context, 'Sat+Str', 'mapbox://styles/mapbox/satellite-streets-v11', Icons.satellite_outlined, settings, theme),
+
+                // custom URL picker
+                GestureDetector(
+                  onTap: () => _showCustomStyleDialog(context, settings, theme),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: theme.surfaceColor.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.edit, color: theme.secondaryTextColor, size: 24),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Altro',
+                          style: TextStyle(
+                            color: theme.secondaryTextColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -176,6 +207,39 @@ class SettingsScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Show a dialog allowing the user to paste or type a custom Mapbox style URL
+  void _showCustomStyleDialog(BuildContext ctx, SettingsProvider settings, ThemeProvider theme) {
+    final controller = TextEditingController(text: settings.mapStyle);
+    showDialog(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: Text('URL stile personalizzato', style: TextStyle(color: theme.textColor)),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: 'mapbox://styles/…',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Annulla'),
+          ),
+          TextButton(
+            onPressed: () {
+              final val = controller.text.trim();
+              if (val.isNotEmpty) {
+                settings.setMapStyle(val);
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text('Salva'),
+          ),
+        ],
       ),
     );
   }

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../../data/models/bus_model.dart';
 import '../../data/repositories/bus_repository.dart';
 
 class BusProvider with ChangeNotifier {
   final BusRepository _repository = BusRepository();
   List<BusVehicle> _vehicles = [];
+  // cache of static JSON downloaded from server (per provider name)
+  final Map<String, Map<String, dynamic>> _staticData = {};
   bool _isLoading = false;
+  double _downloadProgress = 0.0; // 0.0..1.0 progress of static download
   String _selectedCity = ''; // Default empty, set after loading providers
   List<BusProviderConfig> _providers = [];
   BusProviderConfig? _selectedProvider;
@@ -40,6 +44,12 @@ class BusProvider with ChangeNotifier {
   String get selectedCity => _selectedCity;
   List<BusProviderConfig> get providers => _providers;
   BusProviderConfig? get selectedProvider => _selectedProvider;
+
+  /// whether we previously downloaded static JSON for [providerName]
+  bool hasStaticData(String providerName) => _staticData.containsKey(providerName);
+
+  /// progress of the most recent static download operation (0.0 - 1.0)
+  double get downloadProgress => _downloadProgress;
 
   // Configuration update getters
   bool get isUpdatingConfig => _isUpdatingConfig;
@@ -230,14 +240,24 @@ class BusProvider with ChangeNotifier {
       orElse: () => BusProviderConfig(name: '', provider: '', endpoints: {}),
     );
     print('Selected city: $city, provider: ${_selectedProvider?.name}');
-    if (_selectedProvider?.endpoints['stops'] == true) {
-      fetchStops();
+
+    // download static JSON in background so app can save it locally
+    if (_selectedProvider != null && !hasStaticData(_selectedProvider!.name)) {
+      downloadStaticProvider(_selectedProvider!);
     }
-    fetchVehicles();
+
+    if (_selectedProvider?.endpoints['stops'] == true) {
+      // pass offline flag when we already have static data
+      final useOffline = _staticData.containsKey(_selectedProvider!.name);
+      fetchStops(offline: useOffline);
+    }
+    // also pass offline to vehicle fetch if data exists
+    final useOfflineVeh = _staticData.containsKey(_selectedProvider?.name ?? '');
+    fetchVehicles(silent: false, offline: useOfflineVeh);
     notifyListeners();
   }
 
-  Future<void> fetchVehicles({bool silent = false}) async {
+  Future<void> fetchVehicles({bool silent = false, bool offline = false}) async {
     if (!silent) {
       _isLoading = true;
       notifyListeners();
@@ -253,7 +273,7 @@ class BusProvider with ChangeNotifier {
         provider = null;
       }
       if (provider != null && provider.gpsUrl != null && provider.gpsUrl!.isNotEmpty) {
-        print("BusProvider: Using GPS URL: ${provider.gpsUrl}");
+        print("BusProvider: Using GPS URL: ${provider.gpsUrl} (offline=$offline)");
         _vehicles = await _repository.fetchVehicles(provider);
       } else {
         print("BusProvider: Provider ${provider?.name} does not have GPS URL or not found");
@@ -283,13 +303,13 @@ class BusProvider with ChangeNotifier {
   List<dynamic> get flixbusStations => _flixbusStations;
 
   // Dynamic routing methods
-  Future<void> fetchStops() async {
+  Future<void> fetchStops({bool offline = false}) async {
     _isLoadingStops = true;
     notifyListeners();
 
     try {
       if (_selectedProvider != null) {
-        _stops = await _repository.fetchStops(_selectedProvider!);
+        _stops = await _repository.fetchStops(_selectedProvider!, offline: offline);
       } else {
         _stops = [];
       }
@@ -300,6 +320,66 @@ class BusProvider with ChangeNotifier {
       _isLoadingStops = false;
       notifyListeners();
     }
+  }
+
+  /// Download and cache the entire static dataset for [provider].
+  ///
+  /// Uses the special server endpoint that returns the full contents of
+  /// `providersCache[provider]` (used by the web client for offline mode).
+  /// The data is stored in memory and later used when calling any API with
+  /// `offline:true`.
+  /// Public helper that downloads the full static payload for [provider]
+  /// and reports progress through [downloadProgress].
+  Future<void> downloadStaticProvider(BusProviderConfig provider) async {
+    _downloadProgress = 0.0;
+    notifyListeners();
+    try {
+      final data = await _repository.fetchStaticProviderData(
+        provider.name,
+        onProgress: (p) {
+          _downloadProgress = p.clamp(0.0, 1.0);
+          notifyListeners();
+        },
+      );
+      if (data != null) {
+        _staticData[provider.name] = data;
+        print('Static data downloaded for ${provider.name}');
+      }
+    } catch (e) {
+      print('Error downloading static provider data: $e');
+    } finally {
+      // keep progress at 1.0 until the dialog has a chance to close;
+      // reset after a short delay so UI doesn't stuck at 100%
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _downloadProgress = 0.0;
+        notifyListeners();
+      });
+    }
+  }
+
+  /// Verify that the cached static JSON still matches the server copy.
+  ///
+  /// If the remote data differs, replace the cache and return `true` so
+  /// callers can alert the user.  Comparison is done via JSON string.
+  Future<bool> checkAndRefreshStatic(BusProviderConfig provider) async {
+    final name = provider.name;
+    if (!hasStaticData(name)) return false;
+    try {
+      final current = _staticData[name];
+      final newData = await _repository.fetchStaticProviderData(name);
+      if (newData != null) {
+        final curStr = jsonEncode(current);
+        final newStr = jsonEncode(newData);
+        if (curStr != newStr) {
+          _staticData[name] = newData;
+          notifyListeners();
+          return true;
+        }
+      }
+    } catch (e) {
+      print('Error checking static data for $name: $e');
+    }
+    return false;
   }
 
   void selectFromStop(BariStop? stop) {
@@ -441,9 +521,23 @@ class BusProvider with ChangeNotifier {
     }
   }
 
+  /// Retrieves departures for a specific stop. If we have previously
+  /// downloaded static data for the current provider the request is made
+  /// in offline mode so that the server serves cached JSON and skips the
+  /// database query.
   Future<List<StopDeparture>> fetchStopUpdates(String stopId) async {
     try {
-      return await _repository.fetchStopUpdates(_selectedProvider?.name ?? 'bari', stopId);
+      final providerName = _selectedProvider?.name ?? '';
+      final useOffline = hasStaticData(providerName);
+      if (useOffline) {
+        // calculate departures entirely on the device using the downloaded
+        // static dataset; no network call is needed (server only used for
+        // realtime positions, which we merge separately if required).
+        final local = _computeLocalDepartures(providerName, stopId);
+        print('Computed ${local.length} local departures for $stopId');
+        return local;
+      }
+      return await _repository.fetchStopUpdates(providerName, stopId);
     } catch (e) {
       print("Error fetching Bari stop updates: $e");
       return [];
@@ -462,6 +556,177 @@ class BusProvider with ChangeNotifier {
   void clearStopSelection() {
     _selectedStop = null;
     notifyListeners();
+  }
+
+  /// Build a list of departures using only static data previously downloaded
+  /// for [providerName].  The algorithm mirrors the server's `stops-updates`
+  /// logic but operates completely offline on the device.  Currently this is
+  /// only used for Bari providers.
+  List<StopDeparture> _computeLocalDepartures(String providerName, String stopId) {
+    final md = _staticData[providerName];
+    if (md == null) return [];
+
+    // structure of md.tripStopsData is Map<tripId, List<{i:stopId, t:time, ...}>>
+    final tripStops = md['tripStopsData'] as Map<String, dynamic>?;
+    if (tripStops == null) return [];
+
+    // optional static maps for destination lookup
+    final stopNameMap = md['stopNameMap'] as Map<String, dynamic>? ?? {};
+    final tripsMap = md['tripsMap'] as Map<String, dynamic>? ?? {};
+    final routesMap = md['routesMap'] as Map<String, dynamic>? ?? {};
+
+    final List<StopDeparture> departures = [];
+
+    double timeFromString(String t) {
+      final parts = t.split(':');
+      if (parts.length < 2) return 0.0;
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts[1]) ?? 0;
+      final now = DateTime.now();
+      var dt = DateTime(now.year, now.month, now.day, h, m);
+      if (dt.isBefore(now.subtract(const Duration(minutes: 1)))) {
+        dt = dt.add(const Duration(days: 1));
+      }
+      return dt.millisecondsSinceEpoch / 1000.0;
+    }
+
+    tripStops.forEach((tripId, stops) {
+      if (stops is List) {
+        for (var s in stops) {
+          final sid = s['i']?.toString() ?? '';
+          if (sid == stopId) {
+            final timeStr = s['t']?.toString() ?? '';
+            final epoch = timeFromString(timeStr);
+            // derive line by looking up trip->shape->route
+            String line = '';
+            final shapeId = tripsMap[tripId]?.toString();
+            if (shapeId != null) {
+              routesMap.forEach((rk, shapes) {
+                if (shapes is List && shapes.contains(shapeId)) {
+                  line = rk.toString();
+                }
+              });
+            }
+            departures.add(StopDeparture(
+              line: line,
+              tripId: tripId.toString(),
+              vehicleId: 'scheduled-$tripId-$epoch',
+              vehicleLabel: 'Bus',
+              time: epoch,
+              isRealtime: false,
+              isScheduled: true,
+              isLivePosition: false,
+              delay: 0,
+              destination: _findDestinationForTrip(tripId, stopNameMap, tripsMap),
+            ));
+            break;
+          }
+        }
+      }
+    });
+    // if we found nothing and the stopId may correspond to a different code,
+    // try to map it via stopsData and re-run the search with the mapped value
+    if (departures.isEmpty) {
+      final md2 = md['stopsData'] as List<dynamic>?;
+      if (md2 != null) {
+        final match = md2.firstWhere(
+            (e) => e['stop_id'] == stopId || e['stop_code'] == stopId,
+            orElse: () => null);
+        if (match != null) {
+          final alt = (match['stop_code'] ?? match['stop_id'])?.toString() ?? '';
+          if (alt.isNotEmpty && alt != stopId) {
+            // try again with alternate identifier
+            tripStops.forEach((tripId, stops) {
+              if (stops is List) {
+                for (var s in stops) {
+                  final sid = s['i']?.toString() ?? '';
+                  if (sid == alt) {
+                    final timeStr = s['t']?.toString() ?? '';
+                    final epoch = timeFromString(timeStr);
+                    String line = '';
+                    final shapeId = tripsMap[tripId]?.toString();
+                    if (shapeId != null) {
+                      routesMap.forEach((rk, shapes) {
+                        if (shapes is List && shapes.contains(shapeId)) {
+                          line = rk.toString();
+                        }
+                      });
+                    }
+                    departures.add(StopDeparture(
+                      line: line,
+                      tripId: tripId.toString(),
+                      vehicleId: 'scheduled-$tripId-$epoch',
+                      vehicleLabel: 'Bus',
+                      time: epoch,
+                      isRealtime: false,
+                      isScheduled: true,
+                      isLivePosition: false,
+                      delay: 0,
+                      destination: _findDestinationForTrip(tripId, stopNameMap, tripsMap),
+                    ));
+                    break;
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+      if (departures.isEmpty) {
+        print('Offline: no scheduled trips found for stop $stopId');
+      }
+    }
+
+    // merge realtime vehicles if any are already loaded for this provider
+    if (_vehicles.isNotEmpty) {
+      final List<StopDeparture> merged = [];
+      for (var dep in departures) {
+        BusVehicle? match;
+        for (var v in _vehicles) {
+          if (v.tripId == dep.tripId || v.line == dep.line) {
+            match = v;
+            break;
+          }
+        }
+        if (match != null) {
+          merged.add(StopDeparture(
+            line: dep.line,
+            tripId: dep.tripId,
+            vehicleId: match.id,
+            vehicleLabel: dep.vehicleLabel,
+            time: dep.time,
+            isRealtime: true,
+            isScheduled: dep.isScheduled,
+            isLivePosition: true,
+            delay: dep.delay,
+            destination: dep.destination,
+          ));
+        } else {
+          merged.add(dep);
+        }
+      }
+      departures
+        ..clear()
+        ..addAll(merged);
+    }
+
+    departures.sort((a, b) => a.time.compareTo(b.time));
+    return departures;
+  }
+
+  String _findDestinationForTrip(String tripId, Map<String,dynamic> stopNameMap, Map<String,dynamic> tripsMap) {
+    final quoteClean = tripId.replaceAll('"','');
+    final md = _staticData[_selectedProvider?.name ?? ''];
+    if (md != null) {
+      final tripStops = md['tripStopsData'] as Map<String,dynamic>?;
+      final stops = tripStops?[quoteClean] as List<dynamic>?;
+      if (stops != null && stops.isNotEmpty) {
+        final last = stops.last;
+        final lastId = last['i']?.toString() ?? '';
+        return stopNameMap[lastId] ?? lastId;
+      }
+    }
+    return '';
   }
 
   void searchStops(String query) {

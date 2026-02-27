@@ -87,6 +87,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     }
     try {
       final provider = Provider.of<BusProvider>(context, listen: false);
+      // provider.fetchStopUpdates already handles offline selection internally
       final departures = await provider.fetchStopUpdates(widget.stop.stopId);
       print('Fetched ${departures.length} departures for stop ${widget.stop.stopId}');
       if (departures.isNotEmpty) {

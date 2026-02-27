@@ -137,9 +137,11 @@ class BusRepository {
     }
   }
 
-  Future<List<BariStop>> fetchStops(BusProviderConfig provider) async {
+  Future<List<BariStop>> fetchStops(BusProviderConfig provider, {bool offline = false}) async {
     try {
-      final response = await http.get(Uri.parse("https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.name}/stops"));
+      var url = "https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.name}/stops";
+      if (offline) url += "?offline=true";
+      final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((e) => BariStop.fromJson(e)).toList();
@@ -324,9 +326,13 @@ class BusRepository {
     }
   }
 
-  Future<List<StopDeparture>> fetchStopUpdates(String provider, String stopId) async {
+  /// Fetch departures for a stop.  If [offline] is true the server will
+  /// serve data from its in‑memory JSON and not query the database.
+  Future<List<StopDeparture>> fetchStopUpdates(
+      String provider, String stopId) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/$provider/stops-updates?stopId=$stopId";
+      final url =
+          "${ApiConstants.baseUrl}/api/it/bus/$provider/stops-updates?stopId=$stopId";
       print('Fetching stop updates from: $url');
       final response = await http.get(Uri.parse(url));
       print('Response status: ${response.statusCode}');
@@ -394,6 +400,58 @@ class BusRepository {
     } catch (e) {
       print("Error fetching bus providers: $e");
       return [];
+    }
+  }
+
+  /// Retrieves the full static JSON package for a provider.
+  ///
+  /// The server returns the same object that is held in its in-memory
+  /// `providersCache` and which is normally used to answer realtime and
+  /// stops‑updates queries.  Clients use this to pre‑download all of a
+  /// provider's data for offline mode.
+  /// Retrieves the full static JSON package for a provider.
+  ///
+  /// An optional [onProgress] callback receives values between 0.0 and 1.0
+  /// indicating the fraction of bytes downloaded.  The download is performed
+  /// using a streamed request so the UI can display a progress indicator.
+  Future<Map<String, dynamic>?> fetchStaticProviderData(String providerName,
+      {void Function(double progress)? onProgress}) async {
+    try {
+      final url = "${ApiConstants.baseUrl}/api/it/bus/$providerName/stops-updates?static=true";
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(url));
+      final streamed = await client.send(request);
+
+      if (streamed.statusCode == 200) {
+        final contentLength = streamed.contentLength ?? 0;
+        final bytes = <int>[];
+        int received = 0;
+
+        await for (var chunk in streamed.stream) {
+          bytes.addAll(chunk);
+          received += chunk.length;
+          if (onProgress != null) {
+            if (contentLength > 0) {
+              onProgress(received / contentLength);
+            } else {
+              // unknown length: estimate growth based on received size to
+              // give a fluid, non‑stuck experience. cap at 98% until end.
+              final estimate = (received / 200000.0).clamp(0.0, 0.98);
+              onProgress(estimate);
+            }
+          }
+        }
+
+        // always notify completion
+        if (onProgress != null) onProgress(1.0);
+
+        final bodyStr = utf8.decode(bytes);
+        return json.decode(bodyStr) as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching static provider data for $providerName: $e");
+      return null;
     }
   }
 }

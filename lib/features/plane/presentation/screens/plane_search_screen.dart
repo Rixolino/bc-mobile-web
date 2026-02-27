@@ -14,23 +14,7 @@ class PlaneSearchScreen extends StatelessWidget {
     final theme = Provider.of<ThemeProvider>(context);
     return Scaffold(
       backgroundColor: theme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.surfaceColor,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Text(
-          "Ricerca Voli", 
-          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.map, color: theme.primaryColor),
-            onPressed: () => context.navigateToPlane(),
-            tooltip: 'Vai alla mappa',
-          ),
-        ],
-      ),
+      // no AppBar, map access via FAB
       body: SafeArea(
         child: PlanePanelContent(
           onRefresh: () {
@@ -39,6 +23,15 @@ class PlaneSearchScreen extends StatelessWidget {
             // Scansiona l'area visibile sulla mappa
             planeProvider.scanAreaForFlights(mapState.lat, mapState.lng, mapState.zoom);
           },
+        ),
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0),
+        child: FloatingActionButton(
+          backgroundColor: theme.primaryColor,
+          child: Icon(Icons.map, color: Colors.white),
+          onPressed: () => context.navigateToPlane(),
+          tooltip: 'Vai alla mappa',
         ),
       ),
     );

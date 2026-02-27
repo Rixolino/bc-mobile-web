@@ -373,6 +373,46 @@ class StopDeparture {
   }
 }
 
+/// Represents the payload returned by `/stops` or `/stops-updates`.
+/// Mirrors the server response which includes summary counts.
+class StopUpdates {
+  final String stopId;
+  final String stopName;
+  final int totalDepartures;
+  final int realtimeDepartures;
+  final int livePositionDepartures;
+  final int scheduledDepartures;
+  final List<StopDeparture> departures;
+
+  StopUpdates({
+    required this.stopId,
+    required this.stopName,
+    required this.totalDepartures,
+    required this.realtimeDepartures,
+    required this.livePositionDepartures,
+    required this.scheduledDepartures,
+    required this.departures,
+  });
+
+  factory StopUpdates.fromJson(Map<String, dynamic> json) {
+    final deps = (json['departures'] as List<dynamic>?)
+            ?.map((e) => StopDeparture.fromJson(e))
+            .toList() ?? [];
+    return StopUpdates(
+      stopId: json['stopId']?.toString() ?? '',
+      stopName: json['stopName'] ?? '',
+      totalDepartures: json['totalDepartures'] ?? deps.length,
+      realtimeDepartures: json['realtimeDepartures'] ??
+          deps.where((d) => d.isRealtime && !d.isLivePosition).length,
+      livePositionDepartures: json['livePositionDepartures'] ??
+          deps.where((d) => d.isLivePosition).length,
+      scheduledDepartures: json['scheduledDepartures'] ??
+          deps.where((d) => d.isScheduled).length,
+      departures: deps,
+    );
+  }
+}
+
 /// Modello per i dati delle fermate di un trip specifico
 class TripStopsData {
   final String tripId;

@@ -12,25 +12,15 @@ class TrainSearchScreen extends StatelessWidget {
     final theme = Provider.of<ThemeProvider>(context);
     return Scaffold(
       backgroundColor: theme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.surfaceColor,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Text(
-          "Ricerca Treni", 
-          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)
+      // no AppBar: full-screen train search
+      body: SafeArea(
+        child: Stack(
+          children: [
+            const TrainPanelContent(),
+            // keep map button floating at top-right
+            
+          ],
         ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.map, color: theme.primaryColor),
-            onPressed: () => context.navigateToTrain(),
-            tooltip: 'Vai alla mappa',
-          ),
-        ],
-      ),
-      body: const SafeArea(
-        child: TrainPanelContent(),
       ),
     );
   }

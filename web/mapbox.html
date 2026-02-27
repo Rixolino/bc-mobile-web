@@ -250,6 +250,29 @@
             }
         };
         
+        // Utility: cambia lo stile della mappa a runtime.
+        // Chiamalo da Flutter con `webviewController.runJavascript(
+        //   "setMapStyle('mapbox://styles/mapbox/streets-v11')");`
+        // I link di stile ufficiali Mapbox (v3+) includono:
+        //   mapbox://styles/mapbox/streets-v11
+        //   mapbox://styles/mapbox/outdoors-v11
+        //   mapbox://styles/mapbox/light-v10
+        //   mapbox://styles/mapbox/dark-v10
+        //   mapbox://styles/mapbox/satellite-v9
+        //   mapbox://styles/mapbox/satellite-streets-v11
+        //   mapbox://styles/mapbox/navigation-day-v1
+        //   mapbox://styles/mapbox/navigation-night-v1
+        // Puoi anche usare uno stile personalizzato creato su Mapbox Studio
+        // (dal sito https://studio.mapbox.com/styles) oppure un url HTTP
+        // valido per uno stile JSON.
+        window.setMapStyle = function(styleUrl) {
+            try {
+                map.setStyle(styleUrl);
+            } catch (e) {
+                console.error('Failed to set map style:', e);
+            }
+        };
+
         // Segnala a Flutter che mappa è pronta
         map.on('load', () => {
             if (window.flutterChannel) {

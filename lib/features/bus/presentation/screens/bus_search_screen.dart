@@ -16,31 +16,22 @@ class BusSearchScreen extends StatelessWidget {
     
     return Scaffold(
       backgroundColor: theme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.surfaceColor,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Text(
-          "Ricerca Bus", 
-          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.map, color: theme.primaryColor),
-            onPressed: () async {
-              // Carica i dati dei bus e le fermate in tempo reale
-              await busProvider.fetchVehicles();
-              await busProvider.fetchStops();
-              // Apri la mappa con categoria Bus
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen(initialCategory: 1)));
-            },
-            tooltip: 'Vai alla mappa',
-          ),
-        ],
-      ),
+      // no AppBar, map button as FAB
       body: const SafeArea(
         child: BusPanelContent(),
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0),
+        child: FloatingActionButton(
+          backgroundColor: theme.primaryColor,
+          child: Icon(Icons.map, color: Colors.white),
+          onPressed: () async {
+            await busProvider.fetchVehicles();
+            await busProvider.fetchStops();
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen(initialCategory: 1)));
+          },
+          tooltip: 'Vai alla mappa',
+        ),
       ),
     );
   }

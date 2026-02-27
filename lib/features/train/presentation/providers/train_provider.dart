@@ -117,7 +117,7 @@ class TrainProvider with ChangeNotifier {
     clearSelection();
   }
 
-  Future<void> searchStations(String query, {String country = 'IT'}) async {
+  Future<void> searchStations(String query, {String country = 'IT', String? city}) async {
     if (query.length < 2) {
       _stationSuggestions = [];
       notifyListeners();
@@ -130,7 +130,8 @@ class TrainProvider with ChangeNotifier {
     try {
       _stationSuggestions = await _repository.searchStations(
         query, 
-        country: country, 
+        country: country,
+        city: city,
         service: _selectedService
       );
     } catch (e) {

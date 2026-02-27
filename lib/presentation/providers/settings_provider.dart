@@ -26,7 +26,9 @@ class SettingsProvider with ChangeNotifier {
   int _trainRefreshSeconds = 0;
   int _planeRefreshSeconds = 0;
   ThemeMode _themeMode = ThemeMode.dark;
-  String _mapStyle = 'osm'; // 'osm', 'cartodb_dark', 'cartodb_voyager', etc.
+  // stores a Mapbox style URL, e.g. 'mapbox://styles/mapbox/dark-v11'
+  // older values (osm/cartodb_*) will be migrated when loaded.
+  String _mapStyle = 'mapbox://styles/mapbox/dark-v11';
   bool _busClusteringEnabled = false;
   bool _stopsClusteringEnabled = false;
   bool _trainsWorkerEnabled = false;
@@ -73,11 +75,14 @@ class SettingsProvider with ChangeNotifier {
     final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
     
-    // Default Map Style based on theme
-    final sysThemeMode = ThemeMode.values[themeIndex]; 
-    final isDark = sysThemeMode == ThemeMode.dark; 
-    // Or check system brightness if system... but let's stick to stored string
-    _mapStyle = prefs.getString(keyMapStyle) ?? (isDark ? 'cartodb_dark' : 'osm');
+    // Default Map Style saved (style URL).  Normalize any legacy names.
+    String stored = prefs.getString(keyMapStyle) ?? '';
+    _mapStyle = _normalizeStyleUrl(stored);
+    if (_mapStyle.isEmpty) {
+      // fallback according to theme
+      final isDark = _themeMode == ThemeMode.dark;
+      _mapStyle = isDark ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v11';
+    }
     
     _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     _stopsClusteringEnabled = prefs.getBool(keyStopsClustering) ?? false;
@@ -95,11 +100,14 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setMapStyle(String style) async {
-    _mapStyle = style;
+  Future<void> setMapStyle(String styleUrl) async {
+    // always normalize before storing
+    final normalized = _normalizeStyleUrl(styleUrl);
+    debugPrint('SettingsProvider.setMapStyle: input="$styleUrl" -> norm="$normalized"');
+    _mapStyle = normalized;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(keyMapStyle, style);
+    await prefs.setString(keyMapStyle, normalized);
   }
 
   Future<void> setBusRefreshSeconds(int seconds) async {
@@ -182,6 +190,38 @@ class SettingsProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyFunctionsWorker, enabled);
   }
+
+  /// Convert a style identifier / URL into a valid Mapbox style URL.
+  ///
+  /// Recognizes old keywords (osm, cartodb_*) and also handles cases where an
+  /// outdated Mapbox URL (`mapbox://styles/mapbox/cartodb_dark`) was stored.
+  /// Normalize a style identifier or URL to a valid Mapbox style URL.
+  ///
+  /// This will convert legacy keywords ("osm", "cartodb_dark" etc.) and
+  /// also older Mapbox URLs containing those keywords.  If the input already
+  /// looks like a valid Mapbox url it is returned as‑is, otherwise the original
+  /// string is returned (useful for custom HTTP urls).
+  static String normalizeStyleUrl(String s) {
+    if (s.isEmpty) return '';
+    // if there are multiple occurrences of the prefix, keep only from last
+    const prefix = 'mapbox://styles/';
+    final lowerS = s.toLowerCase();
+    final lastIdx = lowerS.lastIndexOf(prefix);
+    if (lastIdx > 0) {
+      s = s.substring(lastIdx);
+    }
+
+    final lower = s.toLowerCase();
+    if (lower.contains('osm')) return 'mapbox://styles/mapbox/streets-v11';
+    if (lower.contains('cartodb_dark')) return 'mapbox://styles/mapbox/dark-v11';
+    if (lower.contains('cartodb_positron')) return 'mapbox://styles/mapbox/light-v11';
+    if (lower.contains('cartodb_voyager')) return 'mapbox://styles/mapbox/outdoors-v11';
+    if (lower.startsWith('mapbox://')) return s;
+    return s;
+  }
+
+  // private wrapper kept for backward compatibility
+  String _normalizeStyleUrl(String s) => SettingsProvider.normalizeStyleUrl(s);
 
   // Train worker config
   Future<void> setTrainStationId(String id) async {

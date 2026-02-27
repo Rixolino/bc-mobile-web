@@ -7,7 +7,7 @@ class TrainRepository {
   static const String baseUrl = "https://prod.cuzimmartin.dev/api";
   static const String falBaseUrl = "https://fal.ferrovieappulolucane.it"; 
 
-  Future<List<TrainStation>> searchStations(String query, {String country = 'IT', String service = 'trainboardeu'}) async {
+  Future<List<TrainStation>> searchStations(String query, {String country = 'IT', String? city, String service = 'trainboardeu'}) async {
     // If service is Direct and country is IT, use local proxy/JSON logic
     if (service == 'direct' && country == 'IT') {
       final url = "${ApiConstants.baseUrl}/proxy/viaggiatreno?q=${Uri.encodeComponent(query)}";
@@ -36,7 +36,12 @@ class TrainRepository {
     } else if (country == 'FAL') {
         url = "$tbUrl/it/stations?query=${Uri.encodeComponent(query)}&limit=10";
     } else {
-        url = "$tbUrl/$country/stations?query=${Uri.encodeComponent(query)}&limit=10";
+        // include city segment if provided
+        if (city != null && city.isNotEmpty) {
+            url = "$tbUrl/$country/$city/stations?query=${Uri.encodeComponent(query)}&limit=10";
+        } else {
+            url = "$tbUrl/$country/stations?query=${Uri.encodeComponent(query)}&limit=10";
+        }
     }
 
     try {
