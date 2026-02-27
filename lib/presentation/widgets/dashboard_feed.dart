@@ -210,7 +210,7 @@ class DashboardFeed extends StatelessWidget {
                 children: [
                   Text("I tuoi Preferiti",
                       style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.bold, color: theme.textColor)),
-                  TextButton(
+                  if (authProvider.isAuthenticated) TextButton(
                     onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesPage())),
                     child: Text("Vedi tutti"),
                   ),
