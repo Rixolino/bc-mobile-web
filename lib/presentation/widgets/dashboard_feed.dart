@@ -4,6 +4,8 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../features/auth/providers/auth_provider.dart';
+import '../../features/auth/screens/login_page.dart';
+import '../../features/auth/screens/register_page.dart';
 import '../providers/theme_provider.dart';
 import '../../features/favorites/providers/favorites_provider.dart';
 import '../../features/favorites/screens/favorites_page.dart';
@@ -22,7 +24,7 @@ class DashboardFeed extends StatelessWidget {
     final theme = Provider.of<ThemeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.currentUser;
-    final userName = (user?.nickname != null) ? user!.nickname! : (user?.email != null ? user!.email!.split('@')[0] : 'Viaggiatore');
+    final userName = (user?.nickname != null) ? user!.nickname! : (user?.email != null ? user!.email.split('@')[0] : 'Viaggiatore');
 
     return Container(
       decoration: BoxDecoration(
@@ -337,7 +339,10 @@ class DashboardFeed extends StatelessWidget {
                                foregroundColor: theme.textColor, // ensure contrast
                              ),
                              onPressed: () {
-                               Navigator.pushNamed(context, '/login');
+                               Navigator.push(
+                                 context,
+                                 MaterialPageRoute(builder: (_) => const LoginPage()),
+                               );
                              },
                              child: const Text('Accedi'),
                            ),
@@ -348,7 +353,10 @@ class DashboardFeed extends StatelessWidget {
                                side: BorderSide(color: theme.primaryColor),
                              ),
                              onPressed: () {
-                               Navigator.pushNamed(context, '/register');
+                               Navigator.push(
+                                 context,
+                                 MaterialPageRoute(builder: (_) => const RegisterPage()),
+                               );
                              },
                              child: const Text('Registrati'),
                            ),
