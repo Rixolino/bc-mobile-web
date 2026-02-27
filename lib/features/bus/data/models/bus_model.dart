@@ -506,6 +506,7 @@ class BusProviderConfig {
   final String? gtfsUrl;
   final String? dataPath;
   final String? apiPrefix;
+  final String? country;
   final Map<String, bool> endpoints;
   final double? latitude;
   final double? longitude;
@@ -520,6 +521,7 @@ class BusProviderConfig {
     this.gtfsUrl,
     this.dataPath,
     this.apiPrefix,
+    this.country,
     required this.endpoints,
     this.latitude,
     this.longitude,
@@ -537,6 +539,7 @@ class BusProviderConfig {
       gtfsUrl: json['gtfs_url'],
       dataPath: json['data_path'],
       apiPrefix: json['api_prefix'],
+      country: json['country'],
       endpoints: Map<String, bool>.from(json['endpoints'] ?? {}),
       latitude: coordinates?['latitude']?.toDouble(),
       longitude: coordinates?['longitude']?.toDouble(),

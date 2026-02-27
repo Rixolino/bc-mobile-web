@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/bus_model.dart';
 import '../../data/repositories/bus_repository.dart';
 
@@ -13,6 +14,8 @@ class BusProvider with ChangeNotifier {
   double _downloadProgress = 0.0; // 0.0..1.0 progress of static download
   String _selectedCity = ''; // Default empty, set after loading providers
   List<BusProviderConfig> _providers = [];
+  // persistent visibility map keyed by provider id (provider or name fallback)
+  final Map<String, bool> _providerVisibility = {};
   BusProviderConfig? _selectedProvider;
   
   Timer? _refreshTimer;
@@ -145,6 +148,8 @@ class BusProvider with ChangeNotifier {
         _selectedProvider = _providers.first;
         print('Default city set to: $_selectedCity');
       }
+      // Load saved order & visibility preferences if any
+      await _loadProviderPreferences();
       notifyListeners();
     } catch (e) {
       print("Error loading providers: $e");
@@ -168,6 +173,8 @@ class BusProvider with ChangeNotifier {
       ];
       // Set default to Flixbus
       _selectedCity = 'Flixbus';
+      // load any stored preferences (will be empty in fallback)
+      await _loadProviderPreferences();
       notifyListeners();
     }
   }
@@ -255,6 +262,91 @@ class BusProvider with ChangeNotifier {
     final useOfflineVeh = _staticData.containsKey(_selectedProvider?.name ?? '');
     fetchVehicles(silent: false, offline: useOfflineVeh);
     notifyListeners();
+  }
+
+  /// Reorder providers list in memory and notify listeners.
+  /// Expects indices as provided by ReorderableListView (oldIndex, newIndex).
+  void reorderProviders(int oldIndex, int newIndex) {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = _providers.removeAt(oldIndex);
+    _providers.insert(newIndex, item);
+    // Update selected city index if necessary
+    if (_selectedCity.isNotEmpty) {
+      final stillHas = _providers.any((p) => p.name == _selectedCity);
+      if (!stillHas && _providers.isNotEmpty) {
+        _selectedCity = _providers.first.name;
+        _selectedProvider = _providers.first;
+      }
+    }
+    notifyListeners();
+    _saveProviderOrder();
+  }
+
+  String _providerKey(BusProviderConfig p) => (p.provider.isNotEmpty ? p.provider : p.name);
+
+  bool isProviderVisible(BusProviderConfig p) {
+    final key = _providerKey(p);
+    return _providerVisibility.containsKey(key) ? _providerVisibility[key]! : true;
+  }
+
+  Future<void> setProviderVisibility(BusProviderConfig p, bool visible) async {
+    final key = _providerKey(p);
+    _providerVisibility[key] = visible;
+    notifyListeners();
+    await _saveProviderVisibility();
+  }
+
+  Future<void> _saveProviderOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = _providers.map((p) => _providerKey(p)).toList();
+      await prefs.setString('bus_providers_order_v1', jsonEncode(ids));
+    } catch (e) {
+      print('Error saving provider order: $e');
+    }
+  }
+
+  Future<void> _saveProviderVisibility() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bus_providers_visibility_v1', jsonEncode(_providerVisibility));
+    } catch (e) {
+      print('Error saving provider visibility: $e');
+    }
+  }
+
+  Future<void> _loadProviderPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final orderStr = prefs.getString('bus_providers_order_v1');
+      if (orderStr != null && orderStr.isNotEmpty) {
+        final List<dynamic> saved = jsonDecode(orderStr);
+        final List<String> savedIds = saved.map((e) => e.toString()).toList();
+        final Map<String, BusProviderConfig> map = { for (var p in _providers) _providerKey(p): p };
+        final List<BusProviderConfig> reordered = [];
+        for (var id in savedIds) {
+          if (map.containsKey(id)) reordered.add(map[id]!);
+        }
+        // append any providers not found in saved order
+        for (var p in _providers) {
+          if (!reordered.contains(p)) reordered.add(p);
+        }
+        _providers = reordered;
+      }
+
+      final visStr = prefs.getString('bus_providers_visibility_v1');
+      if (visStr != null && visStr.isNotEmpty) {
+        final Map<String, dynamic> visMap = jsonDecode(visStr);
+        _providerVisibility.clear();
+        visMap.forEach((k, v) {
+          _providerVisibility[k] = v == true;
+        });
+      }
+    } catch (e) {
+      print('Error loading provider preferences: $e');
+    }
   }
 
   Future<void> fetchVehicles({bool silent = false, bool offline = false}) async {

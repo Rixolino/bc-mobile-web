@@ -6,6 +6,7 @@ import 'dart:convert';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../../core/api_constants.dart';
 import '../../data/models/bus_model.dart';
 import 'shimmer_and_toggle.dart';
 import 'scrolling_text.dart';
@@ -84,9 +85,36 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: Text(
-                        "Operatore",
-                        style: TextStyle(color: theme.textColor.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Operatore",
+                            style: TextStyle(color: theme.textColor.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.reorder, color: theme.secondaryTextColor),
+                            tooltip: 'Riordina provider',
+                            onPressed: () async {
+                              // Open bottom sheet with reorderable list
+                              await showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (ctx) {
+                                  return DraggableScrollableSheet(
+                                    expand: false,
+                                    initialChildSize: 0.6,
+                                    maxChildSize: 0.95,
+                                    minChildSize: 0.3,
+                                    builder: (_, controller) {
+                                      return _buildReorderSheet(ctx, busProvider, controller);
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     SingleChildScrollView(
@@ -94,7 +122,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
-                        children: busProvider.providers.map((provider) {
+                        children: busProvider.providers.where((provider) => busProvider.isProviderVisible(provider)).map((provider) {
                           final isSelected = busProvider.selectedCity == provider.name;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8.0),
@@ -112,15 +140,9 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                   mapState.flyTo(p.latitude!, p.longitude!, zoom: p.zoom ?? 12.0);
                                   
                                   // Carica bus e fermate quando selezioni un provider
-                                  busProvider.fetchVehicles().then((_) {
-                                    // Notifica la mappa che i dati sono pronti
-                                    mapState.notifyListeners();
-                                  });
+                                  busProvider.fetchVehicles();
                                   if (provider.name != "Flixbus") {
-                                    busProvider.fetchStops().then((_) {
-                                      // Notifica la mappa che i dati delle fermate sono pronti
-                                      mapState.notifyListeners();
-                                    });
+                                    busProvider.fetchStops();
                                   }
                                 }
                               },
@@ -305,6 +327,76 @@ class _BusPanelContentState extends State<BusPanelContent> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildReorderSheet(BuildContext context, BusProvider busProvider, ScrollController controller) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Text('Riordina provider', style: Theme.of(context).textTheme.titleLarge),
+          ),
+          Expanded(
+            child: Consumer<BusProvider>(
+              builder: (ctx, bp, _) {
+                final providersLive = bp.providers;
+                return ReorderableListView.builder(
+                  scrollController: controller,
+                  itemCount: providersLive.length,
+                  onReorder: (oldIndex, newIndex) {
+                    bp.reorderProviders(oldIndex, newIndex);
+                  },
+                  itemBuilder: (ctx, index) {
+                    final p = providersLive[index];
+                    final title = p.provider.isNotEmpty ? p.provider : p.name;
+                    final subtitle = p.name;
+                    final country = p.country ?? (p.apiPrefix != null && p.apiPrefix!.contains('/') ? p.apiPrefix!.split('/').first : 'it');
+                    final visible = bp.isProviderVisible(p);
+                    return ListTile(
+                      key: ValueKey(p.name),
+                      leading: const Icon(Icons.drag_handle),
+                      title: Text(title),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(subtitle),
+                          Text(country, style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color)),
+                        ],
+                      ),
+                      trailing: Switch(
+                        value: visible,
+                        onChanged: (v) async {
+                          await bp.setProviderVisibility(p, v);
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Chiudi'),
+                )
+              ],
+            ),
+          )
+        ],
+      ),
     );
   }
 
@@ -655,8 +747,10 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 try {
                   final tripId = v.tripId ?? '';
                   final lineCode = v.line;
-                  final provider = busProvider.selectedProvider!.name.toLowerCase();
-                  final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/$provider/realtime?tripId=$tripId&lineCode=$lineCode';
+                  final selected = busProvider.selectedProvider!;
+                  final country = selected.country ?? (selected.apiPrefix != null && selected.apiPrefix!.contains('/') ? selected.apiPrefix!.split('/').first : 'it');
+                  final providerName = selected.name.toLowerCase();
+                  final url = '${ApiConstants.baseUrl}/api/$country/bus/$providerName/realtime?tripId=$tripId&lineCode=$lineCode';
                   print('Fetching bus details from URL: $url');
     
                   final response = await http.get(Uri.parse(url));

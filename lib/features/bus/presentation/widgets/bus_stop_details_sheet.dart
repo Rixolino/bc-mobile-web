@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import '../../../../core/api_constants.dart';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -396,7 +397,9 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
               }
 
               try {
-                final url = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${selectedProvider.name.toLowerCase()}/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
+                final country = selectedProvider.country ?? (selectedProvider.apiPrefix != null && selectedProvider.apiPrefix!.contains('/') ? selectedProvider.apiPrefix!.split('/').first : 'it');
+                final providerName = selectedProvider.name.toLowerCase();
+                final url = '${ApiConstants.baseUrl}/api/$country/bus/$providerName/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
                 print('Richiamando URL: $url');
                 final response = await http.get(Uri.parse(url));
                 if (response.statusCode == 200) {

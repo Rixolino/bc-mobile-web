@@ -7,6 +7,23 @@ import '../models/bus_model.dart';
 class BusRepository {
   static const String flixbusBase = "https://prod.cuzimmartin.dev/api/flixbus";
 
+  String _countryFromProviderConfig(BusProviderConfig? provider) {
+    if (provider == null) return 'it';
+    if (provider.country != null && provider.country!.isNotEmpty) return provider.country!;
+    if (provider.apiPrefix != null && provider.apiPrefix!.contains('/')) return provider.apiPrefix!.split('/').first;
+    return 'it';
+  }
+
+  Future<String> _countryForProviderName(String providerName) async {
+    try {
+      final providers = await fetchBusProviders();
+      final matches = providers.where((x) => x.name.toLowerCase() == providerName.toLowerCase()).toList();
+      final p = matches.isNotEmpty ? matches.first : null;
+      if (p != null) return p.country ?? (p.apiPrefix != null ? p.apiPrefix!.split('/').first : 'it');
+    } catch (_) {}
+    return 'it';
+  }
+
   double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
     const earthRadiusKm = 6371.0;
     
@@ -139,7 +156,8 @@ class BusRepository {
 
   Future<List<BariStop>> fetchStops(BusProviderConfig provider, {bool offline = false}) async {
     try {
-      var url = "https://betacloud-transporter.is-cool.dev/api/it/bus/${provider.name}/stops";
+      final country = _countryFromProviderConfig(provider);
+      var url = "${ApiConstants.baseUrl}/api/$country/bus/${provider.name}/stops";
       if (offline) url += "?offline=true";
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -202,8 +220,9 @@ class BusRepository {
         "ActivateRunsOnNextDay": true
       };
 
+      final bariCountry = await _countryForProviderName('bari');
       final response = await http.post(
-        Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/solutions"),
+        Uri.parse("${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/solutions"),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(body),
       );
@@ -232,8 +251,9 @@ class BusRepository {
         "IdSoluzione": solutionId
       };
 
+      final bariCountry = await _countryForProviderName('bari');
       final response = await http.post(
-        Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/solutions"),
+        Uri.parse("${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/solutions"),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(body),
       );
@@ -251,7 +271,8 @@ class BusRepository {
   Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId) async {
     try {
       // Chiama l'endpoint realtime con vehicleId e routeId
-      final realtimeResponse = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
+      final bariCountry = await _countryForProviderName('bari');
+      final realtimeResponse = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
       if (realtimeResponse.statusCode == 200) {
         final json = jsonDecode(realtimeResponse.body);
         final vehicles = json['vehicles'] as List?;
@@ -310,7 +331,8 @@ class BusRepository {
   
   Future<BusRoutePath?> fetchBusRoutePath(String tripId) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/bari/route-path?tripId=$tripId";
+      final bariCountry = await _countryForProviderName('bari');
+      final url = "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/route-path?tripId=$tripId";
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -331,8 +353,8 @@ class BusRepository {
   Future<List<StopDeparture>> fetchStopUpdates(
       String provider, String stopId) async {
     try {
-      final url =
-          "${ApiConstants.baseUrl}/api/it/bus/$provider/stops-updates?stopId=$stopId";
+        final country = await _countryForProviderName(provider);
+        final url = "${ApiConstants.baseUrl}/api/$country/bus/$provider/stops-updates?stopId=$stopId";
       print('Fetching stop updates from: $url');
       final response = await http.get(Uri.parse(url));
       print('Response status: ${response.statusCode}');
@@ -354,7 +376,8 @@ class BusRepository {
 
   Future<TripStopsData?> fetchTripStops(String tripId) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/bari/trip-stops?tripId=$tripId";
+      final bariCountry = await _countryForProviderName('bari');
+      final url = "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/trip-stops?tripId=$tripId";
       final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
@@ -372,7 +395,8 @@ class BusRepository {
 
   Future<String?> fetchBariVehicleDestination(String vehicleId, String routeId) async {
     try {
-      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/it/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
+      final bariCountry = await _countryForProviderName('bari');
+      final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         final vehicles = json['vehicles'] as List?;
@@ -417,7 +441,8 @@ class BusRepository {
   Future<Map<String, dynamic>?> fetchStaticProviderData(String providerName,
       {void Function(double progress)? onProgress}) async {
     try {
-      final url = "${ApiConstants.baseUrl}/api/it/bus/$providerName/stops-updates?static=true";
+      final country = await _countryForProviderName(providerName);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$providerName/stops-updates?static=true";
       final client = http.Client();
       final request = http.Request('GET', Uri.parse(url));
       final streamed = await client.send(request);
