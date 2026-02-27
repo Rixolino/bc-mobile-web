@@ -58,7 +58,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: GlassmorphicContainer(
                  width: double.infinity,
-                 height: 100,
+                 height: 120,
                  borderRadius: 20,
                  blur: 15,
                  alignment: Alignment.center,

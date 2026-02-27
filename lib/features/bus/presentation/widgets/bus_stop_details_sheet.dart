@@ -11,14 +11,13 @@ import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../../core/services/android_background_service.dart';
-import '../../../../presentation/constants/notification_channels.dart';
 import '../../../favorites/models/favorite_stop.dart';
 import '../../../auth/providers/auth_provider.dart';
 import 'bus_details_sheet.dart';
 
 class BusStopDetailsSheet extends StatefulWidget {
   final BariStop stop;
-  final ScrollController? scrollController;
+  final ScrollController? scrollController; // Controller dello Sheet
   const BusStopDetailsSheet({super.key, required this.stop, this.scrollController});
 
   @override
@@ -29,31 +28,39 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
   Timer? _timer;
   List<StopDeparture> _departures = [];
   bool _isLoadingDepartures = false;
-
-  // Notification state for this stop (initialized on open)
   bool _notificationsEnabled = false;
+  bool _isOpeningDetails = false; // evita doppie aperture del foglio
 
   @override
   void initState() {
     super.initState();
     _startAutoRefresh();
     _fetchDepartures(showLoading: true);
-
-    // Verify whether notifications are enabled for this stop so UI reflects current state
     AndroidBackgroundService.isStopMonitored(widget.stop.stopId).then((v) {
       if (mounted) setState(() => _notificationsEnabled = v);
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final settings = Provider.of<SettingsProvider>(context);
-    if (settings.busRefreshSeconds > 0 && _timer == null) {
-      _startAutoRefresh();
-    } else if (settings.busRefreshSeconds == 0 && _timer != null) {
-      _stopAutoRefresh();
+  // Quando si clicca su una linea, proviamo a trovare una departure con tripId
+  // e apriamo il BusDetailsSheet con quella corsa. Se non trovata, mostriamo un messaggio.
+  Future<void> _onLineTap(String line, BusProvider provider) async {
+    StopDeparture? dep;
+    try {
+      dep = _departures.firstWhere((d) => d.line == line && d.tripId.isNotEmpty);
+    } catch (_) {
+      try {
+        dep = _departures.firstWhere((d) => d.line == line);
+      } catch (_) {
+        dep = null;
+      }
     }
+
+    if (dep == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nessun percorso disponibile per la linea $line')));
+      return;
+    }
+
+    await _navigateToBusDetails(dep, provider);
   }
 
   @override
@@ -64,503 +71,364 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
 
   void _startAutoRefresh() {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final interval = settings.busRefreshSeconds;
-
-    if (interval > 0) {
-      _timer = Timer.periodic(Duration(seconds: interval), (_) {
-        if (mounted) {
-          _fetchDepartures(showLoading: false);
-        }
+    if (settings.busRefreshSeconds > 0) {
+      _timer = Timer.periodic(Duration(seconds: settings.busRefreshSeconds), (_) {
+        if (mounted) _fetchDepartures(showLoading: false);
       });
     }
   }
 
-  void _stopAutoRefresh() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-
+  void _stopAutoRefresh() => _timer?.cancel();
 
   Future<void> _fetchDepartures({bool showLoading = false}) async {
-    if (showLoading) {
-      setState(() => _isLoadingDepartures = true);
-    }
+    if (showLoading) setState(() => _isLoadingDepartures = true);
     try {
       final provider = Provider.of<BusProvider>(context, listen: false);
-      // provider.fetchStopUpdates already handles offline selection internally
       final departures = await provider.fetchStopUpdates(widget.stop.stopId);
-      print('Fetched ${departures.length} departures for stop ${widget.stop.stopId}');
-      if (departures.isNotEmpty) {
-        print('First departure: ${departures[0].toString()}');
-      }
-      setState(() => _departures = departures);
+      if (mounted) setState(() => _departures = departures);
     } catch (e) {
-      print('Error fetching stop departures: $e');
+      debugPrint('Error: $e');
     } finally {
-      if (showLoading) {
-        setState(() => _isLoadingDepartures = false);
-      }
+      if (showLoading && mounted) setState(() => _isLoadingDepartures = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<BusProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    final theme = Provider.of<ThemeProvider>(context);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.surfaceColor,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  controller: widget.scrollController,
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
+      ),
+      child: Column(
+        children: [
+          // --- PARTE 1: AREA DI TRASCINAMENTO (Header + Azioni + Chips) ---
+          // Usiamo SingleChildScrollView con il controller dello sheet solo qui
+          // in modo che trascinando questa parte si muova lo sheet.
+          SingleChildScrollView(
+            controller: widget.scrollController,
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              children: [
+                _buildHandle(theme),
+                _buildHeader(theme, provider),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header with close button and auto-refresh toggle
-                      Container(
-                        width: double.infinity,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: theme.primaryColor,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: theme.primaryColor.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.location_on, color: theme.textColor, size: 24),
-                                  const SizedBox(width: 12),
-                                  Flexible(
-                                    fit: FlexFit.loose,
-                                    child: Text(
-                                      widget.stop.stopName,
-                                      style: TextStyle(color: theme.textColor, fontSize: 14, fontWeight: FontWeight.bold),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.close, color: theme.secondaryTextColor),
-                              onPressed: () {
-                                if (widget.scrollController == null) {
-                                  // If opened as modal, close the modal sheet
-                                  Navigator.of(context).pop();
-                                } else {
-                                  // If embedded in map, just clear the selection
-                                  provider.clearStopSelection();
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text('Fermata Bus ${_capitalizeFirst(provider.selectedProvider?.name ?? 'N/A')}', style: TextStyle(color: theme.secondaryTextColor)),
-                      const SizedBox(height: 8),
-
-                      // Material-styled rounded buttons (Wrap to avoid overflow)
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          // City / Provider info (outlined)
-                          if ((provider.selectedProvider?.name ?? '').isNotEmpty)
-                            OutlinedButton.icon(
-                              onPressed: null,
-                              icon: const Icon(Icons.location_city, size: 16),
-                              label: Text('Città • ${_capitalizeFirst(provider.selectedProvider?.name)}'),
-                              style: OutlinedButton.styleFrom(
-                                shape: const StadiumBorder(),
-                                foregroundColor: theme.textColor,
-                                side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.12)),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                            ),
-
-                          // Stop ID (copy)
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: widget.stop.stopId));
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID fermata copiato')));
-                            },
-                            icon: const Icon(Icons.copy, size: 16),
-                            label: Text('ID • ${widget.stop.stopId}'),
-                            style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                          ),
-
-                          // Position (copy coordinates)
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              final coords = '${widget.stop.latitude.toStringAsFixed(6)}, ${widget.stop.longitude.toStringAsFixed(6)}';
-                              Clipboard.setData(ClipboardData(text: coords));
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coordinate copiate')));
-                            },
-                            icon: const Icon(Icons.my_location, size: 16),
-                            label: Text('Posizione • ${widget.stop.latitude.toStringAsFixed(6)}, ${widget.stop.longitude.toStringAsFixed(6)}'),
-                            style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                          ),
-
-                          // Favorite toggle as button (requires auth)
-                          Consumer2<FavoritesProvider, AuthProvider>(
-                            builder: (context, favoritesProvider, authProvider, child) {
-                              if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                              final isFavorite = favoritesProvider.isStopFavorite(widget.stop.stopId, StopType.busStop);
-                              return ElevatedButton.icon(
-                                onPressed: () async {
-                                  final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
-                                  if (isFavorite) {
-                                    await favoritesProvider.removeStopFavorite(widget.stop.stopId, StopType.busStop);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fermata rimossa dai preferiti')));
-                                  } else {
-                                    final favoriteStop = favoritesProvider.createFavoriteStop(
-                                      userId: userId,
-                                      name: widget.stop.stopName,
-                                      code: widget.stop.stopId,
-                                      stopType: StopType.busStop,
-                                      latitude: widget.stop.latitude,
-                                      longitude: widget.stop.longitude,
-                                      city: null,
-                                      region: null,
-                                      provider: provider.selectedProvider?.name,
-                                      country: null,
-                                    );
-                                    await favoritesProvider.addStopFavorite(favoriteStop);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fermata aggiunta ai preferiti')));
-                                  }
-                                },
-                                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, size: 16, color: isFavorite ? Colors.red : null),
-                                label: Text(isFavorite ? 'Preferito' : 'Aggiungi ai preferiti'),
-                                style: ElevatedButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                              );
-                            },
-                          ),
-
-                          // Notifications toggle as stateful button (icon + label reflect current state)
-                          ElevatedButton.icon(
-                            onPressed: () async {
-                              try {
-                                await AndroidBackgroundService.requestPermission();
-                                final providerName = provider.selectedProvider?.name ?? '';
-                                final providerParam = providerName.isNotEmpty ? providerName.toLowerCase() : null;
-                                final settings = Provider.of<SettingsProvider>(context, listen: false);
-
-                                if (!_notificationsEnabled) {
-                                  // enable monitoring
-                                  await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds, stopId: widget.stop.stopId, stopName: widget.stop.stopName);
-                                  // optionally show a small notification immediately
-                                  final title = '${widget.stop.stopName} (${widget.stop.stopId})';
-                                  final items = _departures.take(3).map((d) => '${d.line} ${d.formattedTime}').join(', ');
-                                  final body = items.isEmpty ? 'Nessuna partenza disponibile al momento' : 'Prossime partenze: $items';
-                                  await AndroidBackgroundService.showNotification(channel: NotificationChannels.buses, title: title, body: body, key: 'stop:${widget.stop.stopId}');
-
-                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Notifiche attivate per ${providerName.isNotEmpty ? providerName : 'questa fermata'}')));
-                                } else {
-                                  // disable monitoring
-                                  await AndroidBackgroundService.removeMonitoredStop(widget.stop.stopId);
-                                  await AndroidBackgroundService.cancelNotification(key: 'stop:${widget.stop.stopId}');
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate per questa fermata')));
-                                }
-
-                                setState(() => _notificationsEnabled = !_notificationsEnabled);
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Errore notifiche: $e')));
-                              }
-                            },
-                            icon: Icon(_notificationsEnabled ? Icons.notifications_active : Icons.notifications_none, size: 16, color: _notificationsEnabled ? Theme.of(context).primaryColor : null),
-                            label: Text(_notificationsEnabled ? 'Disattiva notifiche' : 'Notifiche'),
-                            style: ElevatedButton.styleFrom(
-                              shape: const StadiumBorder(),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              backgroundColor: _notificationsEnabled ? Theme.of(context).primaryColor.withOpacity(0.12) : null,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Basic info
-                      _buildInfoRow("ID Fermata", widget.stop.stopId, theme),
-                      _buildInfoRow("Nome", widget.stop.stopName, theme),
-
+                      _buildMainActions(theme, provider),
+                      const SizedBox(height: 16),
+                      _buildHorizontalInfoChips(theme, provider),
                       const SizedBox(height: 20),
-
-                      // Position info
-                      Text("Posizione", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.surfaceColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.location_on, color: theme.primaryColor, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    "${widget.stop.latitude.toStringAsFixed(6)}, ${widget.stop.longitude.toStringAsFixed(6)}",
-                                    style: TextStyle(color: theme.textColor, fontSize: 14),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Departures
-                      Text("Prossime Partenze", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 400, // Fixed height for departures list
-                        child: _isLoadingDepartures
-                            ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                            : _departures.isEmpty
-                                ? Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text("Nessuna partenza disponibile", style: TextStyle(color: theme.secondaryTextColor)),
-                                        const SizedBox(height: 8),
-                                        Text("Stop ID: ${widget.stop.stopId}", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-                                      ],
-                                    ),
-                                  )
-                                : _buildDeparturesList(_departures, theme),
-                      ),
                     ],
                   ),
                 ),
-              ),
-            )
+              ],
+            ),
+          ),
+
+          // --- PARTE 2: TITOLO LISTA (Fisso) ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Prossime Partenze", 
+                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                if (_isLoadingDepartures) 
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor)),
+              ],
+            ),
+          ),
+
+          // --- PARTE 3: LISTA BUS (Indipendente) ---
+          // Usando Expanded + ListView senza il controller dello sheet,
+          // la lista scorrerà liberamente.
+          Expanded(
+            child: _departures.isEmpty && !_isLoadingDepartures
+                ? _buildEmptyState(theme)
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    itemCount: _departures.length,
+                    physics: const BouncingScrollPhysics(),
+                    itemBuilder: (context, index) => _buildDepartureCard(_departures[index], theme, provider),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- COMPONENTI UI ---
+
+  Widget _buildHandle(ThemeProvider theme) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(top: 12, bottom: 8),
+        width: 40, height: 4,
+        decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.2), borderRadius: BorderRadius.circular(2)),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeProvider theme, BusProvider provider) {
+    // raccogliamo le linee uniche dalle partenze per mostrarle accanto al nome
+    final lines = _departures.map((d) => d.line).where((l) => l.trim().isNotEmpty).toSet().toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.stop.stopName,
+                  style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900, height: 1.1)),
+                const SizedBox(height: 6),
+                // mostriamo le linee come piccoli badge se sono presenti
+                if (lines.isNotEmpty)
+                  SizedBox(
+                    height: 28,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      children: lines.map((ln) => Padding(
+                        padding: const EdgeInsets.only(right: 6.0),
+                        child: InkWell(
+                          onTap: () => _onLineTap(ln, provider),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: theme.surfaceColor,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
+                            ),
+                            child: Text(ln, style: TextStyle(color: theme.textColor, fontSize: 12, fontWeight: FontWeight.w800)),
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Text('Fermata di ${_capitalizeFirst(provider.selectedProvider?.name ?? 'Bus')}', 
+                  style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w600, fontSize: 13)),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close_rounded, color: theme.secondaryTextColor),
+            onPressed: () => widget.scrollController == null ? Navigator.pop(context) : provider.clearStopSelection(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainActions(ThemeProvider theme, BusProvider provider) {
+    return Row(
+      children: [
+        Expanded(
+          child: Consumer2<FavoritesProvider, AuthProvider>(
+            builder: (ctx, favs, auth, _) {
+              final isFav = favs.isStopFavorite(widget.stop.stopId, StopType.busStop);
+              return _buildActionButton(
+                label: isFav ? "Salvato" : "Preferito",
+                icon: isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                active: isFav, color: Colors.redAccent, theme: theme,
+                onTap: () async {
+                  if (!auth.isAuthenticated) return;
+                  if (isFav) {
+                    await favs.removeStopFavorite(widget.stop.stopId, StopType.busStop);
+                  } else {
+                    await favs.addStopFavorite(favs.createFavoriteStop(
+                      userId: auth.currentUser?.id?.toString() ?? '',
+                      name: widget.stop.stopName, code: widget.stop.stopId,
+                      stopType: StopType.busStop, latitude: widget.stop.latitude,
+                      longitude: widget.stop.longitude, provider: provider.selectedProvider?.name,
+                    ));
+                  }
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildActionButton(
+            label: _notificationsEnabled ? "Attive" : "Notifiche",
+            icon: _notificationsEnabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+            active: _notificationsEnabled, color: theme.primaryColor, theme: theme,
+            onTap: _toggleNotifications,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({required String label, required IconData icon, required bool active, required Color color, required ThemeProvider theme, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? color.withOpacity(0.1) : theme.secondaryTextColor.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: active ? color.withOpacity(0.3) : Colors.transparent),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: active ? color : theme.secondaryTextColor),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: active ? color : theme.textColor, fontWeight: FontWeight.bold, fontSize: 13)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDeparturesList(List<StopDeparture> departures, ThemeProvider theme) {
-    return ListView.builder(
-      itemCount: departures.length,
-      itemBuilder: (context, index) {
-        final departure = departures[index];
-        return Card(
-          key: ValueKey('${departure.line}_${departure.destination}_${index}'),
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          color: theme.surfaceColor.withOpacity(0.05),
-          child: ListTile(
-            onTap: () async {
-              final provider = Provider.of<BusProvider>(context, listen: false);
-              final selectedProvider = provider.selectedProvider;
-              if (selectedProvider == null) return;
-
-              // Controlla se tripId e line sono disponibili
-              if (departure.tripId.isEmpty || departure.line.isEmpty) {
-                print('TripId o lineCode mancanti per la partenza');
-                return;
-              }
-
-              try {
-                final country = selectedProvider.country ?? (selectedProvider.apiPrefix != null && selectedProvider.apiPrefix!.contains('/') ? selectedProvider.apiPrefix!.split('/').first : 'it');
-                final providerName = selectedProvider.name.toLowerCase();
-                final url = '${ApiConstants.baseUrl}/api/$country/bus/$providerName/realtime?tripId=${departure.tripId}&lineCode=${departure.line}';
-                print('Richiamando URL: $url');
-                final response = await http.get(Uri.parse(url));
-                if (response.statusCode == 200) {
-                  final data = json.decode(response.body);
-                  final destination = data['destination'] as String?;
-                  final stops = (data['stops'] as List<dynamic>?)?.map((stop) => BusTripUpdate.fromJson(stop)).toList() ?? [];
-
-                  // Cerca il bus esistente
-                  BusVehicle? existingBus;
-                  try {
-                    existingBus = provider.vehicles.firstWhere((v) => v.id == departure.vehicleId);
-                  } catch (e) {
-                    // Bus non trovato
-                  }
-
-                  if (existingBus != null) {
-                    // Aggiorna il bus esistente
-                    provider.updateBusDestination(existingBus.id, destination ?? '');
-                    provider.setApiTripUpdates(stops);
-                    await provider.selectBus(existingBus);
-
-                    // Se questo sheet è stato aperto come modal (es. dai Preferiti), chiudi il modal della fermata e apri il dettaglio bus come modal
-                    if (widget.scrollController == null) {
-                      if (!mounted) return;
-                      Navigator.of(context).pop();
-                      if (!mounted) return;
-                      await showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (context) => BusDetailsSheet(bus: existingBus!, page: 'favorites'),
-                      );
-                    }
-                  } else if (departure.vehicleId.isNotEmpty) {
-                    // Crea un nuovo bus temporaneo con coordinate dal provider
-                    final newBus = BusVehicle(
-                      id: departure.vehicleId,
-                      line: departure.line,
-                      destination: destination ?? departure.destination,
-                      latitude: selectedProvider.latitude ?? 0.0,
-                      longitude: selectedProvider.longitude ?? 0.0,
-                      tripId: departure.tripId,
-                      provider: selectedProvider.provider,
-                    );
-                    provider.setApiTripUpdates(stops);
-                    await provider.selectBus(newBus);
-
-                    if (widget.scrollController == null) {
-                      if (!mounted) return;
-                      Navigator.of(context).pop();
-                      if (!mounted) return;
-                      await showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (context) => BusDetailsSheet(bus: newBus, page: 'favorites'),
-                      );
-                    }
-                  }
-                } else {
-                  print('Errore nel recupero dei dettagli del bus: ${response.statusCode}');
-                }
-              } catch (e) {
-                print('Errore nel recupero dei dettagli del bus: $e');
-              }
-            },
-            leading: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: theme.primaryColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                departure.line,
-                style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
-              ),
-            ),
-            title: Text(
-              departure.destination ?? 'N/A',
-              style: TextStyle(color: theme.textColor, fontSize: 16),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "${departure.formattedTime}${departure.delayText}",
-                  style: TextStyle(color: theme.secondaryTextColor),
-                ),
-                if (departure.isRealtime)
-                  Text("Tempo reale", style: TextStyle(color: theme.successColor, fontSize: 12, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            trailing: _buildTimeDisplay(departure, theme),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildTimeDisplay(StopDeparture departure, ThemeProvider theme) {
-    final now = DateTime.now();
-    final departureTime = DateTime.fromMillisecondsSinceEpoch((departure.time * 1000).toInt());
-    final difference = departureTime.difference(now);
-    final minutesRemaining = difference.inMinutes;
-
-    // Determina il colore basato sui minuti restanti
-    Color textColor;
-    if (minutesRemaining < 0) {
-      textColor = theme.errorColor; // Già passato
-    } else if (minutesRemaining <= 5) {
-      textColor = theme.warningColor; // Molto presto
-    } else {
-      textColor = departure.isRealtime ? theme.successColor : theme.secondaryTextColor;
-    }
-
-    // Formatta il testo
-    String timeText;
-    if (minutesRemaining < 0) {
-      timeText = "${minutesRemaining.abs()}min fa";
-    } else if (minutesRemaining == 0) {
-      timeText = "Ora";
-    } else {
-      timeText = "${minutesRemaining}min";
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: textColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        timeText,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, ThemeProvider theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHorizontalInfoChips(ThemeProvider theme, BusProvider provider) {
+    return SizedBox(
+      height: 38,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
         children: [
-          SizedBox(width: 100, child: Text(label, style: TextStyle(color: theme.secondaryTextColor, fontSize: 14))),
-          Expanded(child: Text(value, style: TextStyle(color: theme.textColor, fontSize: 14, fontWeight: FontWeight.w500))),
+          _buildInfoChip(Icons.tag, "ID: ${widget.stop.stopId}", theme, () => Clipboard.setData(ClipboardData(text: widget.stop.stopId))),
+          _buildInfoChip(Icons.location_city_rounded, _capitalizeFirst(provider.selectedProvider?.name ?? 'Città'), theme, null),
+          _buildInfoChip(Icons.my_location_rounded, "${widget.stop.latitude.toStringAsFixed(4)}, ${widget.stop.longitude.toStringAsFixed(4)}", theme, () => Clipboard.setData(ClipboardData(text: '${widget.stop.latitude},${widget.stop.longitude}'))),
         ],
       ),
     );
   }
 
-  String _capitalizeFirst(String? s) {
-    if (s == null) return '';
-    final t = s.trim();
-    if (t.isEmpty) return '';
-    return t[0].toUpperCase() + t.substring(1);
+  Widget _buildInfoChip(IconData icon, String label, ThemeProvider theme, VoidCallback? onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        onPressed: onTap,
+        backgroundColor: theme.surfaceColor,
+        side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        avatar: Icon(icon, size: 14, color: theme.primaryColor),
+        label: Text(label, style: TextStyle(color: theme.textColor, fontSize: 11, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _buildDepartureCard(StopDeparture dep, ThemeProvider theme, BusProvider provider) {
+    final diff = DateTime.fromMillisecondsSinceEpoch((dep.time * 1000).toInt()).difference(DateTime.now()).inMinutes;
+    Color statusColor = dep.isRealtime ? theme.successColor : theme.secondaryTextColor;
+    if (diff <= 3) statusColor = Colors.orangeAccent;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: InkWell(
+        onTap: () => _navigateToBusDetails(dep, provider),
+        child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(color: theme.primaryColor, borderRadius: BorderRadius.circular(12)),
+              alignment: Alignment.center,
+              child: Text(dep.line, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dep.destination ?? 'N/A', style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w800, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(dep.formattedTime, style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(diff <= 0 ? "Adesso" : "$diff min", style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 16)),
+                if (dep.isRealtime) Text("• LIVE", style: TextStyle(color: theme.successColor, fontSize: 9, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ThemeProvider theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.bus_alert_rounded, size: 40, color: theme.secondaryTextColor.withOpacity(0.2)),
+          const SizedBox(height: 8),
+          Text("Nessun bus previsto", style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  // --- LOGICA ---
+
+  Future<void> _toggleNotifications() async {
+    await AndroidBackgroundService.requestPermission();
+    final provider = Provider.of<BusProvider>(context, listen: false);
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (!_notificationsEnabled) {
+      final provName = provider.selectedProvider == null ? null : provider.selectedProvider!.name.toLowerCase();
+      await AndroidBackgroundService.scheduleBusesWorker(
+        provider: provName,
+        intervalSeconds: settings.busRefreshSeconds,
+        stopId: widget.stop.stopId, stopName: widget.stop.stopName
+      );
+    } else {
+      await AndroidBackgroundService.removeMonitoredStop(widget.stop.stopId);
+    }
+    setState(() => _notificationsEnabled = !_notificationsEnabled);
+  }
+
+  Future<void> _navigateToBusDetails(StopDeparture dep, BusProvider provider) async {
+    // preveniamo l'apertura multipla del foglio
+    if (_isOpeningDetails) return;
+    _isOpeningDetails = true;
+    try {
+      final selProv = provider.selectedProvider;
+      if (selProv == null || dep.tripId.isEmpty) return;
+      final url = '${ApiConstants.baseUrl}/api/${selProv.country ?? 'it'}/bus/${selProv.name.toLowerCase()}/realtime?tripId=${dep.tripId}&lineCode=${dep.line}';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final stops = (data['stops'] as List?)?.map((s) => BusTripUpdate.fromJson(s)).toList() ?? [];
+        final bus = BusVehicle(id: dep.vehicleId, line: dep.line, destination: data['destination'] ?? dep.destination, latitude: 0, longitude: 0, tripId: dep.tripId, provider: selProv.provider);
+        provider.setApiTripUpdates(stops);
+        await provider.selectBus(bus);
+        if (mounted) {
+          await showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => BusDetailsSheet(bus: bus, page: 'details'));
+        }
+      }
+    } finally {
+      _isOpeningDetails = false;
+    }
   }
 }
 
-
+// Helper: capitalize first letter (used in this file)
+String _capitalizeFirst(String? s) => (s == null || s.isEmpty) ? '' : s[0].toUpperCase() + s.substring(1).toLowerCase();
