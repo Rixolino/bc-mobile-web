@@ -30,6 +30,9 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   final ScrollController _internalScrollController = ScrollController();
   bool _hasScrolledToCurrent = false;
 
+  // hold a reference to the provider so we can safely access it in dispose()
+  BusProvider? _busProvider;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,9 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // cache providers early so we don't look them up during dispose()
+    _busProvider = Provider.of<BusProvider>(context, listen: false);
+
     final settings = Provider.of<SettingsProvider>(context);
     if (settings.busRefreshSeconds > 0 && _timer == null) {
       _startAutoRefresh();
@@ -52,8 +58,9 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   void dispose() {
     _stopAutoRefresh();
     _internalScrollController.dispose();
-    final provider = Provider.of<BusProvider>(context, listen: false);
-    provider.clearApiTripUpdates();
+    // previously cleared API updates here, but calling notifyListeners during
+    // teardown can trigger "widget tree locked" errors. The provider will
+    // reset when new data arrives or when a different bus is selected.
     super.dispose();
   }
 
@@ -102,15 +109,17 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   }
 
   Future<void> _fetchTripUpdates({bool showLoading = false}) async {
-    final provider = Provider.of<BusProvider>(context, listen: false);
-    if (showLoading) setState(() => _isLoadingUpdates = true);
+    final provider = _busProvider ?? Provider.of<BusProvider>(context, listen: false);
+    if (showLoading && mounted) setState(() => _isLoadingUpdates = true);
     
     try {
       if (provider.apiTripUpdates.isNotEmpty) {
-        setState(() => _tripUpdates = provider.apiTripUpdates);
-        if (showLoading && !_hasScrolledToCurrent && _tripUpdates.isNotEmpty) {
-          _scrollToCurrentStop(_tripUpdates);
-          _hasScrolledToCurrent = true;
+        if (mounted) {
+          setState(() => _tripUpdates = provider.apiTripUpdates);
+          if (showLoading && !_hasScrolledToCurrent && _tripUpdates.isNotEmpty) {
+            _scrollToCurrentStop(_tripUpdates);
+            _hasScrolledToCurrent = true;
+          }
         }
         return;
       }
@@ -118,6 +127,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
       if (provider.selectedProvider?.name != 'bari') return;
 
       final updates = await provider.fetchBariTripUpdates(widget.bus.id, widget.bus.line);
+      if (!mounted) return;
       setState(() => _tripUpdates = updates);
 
       if (showLoading && !_hasScrolledToCurrent && updates.isNotEmpty) {
@@ -127,7 +137,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     } catch (e) {
       debugPrint('Error fetching trip updates: $e');
     } finally {
-      if (showLoading) setState(() => _isLoadingUpdates = false);
+      if (showLoading && mounted) setState(() => _isLoadingUpdates = false);
     }
   }
 
