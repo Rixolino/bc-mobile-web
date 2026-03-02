@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:marquee/marquee.dart';
 import '../providers/train_provider.dart';
 import '../../data/models/train_model.dart';
+import '../../../../presentation/providers/settings_provider.dart';
 
 import 'train_details_sheet.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_stop.dart';
@@ -165,6 +168,14 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Widget build(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context);
     final theme = Provider.of<ThemeProvider>(context);
+    // Listen to settings for toggle changes
+    final settings = Provider.of<SettingsProvider>(context);
+    
+    // Auto-load logos if enabled
+    if (settings.vectorLogosEnabled && trainProvider.trainLogos.isEmpty) {
+      trainProvider.loadTrainLogos();
+    }
+    
     final station = trainProvider.selectedStation;
 
     return AnimatedSwitcher(
@@ -568,8 +579,45 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
-    final color = dep.category?.toLowerCase().contains('fr') == true ? Colors.redAccent : theme.primaryColor;
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4)), child: Text("${dep.category ?? 'TRN'} ${dep.trainNumber ?? ''}", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)));
+    if (dep == null) return const SizedBox.shrink();
+
+    final category = (dep.category?.toString() ?? 'TRN').trim();
+    final number = (dep.trainNumber?.toString() ?? '').trim();
+    
+    // Check Settings & Provider for Logos
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+
+    if (settings.vectorLogosEnabled) {
+       // Try to find a logo for this category (e.g. FR, IC, REG)
+       // The server returns keys in uppercase.
+       final key = category.toUpperCase();
+       
+       if (trainProvider.trainLogos.containsKey(key)) {
+         final logoUrl = trainProvider.trainLogos[key]!;
+         // Show logo directly without container wrapper to prevent "distortion" or double-boxing
+         return Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             SizedBox(
+               height: 20, 
+               child: SvgPicture.network(
+                 logoUrl,
+                 fit: BoxFit.contain, // Ensure connection to aspect ratio
+                 placeholderBuilder: (_) => Text(category, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.primaryColor)),
+               ),
+             ),
+             if (number.isNotEmpty) ...[
+               const SizedBox(width: 8),
+               Text(number, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: theme.textColor)),
+             ]
+           ],
+         );
+       }
+    }
+
+    final color = category.toLowerCase().contains('fr') == true ? Colors.redAccent : theme.primaryColor;
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4)), child: Text("$category $number", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)));
   }
 
   Widget _buildBadge(String label, Color color) {
@@ -625,8 +673,58 @@ class _SmartTrainRouteText extends StatefulWidget {
 
 class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
   @override void initState() { super.initState(); if (widget.isArrivalMode && (widget.departure.origin == null || widget.departure.origin.isEmpty)) { WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(widget.index); }); } }
-  @override Widget build(BuildContext context) {
-    final text = widget.isArrivalMode ? (widget.departure.origin ?? "Caricamento...") : (widget.departure.destination ?? "N/A");
-    return Text(text, style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: widget.theme.textColor), maxLines: 1, overflow: TextOverflow.ellipsis);
+  
+  @override 
+  Widget build(BuildContext context) {
+    // Determine textcontent
+    final String text = widget.isArrivalMode 
+        ? (widget.departure.origin ?? "Caricamento...") 
+        : (widget.departure.destination ?? "N/A");
+        
+    final style = TextStyle(
+      fontSize: 17, 
+      fontWeight: FontWeight.bold, 
+      color: widget.theme.textColor
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Measure text width
+        final textPainter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout(); // layout with infinite width to measure intrinsic width
+
+        // If text is wider than available space (maxWidth), use Marquee
+        if (textPainter.size.width > constraints.maxWidth) {
+          return SizedBox(
+            height: 25, // Height sufficient for font size 17
+            child: Marquee(
+              text: text,
+              style: style,
+              scrollAxis: Axis.horizontal,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              blankSpace: 30.0,
+              velocity: 30.0,
+              pauseAfterRound: const Duration(seconds: 1),
+              startPadding: 0.0,
+              accelerationDuration: const Duration(seconds: 1),
+              accelerationCurve: Curves.linear,
+              decelerationDuration: const Duration(milliseconds: 500),
+              decelerationCurve: Curves.easeOut,
+            ),
+          );
+        } else {
+          // Otherwise, static text
+          return Text(
+            text, 
+            style: style, 
+            maxLines: 1, 
+            overflow: TextOverflow.ellipsis
+          );
+        }
+      },
+    );
   }
 }

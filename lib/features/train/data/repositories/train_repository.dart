@@ -6,6 +6,33 @@ import '../models/train_model.dart';
 class TrainRepository {
   static const String baseUrl = "https://prod.cuzimmartin.dev/api";
   static const String falBaseUrl = "https://fal.ferrovieappulolucane.it"; 
+  
+  // Fetch available train vector logos from our server
+  Future<Map<String, String>> fetchTrainLogos() async {
+    try {
+      final url = "${ApiConstants.baseUrl}/api/train-logos";
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        // Convert to Map<String, String>, prepending base URL if relative
+        final Map<String, String> logos = {};
+        data.forEach((key, value) {
+          if (value is String) {
+            if (value.startsWith('http')) {
+              logos[key] = value;
+            } else {
+              logos[key] = "${ApiConstants.baseUrl}$value";
+            }
+          }
+        });
+        return logos;
+      }
+    } catch (e) {
+      print("Error fetching train logos: $e");
+    }
+    return {};
+  }
 
   Future<List<TrainStation>> searchStations(String query, {String country = 'IT', String? city, String service = 'trainboardeu'}) async {
     // If service is Direct and country is IT, use local proxy/JSON logic

@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:glassmorphism/glassmorphism.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
@@ -56,7 +59,13 @@ class TrainDetailsSheet extends StatefulWidget {
 class _TrainNotificationsButton extends StatefulWidget {
   final TrainDeparture departure;
   final String? selectedCountry;
-  const _TrainNotificationsButton({required this.departure, this.selectedCountry});
+  final bool isPrimary; // Add this
+
+  const _TrainNotificationsButton({
+    required this.departure, 
+    this.selectedCountry,
+    this.isPrimary = false, // Default false
+  });
 
   @override
   State<_TrainNotificationsButton> createState() => __TrainNotificationsButtonState();
@@ -645,13 +654,26 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
-    return IconButton.filledTonal(
-      icon: Icon(_enabled ? Icons.notifications_active : Icons.notifications_none),
-      onPressed: _toggle,
-      style: IconButton.styleFrom(
-        backgroundColor: theme.primaryColor.withOpacity(0.15),
-        foregroundColor: theme.primaryColor,
-      ),
+    
+    if (widget.isPrimary) {
+      return Expanded(
+        child: _PrimaryActionChip(
+          icon: _enabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+          label: "Notifiche",
+          isActive: _enabled,
+          theme: theme,
+          onTap: _toggle,
+        ),
+      );
+    }
+    
+    // Fallback if not primary (though currently unused)
+    return _PrimaryActionChip(
+      icon: _enabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+      label: "Notifiche",
+      isActive: _enabled,
+      theme: theme,
+      onTap: _toggle,
     );
   }
 }
@@ -834,19 +856,69 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
     final int totalDelay = currentDep.delayMinutes ?? 0;
     final String fullDisplayName = "$trainName";
+    final bool isLoading = stops.isEmpty;
 
     return Consumer<ThemeProvider>(
       builder: (context, theme, child) {
         return Container(
-          decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
-      child: Column(
-        children: [
-          _buildHeader(context, fullDisplayName, totalDelay, theme, currentDep),
-          Expanded(
-            child: stops.isEmpty 
-              ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-              : ListView.builder(
-                  controller: widget.scrollController,
+          decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
+          child: Column(
+            children: [
+              _buildHeader(context, fullDisplayName, totalDelay, theme, currentDep, isLoading: isLoading),
+              Expanded(
+                child: isLoading 
+                  ? Shimmer.fromColors(
+                      baseColor: theme.secondaryTextColor.withOpacity(0.1),
+                      highlightColor: theme.secondaryTextColor.withOpacity(0.05),
+                      child: ListView.builder(
+                        itemCount: 8,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                        itemBuilder: (_, __) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Column(
+                                children: [
+                                  Container(
+                                    width: 12, height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white, 
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                    ),
+                                  ),
+                                  Container(width: 2, height: 40, color: Colors.white),
+                                ],
+                              ),
+                              const SizedBox(width: 24),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(height: 16, width: double.infinity, margin: const EdgeInsets.only(right: 80), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                                    const SizedBox(height: 8),
+                                    Container(height: 12, width: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Container(height: 14, width: 40, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                                  const SizedBox(height: 8),
+                                  Container(height: 12, width: 60, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: widget.scrollController, // Use sheet content controller
                   padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   itemCount: stops.length,
                   itemBuilder: (context, index) {
@@ -875,171 +947,420 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
    }); // End Consumer
   }
 
-  Widget _buildHeader(BuildContext context, String displayName, int delay, ThemeProvider theme, TrainDeparture departure) {
+  String _cleanStationName(String? name) {
+    if (name == null || name.isEmpty || name == '{}' || name.toLowerCase() == 'null') {
+      return 'N/A';
+    }
+    return name;
+  }
+
+  String _getEffectiveOrigin(TrainDeparture d) {
+    if (d.stops != null && d.stops!.isNotEmpty) {
+      try {
+        final firstValid = d.stops!.firstWhere((s) => !s.cancelled);
+        return firstValid.stationName;
+      } catch (_) {
+        return d.stops!.first.stationName; 
+      }
+    }
+    return _cleanStationName(d.origin);
+  }
+
+  String _getEffectiveDestination(TrainDeparture d) {
+    if (d.stops != null && d.stops!.isNotEmpty) {
+      try {
+        final lastValid = d.stops!.lastWhere((s) => !s.cancelled);
+        return lastValid.stationName;
+      } catch (_) {
+        return d.stops!.last.stationName;
+      }
+    }
+    return _cleanStationName(d.destination);
+  }
+
+  Widget _buildHeader(BuildContext context, String displayName, int delay, ThemeProvider theme, TrainDeparture departure, {bool isLoading = false}) {
+    final effectiveOrigin = _getEffectiveOrigin(departure);
+    final effectiveDest = _getEffectiveDestination(departure);
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, -4))
+        ],
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 36, height: 4, decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.1), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 20),
+          // Drag Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.secondaryTextColor.withOpacity(0.3), 
+                borderRadius: BorderRadius.circular(2)
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Main Header Row: Identity & Status
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Left: Train Identity
+              Expanded(
+                child: _buildTrainIdentifier(context, theme, departure),
+              ),
+              // Right: Status Badge
+              const SizedBox(width: 16),
+              _buildModernDelayBadge(delay, theme),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Route Indicator (Origin -> Dot -> Line -> Dot -> Destination)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Visual Line
+              Column(
+                children: [
+                  Container(
+                    width: 10, 
+                    height: 10, 
+                    decoration: BoxDecoration(
+                      border: Border.all(color: theme.secondaryTextColor, width: 2),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Container(
+                    width: 2,
+                    height: 24, // Adjust height for spacing
+                    color: theme.secondaryTextColor.withOpacity(0.3),
+                  ),
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 16),
+              // Text Labels or Shimmer
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayName, style: TextStyle(color: theme.textColor, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
-                    const SizedBox(height: 4),
-                    Text(widget.isArrivalMode ? "Origine: ${departure.origin}" : "Destinazione: ${departure.destination}", 
-                         style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w500)),
+                    if (isLoading)
+                      Shimmer.fromColors(
+                        baseColor: theme.secondaryTextColor.withOpacity(0.1),
+                        highlightColor: theme.secondaryTextColor.withOpacity(0.05),
+                        child: Container(
+                          height: 15, 
+                          width: double.infinity, 
+                          margin: const EdgeInsets.only(right: 60),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4)
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        effectiveOrigin,
+                        style: TextStyle(
+                          color: theme.secondaryTextColor, // Origin slightly muted
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    
+                    const SizedBox(height: 14), // Matches the visual line height visually
+                    
+                    if (isLoading)
+                      Shimmer.fromColors(
+                        baseColor: theme.textColor.withOpacity(0.1),
+                        highlightColor: theme.textColor.withOpacity(0.05),
+                        child: Container(
+                          height: 16, 
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(right: 40),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4)
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        effectiveDest,
+                        style: TextStyle(
+                          color: theme.textColor, // Destination bold
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Primary Actions: Save & Notify
+          Row(
+            children: [
+              // Favorite
               Consumer2<FavoritesProvider, AuthProvider>(
                 builder: (context, favoritesProvider, authProvider, child) {
-                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
-                  
+                  if (!authProvider.isAuthenticated) return const SizedBox.shrink(); // Or placeholder if guest
                   final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
                   final isFavorite = favoritesProvider.isTrainFavorite(
                     departure.trainNumber ?? '',
                     departure.origin ?? '',
                     departure.destination ?? '',
                   );
-                  return IconButton.filledTonal(
-                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-                    onPressed: () async {
-                      if (isFavorite) {
-                        await favoritesProvider.removeTrainFavorite(
-                          departure.trainNumber ?? '',
-                          departure.origin ?? '',
-                          departure.destination ?? '',
-                        );
-                      } else {
-                        final favoriteTrain = FavoriteTrain(
-                          id: '${userId}_train_${departure.trainNumber}_${departure.origin}_${departure.destination}',
-                          addedAt: DateTime.now(),
-                          userId: userId,
-                          trainNumber: departure.trainNumber ?? '',
-                          departureStation: departure.origin ?? '',
-                          arrivalStation: departure.destination ?? '',
-                          departureTime: departure.scheduledTime?.toIso8601String() ?? '',
-                          arrivalTime: '', // Non disponibile
-                          operator: null, // Non disponibile
-                          category: widget.departure.category,
-                          routeId: widget.departure.tripId,
-                          provider: null, // Non disponibile
-                        );
-                        await favoritesProvider.addTrainFavorite(favoriteTrain);
-                      }
-                    },
-                    style: IconButton.styleFrom(
-                      backgroundColor: theme.surfaceColor.withOpacity(0.05),
-                      foregroundColor: isFavorite ? Colors.red : theme.secondaryTextColor,
+                  return Expanded(
+                    child: _PrimaryActionChip(
+                      icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      label: "Salva",
+                      isActive: isFavorite,
+                      activeColor: Colors.red,
+                      theme: theme,
+                      onTap: () async {
+                         if (isFavorite) {
+                          await favoritesProvider.removeTrainFavorite(
+                            departure.trainNumber ?? '',
+                            departure.origin ?? '',
+                            departure.destination ?? '',
+                          );
+                        } else {
+                          final favoriteTrain = FavoriteTrain(
+                            id: '${userId}_train_${departure.trainNumber}_${departure.origin}_${departure.destination}',
+                            addedAt: DateTime.now(),
+                            userId: userId,
+                            trainNumber: departure.trainNumber ?? '',
+                            departureStation: departure.origin ?? '',
+                            arrivalStation: departure.destination ?? '',
+                            departureTime: departure.scheduledTime?.toIso8601String() ?? '',
+                            arrivalTime: '',
+                            operator: null,
+                            category: widget.departure.category,
+                            routeId: widget.departure.tripId,
+                            provider: null,
+                          );
+                          await favoritesProvider.addTrainFavorite(favoriteTrain);
+                        }
+                      },
                     ),
                   );
                 },
               ),
-              // Messages button (se presenti)
-              if (_hasMessages())
-                IconButton(
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Icon(Icons.error_outline),
-                      Positioned(
-                        right: -6,
-                        top: -6,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(color: theme.errorColor, shape: BoxShape.circle),
-                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                          child: Text(
-                            '${(_messages()?.length ?? 0)}',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  onPressed: _showMessagesSheet,
-                  style: IconButton.styleFrom(
-                    backgroundColor: theme.surfaceColor.withOpacity(0.05),
-                    foregroundColor: theme.warningColor,
+              const SizedBox(width: 12),
+              // Notifications
+              _TrainNotificationsButton(
+                departure: departure, 
+                selectedCountry: widget.selectedCountry, 
+                isPrimary: true
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Secondary Actions Row (Horizontal Scroll) - Chip Style
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                // Map
+                _buildInfoChip(
+                  Icons.map_rounded,
+                  "Mappa",
+                  theme,
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (ctx) => TrainMapPage(departure: departure, isArrivalMode: widget.isArrivalMode, currentDelay: delay)),
                   ),
                 ),
 
-              // Notifications button
-              Builder(builder: (ctx) {
-                return _TrainNotificationsButton(departure: departure, selectedCountry: widget.selectedCountry);
-              }),
-              IconButton.filledTonal(
-                icon: const Icon(Icons.map_rounded),
-                onPressed: () {
-                  // Push map page on top of existing sheet. 
-                  // When map is popped (back button), this sheet will be revealed again.
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (ctx) => TrainMapPage(departure: departure, isArrivalMode: widget.isArrivalMode, currentDelay: delay)),
-                  );
-                },
-                style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor),
-              ),
-              IconButton.filledTonal(icon: const Icon(Icons.refresh), onPressed: _refreshTrainDetails, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: theme.primaryColor)),
-              IconButton.filledTonal(icon: Icon(_autoRefreshTimer != null ? Icons.timer : Icons.timer_off), onPressed: _toggleAutoRefresh, style: IconButton.styleFrom(backgroundColor: theme.surfaceColor.withOpacity(0.05), foregroundColor: _autoRefreshTimer != null ? theme.primaryColor : theme.secondaryTextColor)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildDelayBadge(delay),
+                // Refresh
+                _buildInfoChip(
+                  Icons.refresh_rounded,
+                  "Aggiorna",
+                  theme,
+                  _refreshTrainDetails,
+                ),
+
+                // Auto Refresh
+                _buildInfoChip(
+                   _autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded,
+                   "Live",
+                   theme,
+                   _toggleAutoRefresh,
+                   isActive: _autoRefreshTimer != null,
+                ),
+
+                // Messages
+                if (_hasMessages())
+                  _buildInfoChip(
+                    Icons.warning_amber_rounded,
+                    "Avvisi (${_messages()?.length ?? 0})",
+                    theme,
+                    _showMessagesSheet,
+                    isActive: true,
+                    isWarning: true,
+                  ),
+              ],
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildDelayBadge(int delay) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    Color badgeColor;
-    String statusText;
-    IconData iconData;
+  Widget _buildInfoChip(IconData icon, String label, ThemeProvider theme, VoidCallback? onTap, {bool isActive = false, bool isWarning = false}) {
+    final Color iconColor = isWarning ? theme.warningColor : theme.primaryColor;
+    final Color labelColor = isWarning ? theme.warningColor : theme.textColor;
+    
+    final Color bgColor = isActive ? theme.primaryColor.withOpacity(0.08) : theme.surfaceColor;
+    final BorderSide side = isActive 
+       ? BorderSide(color: theme.primaryColor.withOpacity(0.3))
+       : BorderSide(color: theme.secondaryTextColor.withOpacity(0.1));
 
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        onPressed: onTap,
+        backgroundColor: bgColor,
+        side: side,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        avatar: Icon(icon, size: 14, color: iconColor),
+        label: Text(label, style: TextStyle(color: labelColor, fontSize: 11, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
+    final settings = Provider.of<SettingsProvider>(context);
+    final trainProvider = Provider.of<TrainProvider>(context); // Access logo map
+    
+    final category = (departure.category ?? 'TRN').trim();
+    final number = (departure.trainNumber ?? '').trim();
+
+    if (settings.vectorLogosEnabled) {
+      final key = category.toUpperCase();
+      if (trainProvider.trainLogos.containsKey(key)) {
+        return Row(
+          children: [
+            SizedBox(
+              height: 22,
+              child: SvgPicture.network(
+                trainProvider.trainLogos[key]!,
+                fit: BoxFit.contain,
+                placeholderBuilder: (_) => Text(
+                  category.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 20, 
+                    fontWeight: FontWeight.w900, 
+                    color: theme.textColor,
+                    letterSpacing: -0.5
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              number,
+              style: TextStyle(
+                fontSize: 22, 
+                fontWeight: FontWeight.w900, 
+                color: theme.textColor,
+                letterSpacing: -0.5
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+    // Default text fallback
+    return Text(
+      "$category $number",
+      style: TextStyle(
+        fontSize: 24, 
+        fontWeight: FontWeight.w900, 
+        color: theme.textColor,
+        letterSpacing: -1.0
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildModernDelayBadge(int delay, ThemeProvider theme) {
+    Color color;
+    String text;
+    IconData icon;
+    
     if (delay < 0) {
-      badgeColor = theme.successColor;
-      statusText = "In anticipo: $delay min";
-      iconData = Icons.fast_forward_rounded;
+      color = theme.successColor;
+      text = "Anticipo ${-delay}'";
+      icon = Icons.fast_forward_rounded;
     } else if (delay == 0) {
-      badgeColor = theme.successColor;
-      statusText = "In orario";
-      iconData = Icons.check_circle_rounded;
+      color = theme.successColor;
+      text = "In Orario";
+      icon = Icons.check_circle_rounded;
     } else if (delay <= 5) {
-      badgeColor = theme.warningColor;
-      statusText = "Lieve ritardo: +$delay min";
-      iconData = Icons.bolt_rounded;
-    } else if (delay <= 15) {
-      badgeColor = theme.warningColor;
-      statusText = "Ritardo medio: +$delay min";
-      iconData = Icons.warning_rounded;
+      color = const Color(0xFFFFA000); // Amber 700
+      text = "+$delay min";
+      icon = Icons.access_time_rounded;
     } else {
-      badgeColor = theme.errorColor;
-      statusText = "Forte ritardo: +$delay min";
-      iconData = Icons.error_rounded;
+      color = theme.errorColor;
+      text = "+$delay min";
+      icon = Icons.warning_rounded;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: badgeColor.withOpacity(0.3)),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(iconData, color: badgeColor, size: 18),
-          const SizedBox(width: 8),
-          Text(statusText, style: TextStyle(color: badgeColor, fontWeight: FontWeight.w800, fontSize: 13)),
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
+
+  // Old _buildDelayBadge removed or kept for compatibility? 
+  // I replaced calls to it with _buildModernDelayBadge inside _buildHeader.
+  // I should probably remove the old one or just let it be unused if I replace the whole block.
+  // The replace_string_in_file will effectively remove the old implementation if I target the right range.
+
+
 
   // Messages helpers: extract and display train messages when present
   List<Map<String, dynamic>>? _messages() {
@@ -1345,3 +1666,62 @@ class _TrainIcon extends StatelessWidget {
     );
   }
 }
+
+class _PrimaryActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final ThemeProvider theme;
+  final bool isActive;
+  final Color? activeColor;
+
+  const _PrimaryActionChip({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.theme,
+    this.isActive = false,
+    this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = isActive ? (activeColor ?? theme.primaryColor) : theme.secondaryTextColor;
+    final bgColor = isActive ? (activeColor?.withOpacity(0.1) ?? theme.primaryColor.withOpacity(0.1)) : theme.surfaceColor;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isActive ? (activeColor?.withOpacity(0.3) ?? theme.primaryColor.withOpacity(0.3)) : theme.secondaryTextColor.withOpacity(0.2),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: effectiveColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: effectiveColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

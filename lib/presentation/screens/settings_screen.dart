@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../../features/bus/presentation/providers/bus_provider.dart';
+import '../../features/train/presentation/providers/train_provider.dart';
 import '../../core/services/android_background_service.dart';
 import '../../core/notification_channels.dart';
 
@@ -95,6 +96,13 @@ class SettingsScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
               _buildTrainProximityNotice(context, settings, theme),
+
+              const SizedBox(height: 32),
+              
+              _buildSectionTitle('Experience UI', theme),
+              const SizedBox(height: 16),
+              
+              _buildVectorLogosToggle(context, settings, theme),
 
               const SizedBox(height: 32),
               
@@ -713,6 +721,56 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildVectorLogosToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.style, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Loghi Treni Vettoriali',
+                  style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Switch(
+                value: settings.vectorLogosEnabled,
+                onChanged: (value) async {
+                  await settings.setVectorLogosEnabled(value);
+                  if (value && context.mounted) {
+                     // Trigger download if enabled
+                     try {
+                       Provider.of<TrainProvider>(context, listen: false).loadTrainLogos();
+                     } catch (_) {}
+                  }
+                },
+                activeColor: theme.primaryColor,
+                activeTrackColor: theme.primaryColor.withOpacity(0.3),
+                inactiveThumbColor: theme.secondaryTextColor,
+                inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.2),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Scarica e visualizza loghi ufficiali per le categorie dei treni (es. Frecciarossa, Intercity) invece del testo semplice.',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showBusConfigDialog(BuildContext context, SettingsProvider settings) {
     final providerController = TextEditingController(text: settings.busProvider);
     final baseController = TextEditingController(text: settings.busBaseUrl);

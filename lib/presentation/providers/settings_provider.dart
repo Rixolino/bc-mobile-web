@@ -21,6 +21,7 @@ class SettingsProvider with ChangeNotifier {
   static const String keyFunctionsWorker = 'functions_worker_enabled';
 
   static const String keyMapStyle = 'map_style';
+  static const String keyVectorLogos = 'ui_vector_logos_enabled';
 
   // Configurable parameters for background workers
   static const String keyTrainStationId = 'train_station_id';
@@ -45,6 +46,7 @@ class SettingsProvider with ChangeNotifier {
   String _mapStyle = 'mapbox://styles/mapbox/dark-v11';
   bool _busClusteringEnabled = false;
   bool _stopsClusteringEnabled = false;
+  bool _vectorLogosEnabled = false;
   bool _trainsWorkerEnabled = false;
   bool _busesWorkerEnabled = false;
   bool _functionsWorkerEnabled = false;
@@ -80,6 +82,7 @@ class SettingsProvider with ChangeNotifier {
   String get mapStyle => _mapStyle;
   bool get busClusteringEnabled => _busClusteringEnabled;
   bool get stopsClusteringEnabled => _stopsClusteringEnabled;
+  bool get vectorLogosEnabled => _vectorLogosEnabled;
   bool get trainsWorkerEnabled => _trainsWorkerEnabled;
   bool get busesWorkerEnabled => _busesWorkerEnabled;
   bool get functionsWorkerEnabled => _functionsWorkerEnabled;
@@ -116,6 +119,7 @@ class SettingsProvider with ChangeNotifier {
     
     _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     _stopsClusteringEnabled = prefs.getBool(keyStopsClustering) ?? false;
+    _vectorLogosEnabled = prefs.getBool(keyVectorLogos) ?? false;
     _trainsWorkerEnabled = prefs.getBool(keyTrainsWorker) ?? false;
     _busesWorkerEnabled = prefs.getBool(keyBusesWorker) ?? false;
     _functionsWorkerEnabled = prefs.getBool(keyFunctionsWorker) ?? false;
@@ -238,6 +242,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyStopsClustering, enabled);
+  }
+
+  Future<void> setVectorLogosEnabled(bool enabled) async {
+    _vectorLogosEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyVectorLogos, enabled);
   }
 
   Future<void> setTrainsWorkerEnabled(bool enabled) async {

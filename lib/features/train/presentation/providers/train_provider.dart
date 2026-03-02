@@ -17,6 +17,30 @@ class TrainProvider with ChangeNotifier {
   String get selectedService => _selectedService;
   bool get isArrivalMode => _isArrivalMode;
 
+  // Train vector logos
+  Map<String, String> _trainLogos = {};
+  bool _hasLoadedLogos = false;
+  bool _isLoadingLogos = false;
+  Map<String, String> get trainLogos => _trainLogos;
+
+  Future<void> loadTrainLogos() async {
+    if (_hasLoadedLogos || _isLoadingLogos) return;
+    _isLoadingLogos = true;
+    try {
+      final logos = await _repository.fetchTrainLogos();
+      // Even if empty, we consider it loaded to prevent loop
+      _trainLogos = logos;
+      _hasLoadedLogos = true;
+      if (logos.isNotEmpty) {
+        notifyListeners();
+      }
+    } catch (e) {
+      print("Error loading train logos: $e");
+    } finally {
+      _isLoadingLogos = false;
+    }
+  }
+
   @override
   void dispose() {
     _stopTimer();
