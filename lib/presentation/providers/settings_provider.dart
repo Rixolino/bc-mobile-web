@@ -136,7 +136,7 @@ class SettingsProvider with ChangeNotifier {
   void _startServerPolling() {
     _fetchServerRates();
     _serverPollTimer?.cancel();
-    _serverPollTimer = Timer.periodic(const Duration(minutes: 1), (_) => _fetchServerRates());
+    _serverPollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchServerRates());
   }
 
   Future<void> _fetchServerRates() async {
