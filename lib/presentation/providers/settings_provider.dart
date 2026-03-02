@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../core/services/android_background_service.dart';
 
 class SettingsProvider with ChangeNotifier {
   static const String keyBusInterval = 'bus_refresh_interval';
   static const String keyTrainInterval = 'train_refresh_interval';
   static const String keyPlaneInterval = 'plane_refresh_interval';
+  
+  // Value constant for Auto mode
+  static const int AUTO_REFRESH = -1;
+
   static const String keyThemeMode = 'theme_mode';
   static const String keyBusClustering = 'bus_clustering_enabled';
   static const String keyStopsClustering = 'stops_clustering_enabled';
@@ -22,9 +29,16 @@ class SettingsProvider with ChangeNotifier {
   static const String keyBusProvider = 'bus_provider';
   static const String keyBusBaseUrl = 'bus_base_url';
 
-  int _busRefreshSeconds = 0; // 0 means disabled
-  int _trainRefreshSeconds = 0;
-  int _planeRefreshSeconds = 0;
+  int _busRefreshSeconds = AUTO_REFRESH; // Default to Auto (-1)
+  int _trainRefreshSeconds = AUTO_REFRESH;
+  int _planeRefreshSeconds = AUTO_REFRESH;
+  
+  // Auto rates fetched from server (dynamic load balancing)
+  int _autoBusRate = 10;
+  int _autoTrainRate = 15;
+  int _autoPlaneRate = 15;
+  Timer? _serverPollTimer;
+  
   ThemeMode _themeMode = ThemeMode.dark;
   // stores a Mapbox style URL, e.g. 'mapbox://styles/mapbox/dark-v11'
   // older values (osm/cartodb_*) will be migrated when loaded.
@@ -44,9 +58,24 @@ class SettingsProvider with ChangeNotifier {
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
 
-  int get busRefreshSeconds => _busRefreshSeconds;
-  int get trainRefreshSeconds => _trainRefreshSeconds;
-  int get planeRefreshSeconds => _planeRefreshSeconds;
+  // Returns effective rate (either manual or server-suggested auto)
+  int get busRefreshSeconds => _busRefreshSeconds == AUTO_REFRESH ? _autoBusRate : _busRefreshSeconds;
+  int get trainRefreshSeconds => _trainRefreshSeconds == AUTO_REFRESH ? _autoTrainRate : _trainRefreshSeconds;
+  int get planeRefreshSeconds => _planeRefreshSeconds == AUTO_REFRESH ? _autoPlaneRate : _planeRefreshSeconds;
+
+  // Raw preferences for UI (use these for Dropdown value)
+  int get busRefreshPreference => _busRefreshSeconds;
+  int get trainRefreshPreference => _trainRefreshSeconds;
+  int get planeRefreshPreference => _planeRefreshSeconds;
+  
+  bool get isBusAuto => _busRefreshSeconds == AUTO_REFRESH;
+  bool get isTrainAuto => _trainRefreshSeconds == AUTO_REFRESH;
+  bool get isPlaneAuto => _planeRefreshSeconds == AUTO_REFRESH;
+  
+  int get currentAutoBusRate => _autoBusRate;
+  int get currentAutoTrainRate => _autoTrainRate;
+  int get currentAutoPlaneRate => _autoPlaneRate;
+
   ThemeMode get themeMode => _themeMode;
   String get mapStyle => _mapStyle;
   bool get busClusteringEnabled => _busClusteringEnabled;
@@ -69,9 +98,10 @@ class SettingsProvider with ChangeNotifier {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _busRefreshSeconds = prefs.getInt(keyBusInterval) ?? 0;
-    _trainRefreshSeconds = prefs.getInt(keyTrainInterval) ?? 0;
-    _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? 0;
+    // Default to AUTO (-1) if not set. 0 means manually disabled.
+    _busRefreshSeconds = prefs.getInt(keyBusInterval) ?? AUTO_REFRESH;
+    _trainRefreshSeconds = prefs.getInt(keyTrainInterval) ?? AUTO_REFRESH;
+    _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? AUTO_REFRESH;
     final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
     
@@ -98,6 +128,46 @@ class SettingsProvider with ChangeNotifier {
     _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
 
     notifyListeners();
+    
+    // Start fetching server rates for Auto mode
+    _startServerPolling();
+  }
+
+  void _startServerPolling() {
+    _fetchServerRates();
+    _serverPollTimer?.cancel();
+    _serverPollTimer = Timer.periodic(const Duration(minutes: 1), (_) => _fetchServerRates());
+  }
+
+  Future<void> _fetchServerRates() async {
+    try {
+      final url = Uri.parse('$_busBaseUrl/api/usercount-ping');
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['autoRefreshRates'] != null) {
+          final rates = data['autoRefreshRates'];
+          final newBus = rates['buses'] as int?;
+          final newTrain = rates['trains'] as int?;
+          final newPlane = rates['planes'] as int?;
+          
+          if (newBus != null && newBus != _autoBusRate) {
+            _autoBusRate = newBus;
+            if (isBusAuto) notifyListeners();
+          }
+          if (newTrain != null && newTrain != _autoTrainRate) {
+            _autoTrainRate = newTrain;
+            if (isTrainAuto) notifyListeners();
+          }
+          if (newPlane != null && newPlane != _autoPlaneRate) {
+            _autoPlaneRate = newPlane;
+            if (isPlaneAuto) notifyListeners();
+          }
+        }
+      }
+    } catch (_) {
+      // Silent failure, keep last known rates
+    }
   }
 
   Future<void> setMapStyle(String styleUrl) async {

@@ -10,6 +10,7 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_bus_line.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
+import '../../../../core/api_constants.dart';
 import '../../../../presentation/constants/notification_channels.dart';
 
 class BusDetailsSheet extends StatefulWidget {
@@ -124,16 +125,19 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
         return;
       }
 
-      if (provider.selectedProvider?.name != 'bari') return;
-
-      final updates = await provider.fetchBariTripUpdates(widget.bus.id, widget.bus.line);
-      if (!mounted) return;
-      setState(() => _tripUpdates = updates);
-
-      if (showLoading && !_hasScrolledToCurrent && updates.isNotEmpty) {
-        _scrollToCurrentStop(updates);
-        _hasScrolledToCurrent = true;
+      // If provider supports trip_stops, try to fetch provider-specific updates
+      if (provider.selectedProvider?.endpoints['trip_stops'] == true) {
+        final updates = await provider.fetchProviderTripUpdates(widget.bus);
+        if (!mounted) return;
+        setState(() => _tripUpdates = updates);
+        if (showLoading && !_hasScrolledToCurrent && updates.isNotEmpty) {
+          _scrollToCurrentStop(updates);
+          _hasScrolledToCurrent = true;
+        }
+        return;
       }
+
+      // No additional default updates to handle here.
     } catch (e) {
       debugPrint('Error fetching trip updates: $e');
     } finally {
@@ -187,18 +191,20 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                   const SizedBox(height: 12),
                   
                   // Sezione Timeline
-                  if (provider.selectedProvider?.name == 'bari') ...[
+                  if (provider.selectedProvider?.endpoints['trip_stops'] == true) ...[
                     SizedBox(
                       height: 380, // Altezza maggiorata per UX migliore
-                      child: provider.isLoadingTripStops
+                        child: provider.isLoadingTripStops
                           ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                          : hasTripStopsData
+                          : (provider.apiTripUpdates.isNotEmpty
+                            ? _buildBusTimeline(provider.apiTripUpdates, theme)
+                            : (hasTripStopsData
                               ? _buildTripStopsTimeline(tripStopsData.stops, theme)
-                              : _isLoadingUpdates
-                                  ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                                  : _tripUpdates.isEmpty
-                                      ? Center(child: Text("Nessun aggiornamento", style: TextStyle(color: theme.secondaryTextColor)))
-                                      : _buildBusTimeline(_tripUpdates, theme),
+                              : (_isLoadingUpdates
+                                ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                                : _tripUpdates.isEmpty
+                                  ? Center(child: Text("Nessun aggiornamento", style: TextStyle(color: theme.secondaryTextColor)))
+                                  : _buildBusTimeline(_tripUpdates, theme)))) ,
                     ),
                   ] else ...[
                     SizedBox(
@@ -777,8 +783,21 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
       await AndroidBackgroundService.requestPermission();
       if (!_enabled) {
         final settings = Provider.of<SettingsProvider>(context, listen: false);
+        // Try to resolve a provider config to build the correct API path
+        final busProv = Provider.of<BusProvider>(context, listen: false);
+        BusProviderConfig? resolved;
+        if (providerParam != null) {
+          try {
+            resolved = busProv.providers.firstWhere((x) => x.name.toLowerCase() == providerParam || x.provider.toLowerCase() == providerParam);
+          } catch (_) {
+            resolved = null;
+          }
+        }
+
+        final apiPrefix = resolved?.apiPathPrefix ?? (providerParam != null ? 'it/bus/$providerParam' : 'it/bus/bari');
+
         if (tripId != null && tripId.isNotEmpty) {
-          final endpoint = 'https://betacloud-transporter.is-cool.dev/api/it/bus/${providerParam ?? 'bari'}/realtime?tripId=${Uri.encodeComponent(tripId)}';
+          final endpoint = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}';
           await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, endpoint: endpoint, intervalSeconds: settings.busRefreshSeconds);
         } else {
           await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds);

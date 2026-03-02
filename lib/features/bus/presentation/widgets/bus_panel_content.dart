@@ -748,9 +748,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   final tripId = v.tripId ?? '';
                   final lineCode = v.line;
                   final selected = busProvider.selectedProvider!;
-                  final country = selected.country ?? (selected.apiPrefix != null && selected.apiPrefix!.contains('/') ? selected.apiPrefix!.split('/').first : 'it');
-                  final providerName = selected.name.toLowerCase();
-                  final url = '${ApiConstants.baseUrl}/api/$country/bus/$providerName/realtime?tripId=$tripId&lineCode=$lineCode';
+                  final apiPrefix = selected.apiPathPrefix;
+                  final url = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}&lineCode=${Uri.encodeComponent(lineCode)}';
                   print('Fetching bus details from URL: $url');
     
                   final response = await http.get(Uri.parse(url));

@@ -278,8 +278,10 @@ class BusRepository {
         final vehicles = json['vehicles'] as List?;
         if (vehicles != null && vehicles.isNotEmpty) {
           final vehicle = vehicles.first;
-          final stops = vehicle['stops'] as List?;
-          final position = vehicle['position'] as Map<String, dynamic>?;
+          final stopsRaw = vehicle['stops'];
+          final stops = stopsRaw is List ? List<dynamic>.from(stopsRaw) : null;
+          final posRaw = vehicle['position'];
+          final position = posRaw is Map ? Map<String, dynamic>.from(posRaw) : null;
           
           if (stops != null) {
             // Fetch stops coordinates for arrival estimation
@@ -329,10 +331,11 @@ class BusRepository {
     }
   }
   
-  Future<BusRoutePath?> fetchBusRoutePath(String tripId) async {
+  Future<BusRoutePath?> fetchBusRoutePath(String tripId, {String? providerName}) async {
     try {
-      final bariCountry = await _countryForProviderName('bari');
-      final url = "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/route-path?tripId=$tripId";
+      final prov = providerName ?? 'bari';
+      final country = await _countryForProviderName(prov);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$prov/route-path?tripId=$tripId";
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -362,7 +365,15 @@ class BusRepository {
         final json = jsonDecode(response.body);
         final List departures = json['departures'] ?? [];
         print('Parsed ${departures.length} departures from JSON');
-        final result = departures.map((d) => StopDeparture.fromJson(d)).toList();
+        // Ensure any stops arrays are passed as well
+        final result = departures.map((d) {
+          final map = Map<String, dynamic>.from(d as Map);
+          // if stops is present but not a List<Map>, normalize it
+          if (map['stops'] is List) {
+            map['stops'] = (map['stops'] as List).map((s) => s is Map ? Map<String, dynamic>.from(s) : <String, dynamic>{}).toList();
+          }
+          return StopDeparture.fromJson(map);
+        }).toList();
         print('Mapped to ${result.length} StopDeparture objects');
         return result;
       }
@@ -374,12 +385,16 @@ class BusRepository {
     }
   }
 
-  Future<TripStopsData?> fetchTripStops(String tripId) async {
+  Future<TripStopsData?> fetchTripStops(String tripId, {String? providerName}) async {
     try {
-      final bariCountry = await _countryForProviderName('bari');
-      final url = "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/trip-stops?tripId=$tripId";
+      // Default to 'bari' when provider is not specified to preserve
+      // backward compatibility. Callers may pass the selected provider
+      // name to fetch provider-specific trip stops.
+      final prov = providerName ?? 'bari';
+      final country = await _countryForProviderName(prov);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$prov/trip-stops?tripId=$tripId";
       final response = await http.get(Uri.parse(url));
-      
+
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         return TripStopsData.fromJson(json);
@@ -389,6 +404,88 @@ class BusRepository {
       }
     } catch (e) {
       print("Error fetching trip stops: $e");
+      return null;
+    }
+  }
+
+  /// Fetch trip stops by calling the provider realtime endpoint with
+  /// `routeId` and `tripId`. Returns a `TripStopsData` constructed from
+  /// the realtime response when available.
+  Future<TripStopsData?> fetchRealtimeTripStops(String routeId, String tripId, {String? providerName}) async {
+    try {
+      final prov = providerName ?? 'bari';
+      final country = await _countryForProviderName(prov);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$prov/realtime?routeId=${Uri.encodeComponent(routeId)}&tripId=${Uri.encodeComponent(tripId)}";
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+
+        // Helper to convert arbitrary Map<dynamic,dynamic> into Map<String,dynamic>
+        Map<String, dynamic> _toStringMap(dynamic maybeMap) {
+          if (maybeMap == null) return <String, dynamic>{};
+          if (maybeMap is Map<String, dynamic>) return maybeMap;
+          if (maybeMap is Map) {
+            final out = <String, dynamic>{};
+            maybeMap.forEach((k, v) {
+              out[k.toString()] = v;
+            });
+            return out;
+          }
+          return <String, dynamic>{};
+        }
+
+        // The realtime payload may include an array `vehicles` with the matching trip
+        final vehiclesRaw = json['vehicles'];
+        final vehicles = vehiclesRaw is List ? vehiclesRaw : (vehiclesRaw != null ? [vehiclesRaw] : null);
+
+        final Map<String, dynamic> vehicleJson = {};
+        List<dynamic> stopsJson = [];
+
+        if (vehicles != null && vehicles.isNotEmpty) {
+          final v = vehicles.first;
+          final pos = v['position'] ?? v['vehicle'] ?? v;
+          final stopsCandidate = v['stops'] ?? json['stops'];
+          final convertedPos = _toStringMap(pos);
+          vehicleJson.addAll(convertedPos);
+          if (stopsCandidate is List) stopsJson = List<dynamic>.from(stopsCandidate);
+        } else if (json['vehicle'] != null) {
+          vehicleJson.addAll(_toStringMap(json['vehicle']));
+          final s = json['stops'];
+          if (s is List) stopsJson = List<dynamic>.from(s);
+        } else if (json['stops'] != null) {
+          final s = json['stops'];
+          if (s is List) stopsJson = List<dynamic>.from(s);
+        }
+
+        // ensure each stop entry is a Map<String,dynamic> to appease
+        // TripStop.fromJson's parameter type
+        final cleanStops = stopsJson.map((s) {
+          if (s is Map) return Map<String, dynamic>.from(s);
+          return <String, dynamic>{};
+        }).toList();
+
+        final Map<String, dynamic> assembled = <String, dynamic>{
+          'tripId': tripId,
+          'vehicle': vehicleJson,
+          'filter': <String, dynamic>{},
+          'stops': cleanStops,
+        };
+
+        try {
+          return TripStopsData.fromJson(assembled);
+        } catch (parseError, stack) {
+          print('Failed parsing realtime trip stops assembled JSON: $assembled');
+          print(parseError);
+          print(stack);
+          rethrow;
+        }
+      }
+
+      print("Realtime trip stops request failed: ${response.statusCode} - ${response.body}");
+      return null;
+    } catch (e) {
+      print("Error fetching realtime trip stops: $e");
       return null;
     }
   }

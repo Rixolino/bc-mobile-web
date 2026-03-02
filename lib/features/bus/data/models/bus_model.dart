@@ -330,6 +330,7 @@ class StopDeparture {
   final int delay;
   final String destination;
   final double? distance; // nuovo campo per la distanza in km (solo per live position)
+  final List<TripStop>? stops; // optional list of stops (for Turin realtime and scheduled)
 
   StopDeparture({
     required this.line,
@@ -343,6 +344,7 @@ class StopDeparture {
     required this.delay,
     required this.destination,
     this.distance,
+    this.stops,
   });
 
   factory StopDeparture.fromJson(Map<String, dynamic> json) {
@@ -358,6 +360,9 @@ class StopDeparture {
       delay: json['delay'] ?? 0,
       destination: json['destination'] ?? '',
       distance: (json['distance'] as num?)?.toDouble(), // nuovo campo
+      stops: (json['stops'] as List?)
+          ?.map((s) => TripStop.fromJson(s as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -444,8 +449,13 @@ class TripStopsData {
         tripId: json['tripId']?.toString(),
         isLivePosition: vehicleJson['isRealtime'] ?? false,
       ),
-      filter: json['filter'] ?? {},
-      stops: stopsJson.map((s) => TripStop.fromJson(s)).toList(),
+      filter: json['filter'] is Map
+          ? Map<String, dynamic>.from(json['filter'])
+          : <String, dynamic>{},
+      stops: stopsJson.map((s) {
+        if (s is Map) return TripStop.fromJson(Map<String, dynamic>.from(s));
+        return TripStop.fromJson(<String, dynamic>{});
+      }).toList(),
     );
   }
 }
@@ -548,4 +558,12 @@ class BusProviderConfig {
   }
 
   bool get supportsSolutions => endpoints['solutions'] == true;
+  
+  /// Restituisce il prefisso dell'API per questo provider, es. "it/bus/bari"
+  String get apiPathPrefix {
+    if (apiPrefix != null && apiPrefix!.isNotEmpty) return apiPrefix!;
+    final c = country ?? 'it';
+    final pname = name.toLowerCase();
+    return '$c/bus/$pname';
+  }
 }

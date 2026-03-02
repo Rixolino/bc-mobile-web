@@ -528,44 +528,54 @@ class BusProvider with ChangeNotifier {
 
   Future<void> selectBus(BusVehicle bus) async {
     _selectedBus = bus;
-    // Load route path for Bari buses
-    if (_selectedCity == 'Bari' && bus.provider == 'Bari') {
+    // Load trip stops and route path when provider supports them
+    final supportsTripStops = _selectedProvider?.endpoints['trip_stops'] == true;
+    final supportsRoutePath = _selectedProvider?.endpoints['route_path'] == true;
+
+    // For bus details we no longer rely on the `route_path` endpoint.
+    // Instead request the realtime endpoint using `routeId` (line) + `tripId`.
+    if (bus.tripId != null && bus.tripId!.isNotEmpty && bus.line != null && bus.line!.isNotEmpty) {
       _loadBusRoutePath(bus);
+    }
+
+    if (supportsTripStops) {
       _loadTripStops(bus);
-      // Also fetch destination if not already present
-      if (bus.destination == null || bus.destination!.isEmpty) {
-        try {
-          final destination = await fetchBariVehicleDestination(bus.id, bus.line);
-          if (destination != null && destination.isNotEmpty) {
-            _selectedBus = bus.copyWith(destination: destination);
-          }
-        } catch (e) {
-          print("Error fetching bus destination: $e");
+    }
+
+    // Also fetch destination for Bari specifically (legacy behaviour)
+    if (_selectedProvider?.name.toLowerCase() == 'bari' && (bus.destination == null || bus.destination!.isEmpty)) {
+      try {
+        final destination = await fetchBariVehicleDestination(bus.id, bus.line);
+        if (destination != null && destination.isNotEmpty) {
+          _selectedBus = bus.copyWith(destination: destination);
         }
+      } catch (e) {
+        print("Error fetching bus destination: $e");
       }
     }
     notifyListeners();
   }
 
   Future<void> _loadBusRoutePath(BusVehicle bus) async {
+    // Instead of using the route-path endpoint, call realtime with routeId + tripId
     _isLoadingRoutePath = true;
     _selectedBusRoutePath = null;
     notifyListeners();
 
     try {
-      // Use the tripId directly from the bus data
       final tripId = bus.tripId;
+      final routeId = bus.line;
 
-      if (tripId != null && tripId.isNotEmpty) {
-        final routePath = await _repository.fetchBusRoutePath(tripId);
-        _selectedBusRoutePath = routePath;
+      if (tripId != null && tripId.isNotEmpty && routeId != null && routeId.isNotEmpty) {
+        final tripStops = await _repository.fetchRealtimeTripStops(routeId, tripId, providerName: _selectedProvider?.name);
+        _selectedTripStops = tripStops;
       } else {
-        print("No tripId available for bus ${bus.id}");
-        _selectedBusRoutePath = null;
+        print("No tripId/routeId available for bus ${bus.id}");
+        _selectedTripStops = null;
       }
     } catch (e) {
-      print("Error loading bus route path: $e");
-      _selectedBusRoutePath = null;
+      print("Error loading realtime trip details: $e");
+      _selectedTripStops = null;
     } finally {
       _isLoadingRoutePath = false;
       notifyListeners();
@@ -580,7 +590,7 @@ class BusProvider with ChangeNotifier {
     try {
       final tripId = bus.tripId;
       if (tripId != null && tripId.isNotEmpty) {
-        final tripStops = await _repository.fetchTripStops(tripId);
+        final tripStops = await _repository.fetchTripStops(tripId, providerName: _selectedProvider?.name);
         _selectedTripStops = tripStops;
       } else {
         print("No tripId available for bus ${bus.id}");
@@ -609,6 +619,44 @@ class BusProvider with ChangeNotifier {
       return await _repository.fetchBariTripUpdates(vehicleId, routeId);
     } catch (e) {
       print("Error fetching Bari trip updates: $e");
+      return [];
+    }
+  }
+
+  /// Generic trip updates fetcher: for Bari uses the specialized endpoint,
+  /// otherwise attempts to load trip stops via tripId and convert them to
+  /// `BusTripUpdate` entries.
+  Future<List<BusTripUpdate>> fetchProviderTripUpdates(BusVehicle bus) async {
+    try {
+      // Bari retains specialized realtime/trip update logic
+      if (_selectedProvider != null && _selectedProvider!.name.toLowerCase() == 'bari') {
+        return await fetchBariTripUpdates(bus.id, bus.line);
+      }
+
+      // Prefer tripId -> tripStops if available
+      final tripId = bus.tripId;
+      if (tripId != null && tripId.isNotEmpty) {
+        final tripStops = await _repository.fetchTripStops(tripId, providerName: _selectedProvider?.name);
+        if (tripStops != null) {
+          final updates = tripStops.stops.map((ts) {
+            return BusTripUpdate(
+              stopId: ts.stopId,
+              stopName: ts.stopName,
+              expectedTime: ts.scheduledTime,
+              delay: ts.delay,
+              isRealtime: ts.isRealtime,
+              status: ts.status,
+              arrivalEstimate: null,
+            );
+          }).toList();
+          return updates;
+        }
+      }
+
+      // Nothing available
+      return [];
+    } catch (e) {
+      print('Error fetching provider trip updates: $e');
       return [];
     }
   }

@@ -44,9 +44,12 @@ class SettingsScreen extends StatelessWidget {
                 context, 
                 'Treni', 
                 Icons.train, 
-                settings.trainRefreshSeconds,
+                settings.isTrainAuto ? settings.currentAutoTrainRate : settings.trainRefreshSeconds,
                 (val) => settings.setTrainRefreshSeconds(val.toInt()),
-                theme
+                theme,
+                isAuto: settings.isTrainAuto,
+                autoRate: settings.currentAutoTrainRate,
+                onAutoChanged: (isOn) => settings.setTrainRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)
               ),
 
               const SizedBox(height: 24),
@@ -55,9 +58,12 @@ class SettingsScreen extends StatelessWidget {
                 context, 
                 'Autobus', 
                 Icons.directions_bus, 
-                settings.busRefreshSeconds,
+                settings.isBusAuto ? settings.currentAutoBusRate : settings.busRefreshSeconds,
                 (val) => settings.setBusRefreshSeconds(val.toInt()),
-                theme
+                theme,
+                isAuto: settings.isBusAuto,
+                autoRate: settings.currentAutoBusRate,
+                onAutoChanged: (isOn) => settings.setBusRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 10)
               ),
 
               const SizedBox(height: 24),
@@ -66,9 +72,12 @@ class SettingsScreen extends StatelessWidget {
                 context, 
                 'Aerei', 
                 Icons.flight, 
-                settings.planeRefreshSeconds,
+                settings.isPlaneAuto ? settings.currentAutoPlaneRate : settings.planeRefreshSeconds,
                 (val) => settings.setPlaneRefreshSeconds(val.toInt()),
-                theme
+                theme,
+                isAuto: settings.isPlaneAuto,
+                autoRate: settings.currentAutoPlaneRate,
+                onAutoChanged: (isOn) => settings.setPlaneRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)
               ),
 
               const SizedBox(height: 32),
@@ -329,8 +338,24 @@ class SettingsScreen extends StatelessWidget {
     IconData icon, 
     int currentValue, 
     Function(double) onChanged,
-    ThemeProvider theme
+    ThemeProvider theme,
+    {
+      required bool isAuto,
+      required Function(bool) onAutoChanged,
+      required int autoRate
+    }
   ) {
+    // If enabled (manual mode > 0) or auto mode is on
+    final bool isEnabled = isAuto || currentValue > 0;
+    
+    // Display string: "Auto (15s)" or "15s" or "Off"
+    String statusText;
+    if (isAuto) {
+      statusText = 'Auto (${autoRate}s)';
+    } else {
+      statusText = currentValue > 0 ? '${currentValue}s' : 'Off';
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -345,58 +370,80 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Icon(icon, color: theme.primaryColor, size: 20),
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    if (isAuto)
+                      Text(
+                        'Gestito dal server in base al traffico',
+                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 10),
+                      ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: currentValue > 0 ? theme.primaryColor.withOpacity(0.2) : theme.secondaryTextColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  currentValue > 0 ? '${currentValue}s' : 'Off',
-                  style: TextStyle(
-                    color: currentValue > 0 ? theme.primaryColor : theme.secondaryTextColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12
+              // Auto Switch
+              Row(
+                children: [
+                  Text('Auto', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: isAuto,
+                      onChanged: onAutoChanged,
+                      activeColor: theme.primaryColor,
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: theme.primaryColor,
-              inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.1),
-              thumbColor: theme.textColor,
-              overlayColor: theme.primaryColor.withOpacity(0.2),
-              trackHeight: 4.0,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8.0),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16.0),
-            ),
-            child: Slider(
-              value: currentValue.toDouble(),
-              min: 0,
-              max: 300,
-              divisions: 60, // 0, 5, 10... 300
-              label: currentValue > 0 ? '$currentValue sec' : 'Disabilitato',
-              onChanged: onChanged,
+          // Slider is only active if NOT in auto mode
+          IgnorePointer(
+            ignoring: isAuto,
+            child: Opacity(
+              opacity: isAuto ? 0.5 : 1.0,
+              child: Column(
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: theme.primaryColor,
+                      inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.1),
+                      thumbColor: theme.textColor,
+                      overlayColor: theme.primaryColor.withOpacity(0.2),
+                      trackHeight: 4.0,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8.0),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16.0),
+                    ),
+                    child: Slider(
+                      value: isAuto ? autoRate.toDouble() : currentValue.toDouble(),
+                      min: 0,
+                      max: 60, // Reduced max to 60s for better usability
+                      divisions: 12, // 5s steps
+                      label: statusText,
+                      onChanged: onChanged,
+                    ),
+                  ),
+                  Padding(
+                     padding: const EdgeInsets.symmetric(horizontal: 4),
+                     child: Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+                         Text('Off', style: TextStyle(color: theme.secondaryTextColor.withOpacity(0.3), fontSize: 10)),
+                         Text(statusText, style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                         Text('60s', style: TextStyle(color: theme.secondaryTextColor.withOpacity(0.3), fontSize: 10)),
+                       ],
+                     ),
+                  )
+                ],
+              ),
             ),
           ),
-          Padding(
-             padding: const EdgeInsets.symmetric(horizontal: 4),
-             child: Row(
-               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-               children: [
-                 Text('Off', style: TextStyle(color: theme.secondaryTextColor.withOpacity(0.3), fontSize: 10)),
-                 Text('5m', style: TextStyle(color: theme.secondaryTextColor.withOpacity(0.3), fontSize: 10)),
-               ],
-             ),
-          )
         ],
       ),
     );

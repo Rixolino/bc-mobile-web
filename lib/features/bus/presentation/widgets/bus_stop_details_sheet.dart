@@ -407,17 +407,39 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
   Future<void> _navigateToBusDetails(StopDeparture dep, BusProvider provider) async {
     final selProv = provider.selectedProvider;
     if (selProv == null || dep.tripId.isEmpty) return;
-    final url = '${ApiConstants.baseUrl}/api/${selProv.country ?? 'it'}/bus/${selProv.name.toLowerCase()}/realtime?tripId=${dep.tripId}&lineCode=${dep.line}';
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final stops = (data['stops'] as List?)?.map((s) => BusTripUpdate.fromJson(s)).toList() ?? [];
-      final bus = BusVehicle(id: dep.vehicleId, line: dep.line, destination: data['destination'] ?? dep.destination, latitude: 0, longitude: 0, tripId: dep.tripId, provider: selProv.provider);
-      provider.setApiTripUpdates(stops);
-      await provider.selectBus(bus);
-      if (mounted) {
-        showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => BusDetailsSheet(bus: bus, page: 'details'));
+
+    // If the departure object already carries a detailed stops list (e.g. Turin
+    // stops-updates now includes them), we can skip the extra API call.
+    List<BusTripUpdate> stops = [];
+    if (dep.stops != null && dep.stops!.isNotEmpty) {
+      stops = dep.stops!
+          .map((s) => BusTripUpdate(
+                stopId: s.stopId,
+                stopName: s.stopName,
+                expectedTime: s.scheduledTime,
+                delay: s.delay,
+                isRealtime: s.isRealtime,
+                status: s.status,
+                arrivalEstimate: s.estimatedArrivalUnix?.toString(),
+              ))
+          .toList();
+    } else {
+      final apiPrefix = selProv.apiPathPrefix;
+      final url = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(dep.tripId)}&lineCode=${Uri.encodeComponent(dep.line)}';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        stops = (data['stops'] as List?)
+                ?.map((s) => BusTripUpdate.fromJson(s))
+                .toList() ?? [];
       }
+    }
+
+    final bus = BusVehicle(id: dep.vehicleId, line: dep.line, destination: dep.destination, latitude: 0, longitude: 0, tripId: dep.tripId, provider: selProv.provider);
+    provider.setApiTripUpdates(stops);
+    await provider.selectBus(bus);
+    if (mounted) {
+      showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => BusDetailsSheet(bus: bus, page: 'details'));
     }
   }
 }
