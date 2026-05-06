@@ -117,6 +117,76 @@ class Flight {
       speed: (json['speed'] ?? 0).toDouble(),
     );
   }
+
+  factory Flight.fromJson(Map<String, dynamic> json) {
+    return Flight(
+      id: json['id']?.toString() ?? '',
+      flightNumber: json['flightNumber']?.toString() ?? '',
+      callsign: json['callsign']?.toString() ?? '',
+      airline: json['airline']?.toString() ?? '',
+      origin: json['origin']?.toString() ?? '',
+      originId: json['originId']?.toString(),
+      destination: json['destination']?.toString() ?? '',
+      destinationId: json['destinationId']?.toString(),
+      status: json['status']?.toString() ?? '',
+      statusLocalized: json['statusLocalized']?.toString(),
+      scheduledTime: _parseDateTime(json['scheduledTime']),
+      estimatedTime: _parseDateTime(json['estimatedTime']),
+      scheduledDeparture: _parseDateTime(json['scheduledDeparture']),
+      estimatedDeparture: _parseDateTime(json['estimatedDeparture']),
+      scheduledArrival: _parseDateTime(json['scheduledArrival']),
+      estimatedArrival: _parseDateTime(json['estimatedArrival']),
+      type: json['type']?.toString(),
+      terminal: json['terminal']?.toString(),
+      gate: json['gate']?.toString(),
+      latitude: _parseDouble(json['latitude']),
+      longitude: _parseDouble(json['longitude']),
+      heading: _parseDouble(json['heading']),
+      altitude: _parseDouble(json['altitude']),
+      speed: _parseDouble(json['speed']),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'flightNumber': flightNumber,
+      'callsign': callsign,
+      'airline': airline,
+      'origin': origin,
+      'originId': originId,
+      'destination': destination,
+      'destinationId': destinationId,
+      'status': status,
+      'statusLocalized': statusLocalized,
+      'scheduledTime': scheduledTime?.toIso8601String(),
+      'estimatedTime': estimatedTime?.toIso8601String(),
+      'scheduledDeparture': scheduledDeparture?.toIso8601String(),
+      'estimatedDeparture': estimatedDeparture?.toIso8601String(),
+      'scheduledArrival': scheduledArrival?.toIso8601String(),
+      'estimatedArrival': estimatedArrival?.toIso8601String(),
+      'type': type,
+      'terminal': terminal,
+      'gate': gate,
+      'latitude': latitude,
+      'longitude': longitude,
+      'heading': heading,
+      'altitude': altitude,
+      'speed': speed,
+    };
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    return DateTime.tryParse(value.toString());
+  }
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
 }
 
 class Airport {

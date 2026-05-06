@@ -221,6 +221,27 @@ class TrainDeparture {
   
   bool get isDelayed => (delayMinutes ?? 0) > 0;
 
+  Map<String, dynamic> toJson() {
+    return {
+      'trainNumber': trainNumber,
+      'category': category,
+      'destination': destination,
+      'origin': origin,
+      'scheduledTime': scheduledTime?.toIso8601String(),
+      'estimatedTime': estimatedTime?.toIso8601String(),
+      'platform': platform,
+      'delayMinutes': delayMinutes,
+      'status': status,
+      'tripId': tripId,
+      'stops': stops?.map((stop) => stop.toJson()).toList(),
+      'country': country,
+      'metadata': metadata,
+      'messages': messages,
+      'polyline': polyline,
+      'error': error,
+    };
+  }
+
   TrainDeparture copyWith({
     String? origin,
     String? destination, // Added destination just in case
@@ -339,6 +360,24 @@ class TrainStop {
       return DateTime.tryParse(s);
     }
     return null;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'stationName': stationName,
+      'arrival': arrival?.toIso8601String(),
+      'departure': departure?.toIso8601String(),
+      'estimatedArrival': estimatedArrival?.toIso8601String(),
+      'estimatedDeparture': estimatedDeparture?.toIso8601String(),
+      'delay': delay,
+      'arrivalDelay': arrivalDelay,
+      'departureDelay': departureDelay,
+      'platform': platform,
+      'country': country,
+      'cancelled': cancelled,
+      'messages': messages,
+    };
   }
 }
 

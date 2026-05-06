@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.rix19.betacloud.transporter"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

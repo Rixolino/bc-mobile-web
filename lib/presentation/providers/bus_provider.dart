@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../../data/models/bus_model.dart';
 import '../../data/repositories/bus_repository.dart';
+import '../../core/services/offline_sync_service.dart';
+import 'package:flutter/foundation.dart';
 
 class BusProvider with ChangeNotifier {
   final BusRepository _repository = BusRepository();
@@ -68,23 +70,67 @@ class BusProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchVehicles({bool silent = false}) async {
+  // Helper to fetch with offline sync (called from UI with settings context)
+  Future<void> fetchVehiclesWithOfflineSync(bool offlineSyncEnabled) async {
+    await fetchVehicles(offlineSyncEnabled: offlineSyncEnabled);
+  }
+
+  Future<void> fetchVehicles({bool silent = false, bool offlineSyncEnabled = false}) async {
     if (!silent) {
       _isLoading = true;
       notifyListeners();
     }
     
     try {
+      List<BusVehicle> fetchedVehicles = [];
+      
       if (_selectedCity == 'Roma') {
-        _vehicles = await _repository.fetchRomeVehicles();
+        fetchedVehicles = await _repository.fetchRomeVehicles();
       } else if (_selectedCity == 'Bari') {
-        _vehicles = await _repository.fetchBariVehicles();
+        fetchedVehicles = await _repository.fetchBariVehicles();
       } else if (_selectedCity == 'Emilia-Romagna') {
-        _vehicles = await _repository.fetchERVehicles();
+        fetchedVehicles = await _repository.fetchERVehicles();
+      }
+      
+      _vehicles = fetchedVehicles;
+      
+      // Save to offline cache if enabled
+      if (offlineSyncEnabled && _vehicles.isNotEmpty) {
+        try {
+          await OfflineSyncService.saveTransportData(
+            transportType: 'bus',
+            identifier: _selectedCity,
+            data: _vehicles.map((v) => v.toJson()).toList(),
+          );
+          debugPrint('[BusProvider] Synced offline data for $_selectedCity');
+        } catch (e) {
+          debugPrint('[BusProvider] Error saving offline data: $e');
+        }
       }
     } catch (e) {
       print("Provider Error: $e");
-      _vehicles = [];
+      
+      // Try to load from cache if offline fetch failed and sync is enabled
+      if (offlineSyncEnabled) {
+        try {
+          final cachedData = await OfflineSyncService.getTransportData(
+            transportType: 'bus',
+            identifier: _selectedCity,
+          );
+          if (cachedData != null && cachedData is List) {
+            _vehicles = (cachedData as List)
+                .map((item) => BusVehicle.fromJson(item as Map<String, dynamic>))
+                .toList();
+            debugPrint('[BusProvider] Loaded offline data for $_selectedCity');
+          } else {
+            _vehicles = [];
+          }
+        } catch (e2) {
+          _vehicles = [];
+        }
+      } else {
+        _vehicles = [];
+      }
     } finally {
       if (!silent) {
         _isLoading = false;

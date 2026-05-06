@@ -1,8 +1,8 @@
 ﻿import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -16,14 +16,9 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
+import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
-
-const Map<String, int> countryTimezoneOffsets = {
-  'IT': 1, 'FR': 1, 'DE': 1, 'AT': 1, 'CH': 1, 'ES': 1,
-  'GB': 0, 'NL': 1, 'BE': 1, 'LU': 1, 'CZ': 1, 'PL': 1,
-  'HU': 1, 'RO': 2, 'GR': 2, 'SE': 1, 'NO': 1, 'DK': 1,
-};
 
 class _ActualTime {
   final DateTime time;
@@ -680,63 +675,196 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
 class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   Timer? _autoRefreshTimer;
+  Timer? _progressTimer;
+  Timer? _connectivityTimer;
+  late TrainProvider _trainProvider;
+  late SettingsProvider _settingsProvider;
+  bool _isCheckingConnectionForLive = false;
+  bool _lastInternetState = true;
+  bool _isNetworkOffline = false;
+  bool _preventOnlineAutoRefresh = false;
+  bool _isHandlingConnectivityChange = false;
 
   @override
   void initState() {
     super.initState();
+    _trainProvider = Provider.of<TrainProvider>(context, listen: false);
+    _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     _startAutoRefresh();
+    _startConnectivityMonitor();
+    _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _progressTimer?.cancel();
+    _connectivityTimer?.cancel();
     super.dispose();
   }
 
+  void _startConnectivityMonitor() {
+    _connectivityTimer?.cancel();
+    _connectivityTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _handleConnectivityTick(),
+    );
+    _handleConnectivityTick();
+  }
+
+  Future<void> _handleConnectivityTick() async {
+    if (_isHandlingConnectivityChange || !mounted) return;
+
+    _isHandlingConnectivityChange = true;
+    try {
+      final hasInternet = await _hasInternetConnection();
+      if (!mounted) return;
+
+      final wasNetworkOffline = _isNetworkOffline;
+      _isNetworkOffline = !hasInternet;
+
+      if (!hasInternet) {
+        _preventOnlineAutoRefresh = true;
+        _autoRefreshTimer?.cancel();
+        _autoRefreshTimer = null;
+        _trainProvider.setOnlineAutoRefreshBlocked(true);
+
+        if (_lastInternetState && _settingsProvider.offlineSyncEnabled) {
+          await _trainProvider.loadSelectedStationFromOfflineCache();
+        }
+
+        if (mounted && !wasNetworkOffline) setState(() {});
+      }
+
+      if (hasInternet && !_lastInternetState && _settingsProvider.offlineSyncEnabled) {
+        final station = _trainProvider.selectedStation;
+        if (station != null) {
+          await _trainProvider.fetchDepartures(
+            station.id,
+            country: station.country,
+            silent: true,
+            offlineSyncEnabled: true,
+          );
+        }
+        if (!_trainProvider.isUsingOfflineCache) {
+          _preventOnlineAutoRefresh = false;
+        }
+      }
+
+      _lastInternetState = hasInternet;
+      if (mounted && wasNetworkOffline != _isNetworkOffline) setState(() {});
+    } finally {
+      _isHandlingConnectivityChange = false;
+    }
+  }
+
   void _startAutoRefresh() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    final interval = settingsProvider.trainRefreshSeconds;
+    if (_preventOnlineAutoRefresh || _trainProvider.isUsingOfflineCache || _isNetworkOffline) return;
+
+    final interval = _settingsProvider.trainRefreshSeconds;
     if (interval > 0) {
       _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (timer) => _refreshTrainDetails());
     }
   }
 
-  void _toggleAutoRefresh() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    final interval = settingsProvider.trainRefreshSeconds;
+  Future<void> _toggleAutoRefresh() async {
+    if (_preventOnlineAutoRefresh || _trainProvider.isUsingOfflineCache || _isNetworkOffline) {
+      _autoRefreshTimer?.cancel();
+      _autoRefreshTimer = null;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final interval = _settingsProvider.trainRefreshSeconds;
     if (_autoRefreshTimer != null) {
       _autoRefreshTimer!.cancel();
       _autoRefreshTimer = null;
     } else if (interval > 0) {
+      if (!await _hasInternetConnection()) return;
+      if (!mounted) return;
       _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (timer) => _refreshTrainDetails());
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   void _refreshTrainDetails() {
-    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-    final index = trainProvider.departures.indexWhere((d) => 
+    if (!mounted) return;
+    if (_preventOnlineAutoRefresh || _trainProvider.isUsingOfflineCache || _isNetworkOffline) {
+      _autoRefreshTimer?.cancel();
+      _autoRefreshTimer = null;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final index = _trainProvider.departures.indexWhere((d) => 
       (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
     );
     if (index != -1) {
        // Force update via provider (which re-uses last know country or station country)
-       trainProvider.expandTrainDetails(index);
+       _trainProvider.expandTrainDetails(index);
        // Check if we need to locally update local widget state if not watching provider fully?
        // Actually, the build method relies on `widget.departure`. 
        // If standard MVP, we should be using `Consumer` or refetching a fresh object from the provider into the state.
        // However, `ListView.builder` in `build` uses `widget.departure.stops`. 
        // `widget.departure` is final. IT DOES NOT UPDATE when provider updates!
        // START FIX: We need to pull the LATEST departure object from provider
-       final freshDep = trainProvider.departures[index];
+       final freshDep = _trainProvider.departures[index];
        // We can't update `widget.departure`. We should probably wrap the body in a Consumer or check provider here.
+     }
+  }
+
+  void _syncDetailsAutoRefresh(bool isUsingOfflineCache) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      if (_preventOnlineAutoRefresh || isUsingOfflineCache || _isNetworkOffline) {
+        if (_autoRefreshTimer != null) {
+          _autoRefreshTimer!.cancel();
+          _autoRefreshTimer = null;
+          setState(() {});
+        }
+        return;
+      }
+
+      final interval = _settingsProvider.trainRefreshSeconds;
+      if (interval > 0 && _autoRefreshTimer == null && !_isCheckingConnectionForLive) {
+        _isCheckingConnectionForLive = true;
+        final hasInternet = await _hasInternetConnection();
+        _isCheckingConnectionForLive = false;
+        if (!mounted || !hasInternet) return;
+        if (_preventOnlineAutoRefresh || _isNetworkOffline) return;
+        if (_trainProvider.isUsingOfflineCache) return;
+
+        _autoRefreshTimer = Timer.periodic(
+          Duration(seconds: interval),
+          (timer) => _refreshTrainDetails(),
+        );
+        setState(() {});
+      }
+    });
+  }
+
+  Future<bool> _hasInternetConnection() async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        '1.1.1.1',
+        53,
+        timeout: const Duration(seconds: 2),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      socket?.destroy();
     }
   }
 
   String _formatStationTime(DateTime? date, String countryCode) {
-    if (date == null) return '--:--';
-    final int offset = countryTimezoneOffsets[countryCode] ?? 1;
-    return DateFormat('HH:mm').format(date.toUtc().add(Duration(hours: offset)));
+    return formatCountryTime(date, countryCode);
   }
 
 
@@ -748,6 +876,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     // FIX: Listen to provider to get updates for THIS train
     return Consumer<TrainProvider>(
       builder: (context, provider, child) {
+        _syncDetailsAutoRefresh(provider.isUsingOfflineCache);
+
         // Find the most up-to-date version of this departure
         final currentDep = provider.departures.firstWhere(
            (d) => (d.tripId != null && d.tripId == widget.departure.tripId) || 
@@ -814,10 +944,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     final List<TrainStop> stops = currentDep.stops ?? [];
     final trainName = "${currentDep.category ?? ''} ${currentDep.trainNumber ?? ''}".trim();
     
-    final lastDetection = currentDep.metadata?['lastDetection'];
-    final DateTime nowUtc = (lastDetection != null && lastDetection['timestamp'] != null)
-        ? DateTime.parse(lastDetection['timestamp']).toUtc()
-        : DateTime.now().toUtc();
+    final DateTime nowUtc = DateTime.now().toUtc();
 
     int currentSegmentIndex = -1;
     double segmentProgress = 0.0;
@@ -1122,7 +1249,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
           const SizedBox(height: 24),
 
-          // Primary Actions: Save & Notify
+          // Primary Actions: Save & Notify & Offline Sync
           Row(
             children: [
               // Favorite
@@ -1172,6 +1299,34 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 },
               ),
               const SizedBox(width: 12),
+              // Offline Sync
+              Consumer<SettingsProvider>(
+                builder: (context, settings, child) {
+                  if (!settings.offlineSyncEnabled) {
+                    return const SizedBox.shrink(); // Hide if not enabled
+                  }
+                  return Expanded(
+                    child: _buildOfflineSyncButton(
+                      context: context,
+                      theme: theme,
+                      onSync: () async {
+                        final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+                        await trainProvider.fetchDeparturesWithOfflineSync(true);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Dati sincronizzati offline'),
+                              backgroundColor: theme.primaryColor,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 12),
               // Notifications
               _TrainNotificationsButton(
                 departure: departure, 
@@ -1209,12 +1364,19 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 ),
 
                 // Auto Refresh
-                _buildInfoChip(
-                   _autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded,
-                   "Live",
-                   theme,
-                   _toggleAutoRefresh,
-                   isActive: _autoRefreshTimer != null,
+                Consumer<TrainProvider>(
+                  builder: (context, trainProvider, child) {
+                    final isOffline = _preventOnlineAutoRefresh || trainProvider.isUsingOfflineCache || _isNetworkOffline;
+                    return _buildInfoChip(
+                      isOffline
+                          ? Icons.cloud_off_rounded
+                          : (_autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded),
+                      isOffline ? "Offline" : "Live",
+                      theme,
+                      isOffline ? null : () => _toggleAutoRefresh(),
+                      isActive: !isOffline && _autoRefreshTimer != null,
+                    );
+                  },
                 ),
 
                 // Messages
@@ -1274,13 +1436,18 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               child: SvgPicture.network(
                 trainProvider.trainLogos[key]!,
                 fit: BoxFit.contain,
-                placeholderBuilder: (_) => Text(
-                  category.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 20, 
-                    fontWeight: FontWeight.w900, 
-                    color: theme.textColor,
-                    letterSpacing: -0.5
+                // Adaptive color: White on dark/black bg, Black on light/white bg.
+                // Assuming theme.textColor handles this logic correctly (e.g. white text on dark bg).
+                colorFilter: ColorFilter.mode(theme.textColor, BlendMode.srcIn),
+                placeholderBuilder: (_) => SizedBox(
+                  width: 35, // Approximate width to minimize layout shift
+                  height: 22,
+                  child: Shimmer.fromColors(
+                    baseColor: theme.secondaryTextColor.withOpacity(0.1),
+                    highlightColor: theme.secondaryTextColor.withOpacity(0.05),
+                    child: Container(
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -1667,6 +1834,21 @@ class _TrainIcon extends StatelessWidget {
   }
 }
 
+// Helper widget for offline sync button
+Widget _buildOfflineSyncButton({
+  required BuildContext context,
+  required ThemeProvider theme,
+  required VoidCallback onSync,
+}) {
+  return _PrimaryActionChip(
+    icon: Icons.cloud_download_rounded,
+    label: "Sync",
+    isActive: false,
+    theme: theme,
+    onTap: onSync,
+  );
+}
+
 class _PrimaryActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1724,4 +1906,3 @@ class _PrimaryActionChip extends StatelessWidget {
     );
   }
 }
-

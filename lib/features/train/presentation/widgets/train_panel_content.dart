@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:marquee/marquee.dart';
 import '../providers/train_provider.dart';
 import '../../data/models/train_model.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 
 import 'train_details_sheet.dart';
-import 'package:intl/intl.dart' hide TextDirection;
+import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_stop.dart';
@@ -266,7 +267,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   // 2. CARD TRENO (STILE BOARD)
   Widget _buildTrainCard(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
     final displayTime = dep.estimatedTime ?? (dep.scheduledTime?.add(Duration(minutes: dep.delayMinutes ?? 0))) ?? dep.scheduledTime;
-    final timeStr = displayTime != null ? DateFormat('HH:mm').format(displayTime.toUtc().add(const Duration(hours: 1))) : '--:--';
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+    final country = dep.country?.toString().isNotEmpty == true
+        ? dep.country.toString()
+        : trainProvider.selectedStation?.country;
+    final timeStr = formatCountryTime(displayTime, country);
     final delay = dep.delayMinutes ?? 0;
     final isCancelled = dep.status == 'CANCELED';
 
@@ -603,8 +608,19 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                height: 20, 
                child: SvgPicture.network(
                  logoUrl,
-                 fit: BoxFit.contain, // Ensure connection to aspect ratio
-                 placeholderBuilder: (_) => Text(category, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.primaryColor)),
+                 fit: BoxFit.contain,
+                 colorFilter: ColorFilter.mode(theme.textColor, BlendMode.srcIn),
+                 placeholderBuilder: (_) => SizedBox(
+                   width: 30,
+                   height: 20,
+                   child: Shimmer.fromColors(
+                     baseColor: theme.secondaryTextColor.withOpacity(0.1),
+                     highlightColor: theme.secondaryTextColor.withOpacity(0.05),
+                     child: Container(
+                       color: Colors.white,
+                     ),
+                   ),
+                 ),
                ),
              ),
              if (number.isNotEmpty) ...[

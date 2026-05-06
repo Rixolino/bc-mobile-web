@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import '../../data/models/plane_model.dart';
 import '../../data/repositories/plane_repository.dart';
+import '../../../../core/services/offline_sync_service.dart';
+import 'package:flutter/foundation.dart';
 
 class PlaneProvider with ChangeNotifier {
   final PlaneRepository _repository = PlaneRepository();
@@ -11,6 +13,8 @@ class PlaneProvider with ChangeNotifier {
   
   Timer? _refreshTimer;
   int _autoRefreshSeconds = 0;
+  bool _offlineSyncEnabled = false;
+  int _fetchRequestId = 0;
 
   List<Flight> get flights => _flights;
   bool get isLoading => _isLoading;
@@ -28,8 +32,9 @@ class PlaneProvider with ChangeNotifier {
     super.dispose();
   }
 
-  void updateAutoRefresh(int seconds) {
+  void updateAutoRefresh(int seconds, {bool offlineSyncEnabled = false}) {
     _autoRefreshSeconds = seconds;
+    _offlineSyncEnabled = offlineSyncEnabled;
     _stopTimer();
     if (_autoRefreshSeconds > 0) {
       _startTimer();
@@ -44,7 +49,7 @@ class PlaneProvider with ChangeNotifier {
   void _startTimer() {
     _refreshTimer = Timer.periodic(Duration(seconds: _autoRefreshSeconds), (timer) {
       if (_selectedAirport != null) {
-        fetchAirportFlights(silent: true);
+        fetchAirportFlights(silent: true, offlineSyncEnabled: _offlineSyncEnabled);
       }
     });
   }
@@ -75,6 +80,12 @@ class PlaneProvider with ChangeNotifier {
     fetchAirportFlights();
   }
 
+  // Helper to fetch with offline sync (called from UI with settings context)
+  Future<void> fetchAirportFlightsWithOfflineSync(bool offlineSyncEnabled) async {
+    _offlineSyncEnabled = offlineSyncEnabled;
+    await fetchAirportFlights(offlineSyncEnabled: offlineSyncEnabled);
+  }
+
   void setArrivalMode(bool isArrival) {
     _isArrivalMode = isArrival;
     if (_selectedAirport != null) {
@@ -83,23 +94,75 @@ class PlaneProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchAirportFlights({bool silent = false}) async {
+  Future<void> fetchAirportFlights({bool silent = false, bool offlineSyncEnabled = false}) async {
     if (_selectedAirport == null) return;
+    final shouldUseOfflineSync = offlineSyncEnabled || _offlineSyncEnabled;
+    final requestId = ++_fetchRequestId;
+    final cacheIdentifier = _cacheIdentifier(_selectedAirport!.iata);
     
     if (!silent) {
       _isLoadingAirports = true; // Re-use for loading flights list
       notifyListeners();
     }
     
-    _scheduledFlights = await _repository.fetchAirportFlights(
-      _selectedAirport!.iata, 
-      isArrival: _isArrivalMode
-    );
-    
-    if (!silent) {
-      _isLoadingAirports = false;
+    try {
+      _scheduledFlights = await _repository.fetchAirportFlights(
+        _selectedAirport!.iata, 
+        isArrival: _isArrivalMode
+      );
+      if (requestId != _fetchRequestId) return;
+      
+      // Save to offline cache if enabled
+      if (shouldUseOfflineSync && _scheduledFlights.isNotEmpty) {
+        try {
+          await OfflineSyncService.saveTransportData(
+            transportType: 'plane',
+            identifier: cacheIdentifier,
+            data: _scheduledFlights.map((f) => f.toJson()).toList(),
+          );
+          debugPrint('[PlaneProvider] Synced offline data for ${_selectedAirport!.iata}');
+        } catch (e) {
+          debugPrint('[PlaneProvider] Error saving offline data: $e');
+        }
+      }
+    } catch (e) {
+      print("Provider Error: $e");
+      
+      // Try to load from cache if offline fetch failed and sync is enabled
+      if (shouldUseOfflineSync) {
+        try {
+          final cachedData = await OfflineSyncService.getTransportData(
+            transportType: 'plane',
+            identifier: cacheIdentifier,
+          );
+          if (requestId != _fetchRequestId) return;
+          if (cachedData != null && cachedData is List) {
+            _scheduledFlights = (cachedData as List)
+                .map((item) => Flight.fromJson(item as Map<String, dynamic>))
+                .toList();
+            debugPrint('[PlaneProvider] Loaded offline data for ${_selectedAirport!.iata}');
+          } else {
+            _scheduledFlights = [];
+          }
+        } catch (e2) {
+          _scheduledFlights = [];
+        }
+      } else {
+        _scheduledFlights = [];
+      }
+    } finally {
+      if (requestId == _fetchRequestId) {
+        if (!silent) {
+          _isLoadingAirports = false;
+        }
+        notifyListeners();
+      }
     }
-    notifyListeners();
+  }
+
+  String _cacheIdentifier(String airportIata) {
+    final mode = _isArrivalMode ? 'arrivals' : 'departures';
+    return '${airportIata}_$mode';
   }
 
   void clearAirportSelection() {

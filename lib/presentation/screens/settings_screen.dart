@@ -121,6 +121,15 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 16),
               
               _buildMapStyleSelector(context, settings, theme),
+
+              const SizedBox(height: 32),
+              
+              _buildSectionTitle('Sincronizzazione Offline', theme),
+              const SizedBox(height: 16),
+              
+              _buildOfflineSyncToggle(context, settings, theme),
+
+              const SizedBox(height: 48),
             ],
           );
         },
@@ -888,4 +897,72 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildOfflineSyncToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_download, color: theme.primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Sincronizzazione Offline',
+                          style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: theme.primaryColor.withOpacity(0.2),
+                            border: Border.all(color: theme.primaryColor, width: 1.5),
+                          ),
+                          child: Text(
+                            'BETA',
+                            style: TextStyle(
+                              color: theme.primaryColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: settings.offlineSyncEnabled,
+                onChanged: (value) => settings.setOfflineSyncEnabled(value),
+                activeColor: theme.primaryColor,
+                activeTrackColor: theme.primaryColor.withOpacity(0.3),
+                inactiveThumbColor: theme.secondaryTextColor,
+                inactiveTrackColor: theme.secondaryTextColor.withOpacity(0.2),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Scarica automaticamente i dati di percorsi e orari quando sincronizzi da una città. I dati verranno salvati localmente e disponibili anche senza connessione.',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

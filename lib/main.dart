@@ -87,7 +87,10 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
         ChangeNotifierProxyProvider<SettingsProvider, TrainProvider>(
           create: (_) => TrainProvider(),
           update: (_, settings, train) {
-            train!.updateAutoRefresh(settings.trainRefreshSeconds);
+            train!.updateAutoRefresh(
+              settings.trainRefreshSeconds,
+              offlineSyncEnabled: settings.offlineSyncEnabled,
+            );
             return train;
           },
         ),
@@ -101,7 +104,10 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
         ChangeNotifierProxyProvider<SettingsProvider, PlaneProvider>(
           create: (_) => PlaneProvider(),
           update: (_, settings, plane) {
-            plane!.updateAutoRefresh(settings.planeRefreshSeconds);
+            plane!.updateAutoRefresh(
+              settings.planeRefreshSeconds,
+              offlineSyncEnabled: settings.offlineSyncEnabled,
+            );
             return plane;
           },
         ),

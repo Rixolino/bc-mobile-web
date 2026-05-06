@@ -29,6 +29,8 @@ class SettingsProvider with ChangeNotifier {
   static const String keyTrainArrivalPreNotice = 'train_arrival_prenotice_minutes';
   static const String keyBusProvider = 'bus_provider';
   static const String keyBusBaseUrl = 'bus_base_url';
+  static const String keyOfflineSyncEnabled = 'offline_sync_enabled';
+  static const String keyOfflineSyncBeta = 'offline_sync_beta';
 
   int _busRefreshSeconds = AUTO_REFRESH; // Default to Auto (-1)
   int _trainRefreshSeconds = AUTO_REFRESH;
@@ -59,6 +61,9 @@ class SettingsProvider with ChangeNotifier {
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
+
+  // Offline sync feature (beta)
+  bool _offlineSyncEnabled = false;
 
   // Returns effective rate (either manual or server-suggested auto)
   int get busRefreshSeconds => _busRefreshSeconds == AUTO_REFRESH ? _autoBusRate : _busRefreshSeconds;
@@ -94,6 +99,9 @@ class SettingsProvider with ChangeNotifier {
 
   // New: arrival pre-notice in minutes
   int get trainArrivalPreNoticeMinutes => _trainArrivalPreNoticeMinutes;
+  
+  // New: offline sync feature (beta)
+  bool get offlineSyncEnabled => _offlineSyncEnabled;
 
   SettingsProvider() {
     _loadSettings();
@@ -130,6 +138,9 @@ class SettingsProvider with ChangeNotifier {
     _trainArrivalPreNoticeMinutes = prefs.getInt(keyTrainArrivalPreNotice) ?? 10;
     _busProvider = prefs.getString(keyBusProvider) ?? 'bari';
     _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
+    
+    // Load offline sync feature
+    _offlineSyncEnabled = prefs.getBool(keyOfflineSyncEnabled) ?? false;
 
     notifyListeners();
     
@@ -348,6 +359,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyBusBaseUrl, baseUrl);
+  }
+
+  Future<void> setOfflineSyncEnabled(bool enabled) async {
+    _offlineSyncEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyOfflineSyncEnabled, enabled);
   }
 }
 
