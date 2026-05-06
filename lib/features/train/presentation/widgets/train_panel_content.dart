@@ -76,9 +76,19 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
     
     if (mounted && _isOffline != !hasInternet) {
+      final wasOffline = _isOffline;
       setState(() {
         _isOffline = !hasInternet;
       });
+      
+      // Se siamo tornati online, rifacciamo la ricerca se c'è testo
+      if (wasOffline && hasInternet) {
+        final provider = Provider.of<TrainProvider>(context, listen: false);
+        List<Map<String, String>> displayedCountries = provider.selectedService == 'direct' 
+            ? _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList() 
+            : _countries;
+        _onSearchChanged(_searchController.text, provider, displayedCountries);
+      }
     }
   }
 
