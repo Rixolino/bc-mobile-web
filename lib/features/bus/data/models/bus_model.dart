@@ -1,5 +1,55 @@
 import 'package:latlong2/latlong.dart';
 
+class BusLine {
+  final String lineNumber;
+  final List<String> routeKeys;
+  final int totalRoutes;
+  final int totalStops;
+  final List<BusRoute> routes;
+
+  BusLine({
+    required this.lineNumber,
+    required this.routeKeys,
+    required this.totalRoutes,
+    required this.totalStops,
+    required this.routes,
+  });
+
+  factory BusLine.fromJson(Map<String, dynamic> json) {
+    return BusLine(
+      lineNumber: json['lineNumber']?.toString() ?? '',
+      routeKeys: List<String>.from(json['routeKeys'] ?? []),
+      totalRoutes: json['totalRoutes'] ?? 0,
+      totalStops: json['totalStops'] ?? 0,
+      routes: (json['routes'] as List?)
+          ?.map((r) => BusRoute.fromJson(r as Map<String, dynamic>))
+          .toList() ?? [],
+    );
+  }
+}
+
+class BusRoute {
+  final String directionLabel;
+  final String destination;
+  final List<TripStop>? stops;
+
+  BusRoute({
+    required this.directionLabel,
+    required this.destination,
+    this.stops,
+  });
+
+  factory BusRoute.fromJson(Map<String, dynamic> json) {
+    return BusRoute(
+      directionLabel: json['directionLabel'] ?? json['direction'] ?? json['routeLongName'] ?? '',
+      destination: json['destination'] ?? json['dest'] ?? '',
+      stops: (json['stops'] as List?)
+          ?.map((s) => TripStop.fromJson(s as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
 class BusVehicle {
   final String id;
   final String line;
@@ -484,11 +534,11 @@ class TripStop {
 
   factory TripStop.fromJson(Map<String, dynamic> json) {
     return TripStop(
-      stopId: json['stopId']?.toString() ?? '',
-      stopName: json['stopName'] ?? '',
-      sequence: json['sequence'] ?? 0,
+      stopId: (json['stopId'] ?? json['stop_id'] ?? json['id'] ?? '')?.toString() ?? '',
+      stopName: json['stopName'] ?? json['stop_name'] ?? json['name'] ?? '',
+      sequence: json['sequence'] ?? json['seq'] ?? 0,
       status: json['status'] ?? 'future',
-      scheduledTime: json['scheduledTime'] ?? '',
+      scheduledTime: json['scheduledTime'] ?? json['time'] ?? '',
       estimatedArrivalUnix: json['estimatedArrivalUnix'],
       delay: json['delay'] ?? 0,
       isRealtime: json['isRealtime'] ?? false,
@@ -558,6 +608,7 @@ class BusProviderConfig {
   }
 
   bool get supportsSolutions => endpoints['solutions'] == true;
+  bool get supportsLines => endpoints['lines'] == true;
   
   /// Restituisce il prefisso dell'API per questo provider, es. "it/bus/bari"
   String get apiPathPrefix {

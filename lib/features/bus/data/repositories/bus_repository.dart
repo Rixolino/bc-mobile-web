@@ -139,6 +139,24 @@ class BusRepository {
     }
   }
 
+  Future<List<BusLine>> fetchBusLines(String providerName) async {
+    try {
+      final country = await _countryForProviderName(providerName);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$providerName/lines";
+      print('BusRepository: Fetching lines from $url');
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final List lines = json['lines'] ?? [];
+        return lines.map((l) => BusLine.fromJson(l)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching bus lines for $providerName: $e");
+      return [];
+    }
+  }
+
   Future<List<BusVehicle>> fetchFlixbusDepartures(String stationId) async {
     try {
       final response = await http.get(Uri.parse("$flixbusBase/departures?stationId=$stationId"));

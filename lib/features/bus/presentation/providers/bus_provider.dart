@@ -42,6 +42,10 @@ class BusProvider with ChangeNotifier {
   // Stop search results
   List<BariStop> _stopSearchResults = [];
 
+  // Bus Lines
+  List<BusLine> _busLines = [];
+  bool _isLoadingLines = false;
+
   List<BusVehicle> get vehicles => _vehicles;
   bool get isLoading => _isLoading;
   String get selectedCity => _selectedCity;
@@ -75,6 +79,10 @@ class BusProvider with ChangeNotifier {
 
   // Stop search getter
   List<BariStop> get stopSearchResults => _stopSearchResults;
+
+  // Bus Lines getters
+  List<BusLine> get busLines => _busLines;
+  bool get isLoadingLines => _isLoadingLines;
 
   // Trip stops data
   TripStopsData? _selectedTripStops;
@@ -378,6 +386,24 @@ class BusProvider with ChangeNotifier {
       if (!silent) {
         _isLoading = false;
       }
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchBusLines() async {
+    if (_selectedCity.isEmpty) return;
+    
+    _isLoadingLines = true;
+    _busLines = [];
+    notifyListeners();
+
+    try {
+      _busLines = await _repository.fetchBusLines(_selectedCity);
+    } catch (e) {
+      print("Error fetching bus lines for $_selectedCity: $e");
+      _busLines = [];
+    } finally {
+      _isLoadingLines = false;
       notifyListeners();
     }
   }

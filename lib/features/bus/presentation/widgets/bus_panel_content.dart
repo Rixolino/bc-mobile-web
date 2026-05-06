@@ -46,9 +46,11 @@ class _BusPanelContentState extends State<BusPanelContent> {
       builder: (context, theme, child) {
         final selectedProvider = _getSelectedProvider(busProvider);
         final supportsSolutions = selectedProvider?.supportsSolutions == true;
+        final supportsLines = selectedProvider?.supportsLines == true;
 
-        // Reset mode if solutions not supported
+        // Reset mode if selected mode is not supported
         if (!supportsSolutions && _selectedMode == 1) _selectedMode = 0;
+        if (!supportsLines && _selectedMode == 2) _selectedMode = 0;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -185,7 +187,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
             ),
             
             // 2. Mode Toggle Chips
-            if (supportsSolutions)
+            if (supportsSolutions || supportsLines)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: GlassmorphicContainer(
@@ -200,8 +202,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   child: Row(
                     children: [
                       Expanded(child: _buildGlassModeChip("Fermate", 0, theme)),
-                      Container(width: 1, height: 24, color: theme.secondaryTextColor.withOpacity(0.1)),
-                      Expanded(child: _buildGlassModeChip("Soluzioni", 1, theme)),
+                      if (supportsLines) ...[
+                        Container(width: 1, height: 24, color: theme.secondaryTextColor.withOpacity(0.1)),
+                        Expanded(child: _buildGlassModeChip("Linee", 2, theme)),
+                      ],
+                      if (supportsSolutions) ...[
+                        Container(width: 1, height: 24, color: theme.secondaryTextColor.withOpacity(0.1)),
+                        Expanded(child: _buildGlassModeChip("Soluzioni", 1, theme)),
+                      ],
                     ],
                   ),
                 ),
@@ -228,7 +236,15 @@ class _BusPanelContentState extends State<BusPanelContent> {
   Widget _buildGlassModeChip(String label, int index, ThemeProvider theme) {
     final isSelected = _selectedMode == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedMode = index),
+      onTap: () {
+        setState(() => _selectedMode = index);
+        if (index == 2) {
+          final busProvider = Provider.of<BusProvider>(context, listen: false);
+          if (busProvider.busLines.isEmpty) {
+            busProvider.fetchBusLines();
+          }
+        }
+      },
       child: Container(
         color: Colors.transparent,
         alignment: Alignment.center,
@@ -261,6 +277,48 @@ class _BusPanelContentState extends State<BusPanelContent> {
        );
     }
     
+    // If Linee Mode selected
+    if (_selectedMode == 2) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: GlassmorphicContainer(
+           width: double.infinity,
+           height: 56,
+           borderRadius: 16,
+           blur: 15,
+           alignment: Alignment.center,
+           border: 1.0,
+           linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.8), theme.surfaceColor.withOpacity(0.6)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+           borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
+           child: TextField(
+             controller: _searchController,
+             onChanged: (val) {
+                // We use search controller for lines search
+                setState(() {});
+             },
+             decoration: InputDecoration(
+                hintText: "Cerca linea...",
+                hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
+                prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
+                suffixIcon: _searchController.text.isNotEmpty 
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: theme.secondaryTextColor), 
+                      onPressed: () { 
+                        _searchController.clear(); 
+                        setState(() {});
+                      }
+                    ) 
+                  : null,
+                filled: false,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+             ),
+             style: TextStyle(color: theme.textColor),
+           ),
+        ),
+      );
+    }
+
     // Default (Realtime / Stops)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -588,6 +646,96 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
   Widget _buildResultsList(BusProvider busProvider, MapStateProvider mapState) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
+
+    // Mode 2: Linee
+    if (_selectedMode == 2) {
+      if (busProvider.isLoadingLines) {
+        return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+      }
+      
+      final filteredLines = _searchController.text.isEmpty 
+          ? busProvider.busLines 
+          : busProvider.busLines.where((l) => l.lineNumber.toLowerCase().contains(_searchController.text.toLowerCase())).toList();
+
+      if (filteredLines.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.directions_bus, size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
+              const SizedBox(height: 16),
+              Text(
+                busProvider.busLines.isEmpty ? "Nessuna linea caricata" : "Nessuna linea trovata",
+                style: TextStyle(color: theme.secondaryTextColor),
+              ),
+              if (busProvider.busLines.isEmpty) ...[
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => busProvider.fetchBusLines(),
+                  child: const Text("Carica Linee"),
+                )
+              ]
+            ],
+          ),
+        );
+      }
+
+      return ListView.builder(
+        itemCount: filteredLines.length,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemBuilder: (context, index) {
+          final line = filteredLines[index];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))
+              ],
+              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+            ),
+            child: ExpansionTile(
+              leading: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  line.lineNumber,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+              title: Text(
+                "Linea ${line.lineNumber}",
+                style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                "${line.totalRoutes} percorsi, ${line.totalStops} fermate",
+                style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+              ),
+              children: line.routes.map((route) {
+                return ListTile(
+                  dense: true,
+                  leading: Icon(Icons.alt_route, color: theme.secondaryTextColor, size: 18),
+                  title: Text(
+                    route.directionLabel,
+                    style: TextStyle(color: theme.textColor, fontSize: 13),
+                  ),
+                  trailing: Icon(Icons.arrow_forward_ios, size: 12, color: theme.secondaryTextColor),
+                  onTap: () {
+                    if (route.stops != null && route.stops!.isNotEmpty) {
+                      _showRouteStops(context, line.lineNumber, route, theme);
+                    }
+                  },
+                );
+              }).toList(),
+            ),
+          );
+        },
+      );
+    }
 
     // Mode 1: Solutions
     if (_selectedMode == 1) {
@@ -951,6 +1099,152 @@ class _BusPanelContentState extends State<BusPanelContent> {
         provider: '',
         solutionsUrl: null,
         endpoints: {},
+      ),
+    );
+  }
+
+  void _showRouteStops(BuildContext context, String lineNumber, BusRoute route, ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.secondaryTextColor.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          lineNumber,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          route.directionLabel,
+                          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    "Percorso verso ${route.destination}",
+                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 13),
+                  ),
+                ),
+                const Divider(height: 24),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: route.stops?.length ?? 0,
+                    itemBuilder: (context, index) {
+                      final stop = route.stops![index];
+                      final isLast = index == (route.stops!.length - 1);
+                      return IntrinsicHeight(
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 24),
+                            Column(
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: theme.primaryColor,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: theme.surfaceColor, width: 2),
+                                  ),
+                                ),
+                                if (!isLast)
+                                  Expanded(
+                                    child: Container(
+                                      width: 2,
+                                      color: theme.primaryColor.withOpacity(0.3),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      // Find full stop data to show details
+                                      final busProvider = Provider.of<BusProvider>(context, listen: false);
+                                      final fullStop = busProvider.stops.firstWhere(
+                                        (s) => s.stopId == stop.stopId,
+                                        orElse: () => BariStop(stopId: stop.stopId, stopName: stop.stopName, latitude: 0, longitude: 0),
+                                      );
+                                      if (fullStop.latitude != 0) {
+                                        final mapState = Provider.of<MapStateProvider>(context, listen: false);
+                                        mapState.flyTo(fullStop.latitude, fullStop.longitude, zoom: 16);
+                                      }
+                                      showModalBottomSheet(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        builder: (_) => BusStopDetailsSheet(stop: fullStop),
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      child: Text(
+                                        stop.stopName,
+                                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ),
+                                  if (!isLast) const SizedBox(height: 8),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
