@@ -1355,6 +1355,35 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
           const SizedBox(height: 16),
 
+          Consumer<TrainProvider>(
+            builder: (context, provider, _) {
+              if (provider.isUsingOfflineCache) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "Modalità offline: il progresso del treno è basato sui dati salvati l'ultima volta.",
+                          style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+
           // Secondary Actions Row (Horizontal Scroll) - Chip Style
           SizedBox(
             height: 38,
