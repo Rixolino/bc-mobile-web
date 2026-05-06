@@ -6,6 +6,7 @@ import '../models/bus_model.dart';
 
 class BusRepository {
   static const String flixbusBase = "https://prod.cuzimmartin.dev/api/flixbus";
+  List<BusProviderConfig>? _cachedProviders;
 
   String _countryFromProviderConfig(BusProviderConfig? provider) {
     if (provider == null) return 'it';
@@ -528,12 +529,14 @@ class BusRepository {
   }
 
   Future<List<BusProviderConfig>> fetchBusProviders() async {
+    if (_cachedProviders != null) return _cachedProviders!;
     try {
       final response = await http.get(Uri.parse("${ApiConstants.baseUrl}/config/bus_providers.json"));
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         final List providers = json['providers'] ?? [];
-        return providers.map((p) => BusProviderConfig.fromJson(p)).toList();
+        _cachedProviders = providers.map((p) => BusProviderConfig.fromJson(p)).toList();
+        return _cachedProviders!;
       }
       return [];
     } catch (e) {

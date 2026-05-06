@@ -250,6 +250,7 @@ class BusProvider with ChangeNotifier {
 
   void selectCity(String city) {
     _selectedCity = city;
+    _busLines = []; // Clear lines when switching providers
     _selectedProvider = _providers.firstWhere(
       (p) => p.name == city,
       orElse: () => BusProviderConfig(name: '', provider: '', endpoints: {}),
@@ -358,53 +359,72 @@ class BusProvider with ChangeNotifier {
   }
 
   Future<void> fetchVehicles({bool silent = false, bool offline = false}) async {
+    final cityAtStart = _selectedCity;
     if (!silent) {
       _isLoading = true;
       notifyListeners();
     }
     
     try {
-      print("BusProvider: Fetching vehicles for city: $_selectedCity");
+      print("BusProvider: Fetching vehicles for city: $cityAtStart");
       // For dynamic providers, use generic endpoint if supported
       BusProviderConfig? provider;
       try {
-        provider = _providers.firstWhere((p) => p.name == _selectedCity);
+        provider = _providers.firstWhere((p) => p.name == cityAtStart);
       } catch (e) {
         provider = null;
       }
       if (provider != null && provider.gpsUrl != null && provider.gpsUrl!.isNotEmpty) {
         print("BusProvider: Using GPS URL: ${provider.gpsUrl} (offline=$offline)");
-        _vehicles = await _repository.fetchVehicles(provider);
+        final fetchedVehicles = await _repository.fetchVehicles(provider);
+        if (_selectedCity == cityAtStart) {
+          _vehicles = fetchedVehicles;
+        }
       } else {
         print("BusProvider: Provider ${provider?.name} does not have GPS URL or not found");
-        _vehicles = [];
+        if (_selectedCity == cityAtStart) {
+          _vehicles = [];
+        }
       }
     } catch (e) {
       print("Provider Error: $e");
-      _vehicles = [];
-    } finally {
-      if (!silent) {
-        _isLoading = false;
+      if (_selectedCity == cityAtStart) {
+        _vehicles = [];
       }
-      notifyListeners();
+    } finally {
+      if (_selectedCity == cityAtStart) {
+        if (!silent) {
+          _isLoading = false;
+        }
+        notifyListeners();
+      }
     }
   }
 
   Future<void> fetchBusLines() async {
-    if (_selectedCity.isEmpty) return;
+    final cityAtStart = _selectedCity;
+    if (cityAtStart.isEmpty) return;
     
     _isLoadingLines = true;
     _busLines = [];
     notifyListeners();
 
     try {
-      _busLines = await _repository.fetchBusLines(_selectedCity);
+      final lines = await _repository.fetchBusLines(cityAtStart);
+      // Only update if we are still on the same city
+      if (_selectedCity == cityAtStart) {
+        _busLines = lines;
+      }
     } catch (e) {
-      print("Error fetching bus lines for $_selectedCity: $e");
-      _busLines = [];
+      print("Error fetching bus lines for $cityAtStart: $e");
+      if (_selectedCity == cityAtStart) {
+        _busLines = [];
+      }
     } finally {
-      _isLoadingLines = false;
-      notifyListeners();
+      if (_selectedCity == cityAtStart) {
+        _isLoadingLines = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -422,21 +442,31 @@ class BusProvider with ChangeNotifier {
 
   // Dynamic routing methods
   Future<void> fetchStops({bool offline = false}) async {
+    final cityAtStart = _selectedCity;
     _isLoadingStops = true;
     notifyListeners();
 
     try {
-      if (_selectedProvider != null) {
-        _stops = await _repository.fetchStops(_selectedProvider!, offline: offline);
+      if (_selectedProvider != null && _selectedCity == cityAtStart) {
+        final fetchedStops = await _repository.fetchStops(_selectedProvider!, offline: offline);
+        if (_selectedCity == cityAtStart) {
+          _stops = fetchedStops;
+        }
       } else {
-        _stops = [];
+        if (_selectedCity == cityAtStart) {
+          _stops = [];
+        }
       }
     } catch (e) {
-      print("Error fetching stops for $_selectedCity: $e");
-      _stops = [];
+      print("Error fetching stops for $cityAtStart: $e");
+      if (_selectedCity == cityAtStart) {
+        _stops = [];
+      }
     } finally {
-      _isLoadingStops = false;
-      notifyListeners();
+      if (_selectedCity == cityAtStart) {
+        _isLoadingStops = false;
+        notifyListeners();
+      }
     }
   }
 
