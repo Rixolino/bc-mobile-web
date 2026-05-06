@@ -44,47 +44,18 @@ class TrainStation {
       type: getValue(json, fields['type'] ?? 'type')?.toString(),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'country': country,
+      'type': type,
+    };
+  }
 }
 
 class TrainDeparture {
-/* ... */
-  factory TrainDeparture.fromDynamicJson(Map<String, dynamic> json, Map<String, dynamic> config) {
-    final fields = config['fields'] as Map<String, dynamic>? ?? {};
-    
-    dynamic getValue(dynamic obj, String path) {
-      if (obj == null) return null;
-      final keys = path.split('.');
-      dynamic current = obj;
-      for (final key in keys) {
-        if (current is Map && current.containsKey(key)) {
-          current = current[key];
-        } else {
-          return null;
-        }
-      }
-      return current;
-    }
-
-    List<Map<String, dynamic>>? tripMessages;
-    final rawMsgs = getValue(json, fields['messages'] ?? 'messages');
-    if (rawMsgs is List && rawMsgs.isNotEmpty) {
-      tripMessages = rawMsgs.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? Map<String, dynamic>.from(e) : (e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()})).toList();
-    }
-
-    return TrainDeparture(
-      trainNumber: getValue(json, fields['trainNumber'] ?? 'trainNumber')?.toString(),
-      category: getValue(json, fields['category'] ?? 'category')?.toString(),
-      destination: getValue(json, fields['destination'] ?? 'destination')?.toString(),
-      origin: getValue(json, fields['origin'] ?? 'origin')?.toString(),
-      scheduledTime: _parseTime(getValue(json, fields['scheduledTime'] ?? 'scheduledTime')),
-      estimatedTime: _parseTime(getValue(json, fields['estimatedTime'] ?? 'estimatedTime')),
-      platform: getValue(json, fields['platform'] ?? 'platform')?.toString(),
-      delayMinutes: int.tryParse(getValue(json, fields['delay'] ?? 'delay')?.toString() ?? '0'),
-      status: getValue(json, fields['status'] ?? 'status')?.toString(),
-      tripId: getValue(json, fields['tripId'] ?? 'tripId')?.toString(),
-      messages: tripMessages,
-    );
-  }
   final String? trainNumber;
   final String? category;
   final String? destination;
@@ -396,4 +367,3 @@ class FALWarning {
     );
   }
 }
-

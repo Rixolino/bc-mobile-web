@@ -91,6 +91,34 @@ class OfflineSyncService {
     }
   }
 
+  /// Returns all cached identifiers for a specific transport type.
+  static Future<List<String>> getAllCachedIdentifiers(String transportType) async {
+    try {
+      final cacheDir = await _getCacheDir();
+      final dir = Directory(cacheDir.path);
+      if (!await dir.exists()) return [];
+
+      final files = dir.listSync();
+      final List<String> identifiers = [];
+      final prefix = '${transportType}_';
+
+      for (var file in files) {
+        if (file is File) {
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          if (fileName.startsWith(prefix) && fileName.endsWith('.json')) {
+            // Remove prefix and .json extension
+            final id = fileName.substring(prefix.length, fileName.length - 5);
+            identifiers.add(id);
+          }
+        }
+      }
+      return identifiers;
+    } catch (e) {
+      debugPrint('[OfflineSync] Error getting identifiers: $e');
+      return [];
+    }
+  }
+
   /// Gets the last sync timestamp for cached data (milliseconds since epoch).
   /// Returns null if no cached data.
   static Future<int?> getLastSyncTime({

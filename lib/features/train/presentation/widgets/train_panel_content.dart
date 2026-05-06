@@ -7,7 +7,6 @@ import 'package:marquee/marquee.dart';
 import '../providers/train_provider.dart';
 import '../../data/models/train_model.dart';
 import '../../../../presentation/providers/settings_provider.dart';
-
 import 'train_details_sheet.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -18,6 +17,8 @@ import 'shimmer_and_toggle.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -38,7 +39,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   List<Map<String, String>> _countries = [];
   Map<String, List<Map<String, String>>> _citiesByCountry = {};
   List<String> _countryOrder = [];
-  // bool _countriesLoaded = false; // no longer tracked
+  bool _isOffline = false;
+  Timer? _connectivityTimer;
 
   final Map<String, String> countryNames = {
     'AT': 'Austria', 'BE': 'Belgio', 'CH': 'Svizzera', 'CZ': 'Rep. Ceca',
@@ -53,11 +55,37 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   void initState() {
     super.initState();
     _loadCountries();
+    _startConnectivityMonitor();
+  }
+
+  void _startConnectivityMonitor() {
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 5), (_) => _checkConnectivity());
+    _checkConnectivity();
+  }
+
+  Future<void> _checkConnectivity() async {
+    Socket? socket;
+    bool hasInternet = false;
+    try {
+      socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 2));
+      hasInternet = true;
+    } catch (_) {
+      hasInternet = false;
+    } finally {
+      socket?.destroy();
+    }
+    
+    if (mounted && _isOffline != !hasInternet) {
+      setState(() {
+        _isOffline = !hasInternet;
+      });
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _connectivityTimer?.cancel();
     super.dispose();
   }
 
@@ -329,12 +357,139 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       children: [
         _buildSearchHeader(provider, theme, displayedCountries),
         _buildFavoriteSection(provider, theme),
+        _buildSavedTrainsButton(provider, theme),
         Expanded(
-          child: provider.isLoadingSuggestions 
-              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
-              : _buildStationSuggestionsList(provider, theme),
+          child: _isOffline 
+              ? _buildOfflineError(theme)
+              : (provider.isLoadingSuggestions 
+                  ? ShimmerLoading(baseColor: theme.secondaryTextColor)
+                  : _buildStationSuggestionsList(provider, theme)),
         ),
       ],
+    );
+  }
+
+  Widget _buildOfflineError(ThemeProvider theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
+          const SizedBox(height: 16),
+          Text(
+            "Sei offline",
+            style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Connettiti per cercare nuove stazioni",
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavedTrainsButton(TrainProvider provider, ThemeProvider theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: () => _showSavedStationsSheet(provider, theme),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withOpacity(_isOffline ? 0.2 : 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.download_done_rounded, color: theme.primaryColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Treni Salvati", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
+                    Text("Accedi ai dati scaricati offline", style: TextStyle(color: theme.secondaryTextColor, fontSize: 11)),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 16, color: theme.secondaryTextColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSavedStationsSheet(TrainProvider provider, ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        builder: (ctx, sc) => Container(
+          decoration: BoxDecoration(
+            color: theme.backgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              Text("Treni Salvati (Offline)", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: provider.getDownloadedTrains(),
+                  builder: (ctx, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final items = snapshot.data!;
+                    if (items.isEmpty) {
+                      return Center(child: Text("Nessun dato salvato offline", style: TextStyle(color: theme.secondaryTextColor)));
+                    }
+                    return ListView.builder(
+                      controller: sc,
+                      itemCount: items.length,
+                      itemBuilder: (ctx, i) {
+                        final item = items[i];
+                        final station = TrainStation.fromJson(item['station']);
+                        final train = TrainDeparture.fromJson(item['train']);
+                        return ListTile(
+                          leading: Icon(Icons.train_rounded, color: theme.primaryColor),
+                          title: Text("${train.category ?? ''} ${train.trainNumber ?? ''}", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
+                          subtitle: Text("${train.origin ?? 'N/A'} \u2192 ${train.destination ?? 'N/A'}\n${station.name} (${item['mode'] == 'arrivals' ? 'Arrivi' : 'Partenze'})", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+                          trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+                          isThreeLine: true,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            // Use selectSavedTrain to load data without network fetch
+                            provider.selectSavedTrain(
+                              station, 
+                              train, 
+                              item['service'], 
+                              item['mode']
+                            );
+                            
+                            // Open details sheet immediately
+                            _showTrainDetails(context, train, -1, theme);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -568,8 +723,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   // (Mantenuti tutti i restanti metodi originali per logica preferiti e dettagli...)
-  // ... _searchStationsMultipleCountries, _showTrainDetails, _buildFavoriteSection, ecc.
-
+  
   Future<void> _searchStationsMultipleCountries(String query, List<Map<String, String>> countries, TrainProvider provider) async {
     final codes = countries.map((c) => c['code']!).toList();
     final results = await Future.wait(codes.map((code) => provider.searchStations(query, country: code).then((_) => provider.stationSuggestions.toList()).catchError((_) => <TrainStation>[])));

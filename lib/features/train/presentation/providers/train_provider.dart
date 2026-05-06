@@ -160,6 +160,17 @@ class TrainProvider with ChangeNotifier {
     fetchDepartures(station.id, country: station.country);
   }
 
+  void selectSavedTrain(TrainStation station, TrainDeparture train, String service, String mode) {
+    _selectedStation = station;
+    _selectedService = service;
+    _isArrivalMode = mode == 'arrivals';
+    _departures = [train]; 
+    _isUsingOfflineCache = true;
+    _isLoadingDepartures = false;
+    setOnlineAutoRefreshBlocked(true);
+    notifyListeners();
+  }
+
   // Helper to fetch with offline sync (called from UI with settings context)
   Future<void> fetchDeparturesWithOfflineSync(bool offlineSyncEnabled) async {
     _offlineSyncEnabled = offlineSyncEnabled;
@@ -268,7 +279,13 @@ class TrainProvider with ChangeNotifier {
           await OfflineSyncService.saveTransportData(
             transportType: 'train',
             identifier: cacheIdentifier,
-            data: _departures.map((d) => d.toJson()).toList(),
+            data: {
+              'station': _selectedStation?.toJson(),
+              'service': _selectedService,
+              'mode': _isArrivalMode ? 'arrivals' : 'departures',
+              'departures': _departures.map((d) => d.toJson()).toList(),
+              'lastUpdated': DateTime.now().toIso8601String(),
+            },
           );
           debugPrint('[TrainProvider] Synced offline data for train station $stationId');
         } catch (e) {
@@ -286,7 +303,15 @@ class TrainProvider with ChangeNotifier {
              identifier: cacheIdentifier,
            );
            if (requestId != _fetchRequestId) return;
-           if (cachedData != null && cachedData is List) {
+            if (cachedData != null && cachedData is Map) {
+              final departuresData = cachedData['departures'] as List;
+              _departures = departuresData
+                  .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
+                  .toList();
+               _isUsingOfflineCache = true;
+               setOnlineAutoRefreshBlocked(true);
+               debugPrint('[TrainProvider] Loaded offline data for train station $stationId');
+            } else if (cachedData != null && cachedData is List) {
              _departures = (cachedData as List)
                  .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
                  .toList();
@@ -327,14 +352,24 @@ class TrainProvider with ChangeNotifier {
         transportType: 'train',
         identifier: cacheIdentifier,
       );
-      if (cachedData != null && cachedData is List) {
-        _departures = cachedData
+      if (cachedData != null && cachedData is Map) {
+        final departuresData = cachedData['departures'] as List;
+        _departures = departuresData
             .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
             .toList();
         _isUsingOfflineCache = true;
         setOnlineAutoRefreshBlocked(true);
         _isLoadingDepartures = false;
         debugPrint('[TrainProvider] Switched immediately to offline cache for train station $stationId');
+        notifyListeners();
+      } else if (cachedData != null && cachedData is List) {
+        // Backward compatibility
+        _departures = cachedData
+            .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
+            .toList();
+        _isUsingOfflineCache = true;
+        setOnlineAutoRefreshBlocked(true);
+        _isLoadingDepartures = false;
         notifyListeners();
       }
     } catch (e) {
@@ -420,10 +455,68 @@ class TrainProvider with ChangeNotifier {
       await OfflineSyncService.saveTransportData(
         transportType: 'train',
         identifier: _cacheIdentifier(stationId, country),
-        data: _departures.map((d) => d.toJson()).toList(),
+        data: {
+          'station': _selectedStation?.toJson(),
+          'service': _selectedService,
+          'mode': _isArrivalMode ? 'arrivals' : 'departures',
+          'departures': _departures.map((d) => d.toJson()).toList(),
+          'lastUpdated': DateTime.now().toIso8601String(),
+        },
       );
     } catch (e) {
       debugPrint('[TrainProvider] Error saving detailed offline data: $e');
     }
+  }
+
+  Future<void> saveTrainOffline(TrainDeparture train) async {
+    if (_selectedStation == null) return;
+    
+    final identifier = 'train_detail_${train.tripId}_${_selectedStation!.id}';
+    await OfflineSyncService.saveTransportData(
+      transportType: 'train',
+      identifier: identifier,
+      data: {
+        'station': _selectedStation?.toJson(),
+        'service': _selectedService,
+        'mode': _isArrivalMode ? 'arrivals' : 'departures',
+        'train': train.toJson(),
+        'lastUpdated': DateTime.now().toIso8601String(),
+      },
+    );
+    notifyListeners();
+  }
+
+  Future<bool> isTrainCachedOffline(String? tripId) async {
+    if (tripId == null || _selectedStation == null) return false;
+    final identifier = 'train_detail_${tripId}_${_selectedStation!.id}';
+    return await OfflineSyncService.isCached(
+      transportType: 'train',
+      identifier: identifier,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getDownloadedTrains() async {
+    final identifiers = await OfflineSyncService.getAllCachedIdentifiers('train');
+    final List<Map<String, dynamic>> results = [];
+    
+    for (final id in identifiers) {
+      if (!id.startsWith('train_detail_')) continue;
+      
+      final data = await OfflineSyncService.getTransportData(
+        transportType: 'train',
+        identifier: id,
+      );
+      if (data != null && data is Map) {
+        results.add({
+          'id': id,
+          'station': data['station'],
+          'service': data['service'],
+          'mode': data['mode'],
+          'train': data['train'],
+          'lastUpdated': data['lastUpdated'],
+        });
+      }
+    }
+    return results;
   }
 }

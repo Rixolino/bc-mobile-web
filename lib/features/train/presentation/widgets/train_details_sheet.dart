@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +10,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
+import '../../../../core/services/offline_sync_service.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
@@ -684,6 +685,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   bool _isNetworkOffline = false;
   bool _preventOnlineAutoRefresh = false;
   bool _isHandlingConnectivityChange = false;
+  bool _isCachedOffline = false;
 
   @override
   void initState() {
@@ -692,9 +694,22 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     _startAutoRefresh();
     _startConnectivityMonitor();
+    _checkCacheStatus();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _checkCacheStatus() async {
+    if (_trainProvider.selectedStation == null) return;
+    
+    final isCached = await _trainProvider.isTrainCachedOffline(widget.departure.tripId);
+    
+    if (mounted) {
+      setState(() {
+        _isCachedOffline = isCached;
+      });
+    }
   }
 
   @override
@@ -1309,13 +1324,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                     child: _buildOfflineSyncButton(
                       context: context,
                       theme: theme,
+                      isCached: _isCachedOffline,
                       onSync: () async {
                         final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-                        await trainProvider.fetchDeparturesWithOfflineSync(true);
+                        await trainProvider.saveTrainOffline(widget.departure);
+                        await _checkCacheStatus();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text('Dati sincronizzati offline'),
+                              content: const Text('Treno salvato per modalità offline'),
                               backgroundColor: theme.primaryColor,
                               duration: const Duration(seconds: 2),
                             ),
@@ -1839,11 +1856,12 @@ Widget _buildOfflineSyncButton({
   required BuildContext context,
   required ThemeProvider theme,
   required VoidCallback onSync,
+  bool isCached = false,
 }) {
   return _PrimaryActionChip(
-    icon: Icons.cloud_download_rounded,
-    label: "Sync",
-    isActive: false,
+    icon: isCached ? Icons.cloud_done_rounded : Icons.cloud_download_rounded,
+    label: "Offline mode",
+    isActive: isCached,
     theme: theme,
     onTap: onSync,
   );
