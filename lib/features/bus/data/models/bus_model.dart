@@ -17,12 +17,12 @@ class BusLine {
 
   factory BusLine.fromJson(Map<String, dynamic> json) {
     return BusLine(
-      lineNumber: json['lineNumber']?.toString() ?? '',
-      routeKeys: List<String>.from(json['routeKeys'] ?? []),
-      totalRoutes: json['totalRoutes'] ?? 0,
-      totalStops: json['totalStops'] ?? 0,
+      lineNumber: (json['lineNumber'] ?? json['line_number'] ?? json['route_short_name'] ?? json['id'] ?? '').toString(),
+      routeKeys: List<String>.from(json['routeKeys'] ?? json['route_keys'] ?? []),
+      totalRoutes: json['totalRoutes'] ?? json['total_routes'] ?? 0,
+      totalStops: json['totalStops'] ?? json['total_stops'] ?? 0,
       routes: (json['routes'] as List?)
-          ?.map((r) => BusRoute.fromJson(r as Map<String, dynamic>))
+          ?.map((r) => BusRoute.fromJson(Map<String, dynamic>.from(r)))
           .toList() ?? [],
     );
   }
@@ -41,10 +41,10 @@ class BusRoute {
 
   factory BusRoute.fromJson(Map<String, dynamic> json) {
     return BusRoute(
-      directionLabel: json['directionLabel'] ?? json['direction'] ?? json['routeLongName'] ?? '',
+      directionLabel: json['directionLabel'] ?? json['direction_label'] ?? json['direction'] ?? json['routeLongName'] ?? '',
       destination: json['destination'] ?? json['dest'] ?? '',
       stops: (json['stops'] as List?)
-          ?.map((s) => TripStop.fromJson(s as Map<String, dynamic>))
+          ?.map((s) => TripStop.fromJson(Map<String, dynamic>.from(s)))
           .toList(),
     );
   }
@@ -77,39 +77,39 @@ class BusVehicle {
 
   factory BusVehicle.fromGtfsRtJson(Map<String, dynamic> json, String providerName) {
     // Handle direct format: fields directly in json (from realtime API)
-    if (json['position'] != null) {
-      final pos = json['position'];
+    if (json['position'] != null || json['pos'] != null) {
+      final pos = json['position'] ?? json['pos'];
       return BusVehicle(
-        id: json['vehicleId']?.toString() ?? '?',
-        line: json['routeId']?.toString() ?? '?',
-        destination: json['destination']?.toString(),
-        latitude: pos['lat']?.toDouble() ?? 0.0,
-        longitude: pos['lng']?.toDouble() ?? 0.0,
-        heading: pos['bearing']?.toString(),
-        speed: pos['speed']?.toString(),
+        id: (json['vehicleId'] ?? json['id'] ?? json['vehicle_id'] ?? '?').toString(),
+        line: (json['routeId'] ?? json['route_id'] ?? json['line'] ?? '?').toString(),
+        destination: (json['destination'] ?? json['dest'] ?? json['direction'] ?? '').toString(),
+        latitude: (pos['lat'] ?? pos['latitude'] ?? 0.0).toDouble(),
+        longitude: (pos['lng'] ?? pos['longitude'] ?? 0.0).toDouble(),
+        heading: (pos['bearing'] ?? pos['heading'] ?? '').toString(),
+        speed: (pos['speed'] ?? '').toString(),
         provider: providerName,
-        tripId: json['tripId']?.toString(),
-        isLivePosition: true, // This is from realtime API
+        tripId: (json['tripId'] ?? json['trip_id'] ?? '').toString(),
+        isLivePosition: true,
       );
     }
 
     // Handle new format: {"id": "3204", "vehicle": {...}} (GTFS-RT format)
     if (json['vehicle'] != null) {
       final v = json['vehicle'];
-      final pos = v['position'] ?? {};
-      final trip = v['trip'] ?? {};
-      final vehicle = v['vehicle'] ?? {};
+      final pos = v['position'] ?? v['pos'] ?? {};
+      final trip = v['trip'] ?? v['Trip'] ?? {};
+      final vehicle = v['vehicle'] ?? v['Vehicle'] ?? {};
 
       return BusVehicle(
-        id: vehicle['id']?.toString() ?? json['id']?.toString() ?? '?',
-        line: trip['routeId']?.toString() ?? '?',
-        destination: v['destination']?.toString(),
-        latitude: pos['latitude']?.toDouble() ?? 0.0,
-        longitude: pos['longitude']?.toDouble() ?? 0.0,
-        heading: pos['bearing']?.toString(),
-        speed: pos['speed']?.toString(),
+        id: (vehicle['id'] ?? vehicle['vehicleId'] ?? json['id'] ?? '?').toString(),
+        line: (trip['routeId'] ?? trip['route_id'] ?? trip['line'] ?? '?').toString(),
+        destination: (v['destination'] ?? v['dest'] ?? v['direction'] ?? '').toString(),
+        latitude: (pos['latitude'] ?? pos['lat'] ?? 0.0).toDouble(),
+        longitude: (pos['longitude'] ?? pos['lng'] ?? 0.0).toDouble(),
+        heading: (pos['bearing'] ?? pos['heading'] ?? '').toString(),
+        speed: (pos['speed'] ?? '').toString(),
         provider: 'Bari',
-        tripId: trip['tripId']?.toString(),
+        tripId: (trip['tripId'] ?? trip['trip_id'] ?? '').toString(),
         isLivePosition: true, // GTFS-RT is realtime
       );
     }
@@ -234,10 +234,10 @@ class BariStop {
 
   factory BariStop.fromJson(Map<String, dynamic> json) {
     return BariStop(
-      stopId: json['stop_id']?.toString() ?? '',
-      stopName: json['stop_name'] ?? '',
-      latitude: double.tryParse(json['stop_lat']?.toString() ?? '0') ?? 0.0,
-      longitude: double.tryParse(json['stop_lon']?.toString() ?? '0') ?? 0.0,
+      stopId: (json['stop_id'] ?? json['stopId'] ?? json['id'] ?? '').toString(),
+      stopName: (json['stop_name'] ?? json['stopName'] ?? json['name'] ?? '').toString(),
+      latitude: double.tryParse((json['stop_lat'] ?? json['stopLat'] ?? json['latitude'] ?? json['lat'] ?? '0').toString()) ?? 0.0,
+      longitude: double.tryParse((json['stop_lon'] ?? json['stopLon'] ?? json['longitude'] ?? json['lon'] ?? '0').toString()) ?? 0.0,
     );
   }
 }

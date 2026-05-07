@@ -649,7 +649,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     // Mode 2: Linee
     if (_selectedMode == 2) {
-      if (busProvider.isLoadingLines) {
+      if (busProvider.isLoadingLines && busProvider.busLines.isEmpty) {
         return Center(child: CircularProgressIndicator(color: theme.primaryColor));
       }
       
@@ -681,9 +681,21 @@ class _BusPanelContentState extends State<BusPanelContent> {
       }
 
       return ListView.builder(
-        itemCount: filteredLines.length,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: filteredLines.length + (busProvider.isLoadingLines ? 1 : 0),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 200),
         itemBuilder: (context, index) {
+          if (index == filteredLines.length) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor),
+                ),
+              ),
+            );
+          }
           final line = filteredLines[index];
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -777,6 +789,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
          );
        }
        return ListView.separated(
+         padding: const EdgeInsets.only(bottom: 100),
          itemCount: filteredStops.length,
          separatorBuilder: (_,__) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
          itemBuilder: (context, index) {
@@ -819,6 +832,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     if (busProvider.selectedCity == "Flixbus") {
       return ListView.builder(
+        padding: const EdgeInsets.only(bottom: 100),
         itemCount: busProvider.flixbusStations.length,
         itemBuilder: (context, index) {
           final station = busProvider.flixbusStations[index];
@@ -863,7 +877,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     return ListView.builder(
       itemCount: busProvider.vehicles.length,
-      padding: const EdgeInsets.only(bottom: 80, top: 4),
+      padding: const EdgeInsets.only(bottom: 100, top: 4),
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final v = busProvider.vehicles[index];
@@ -1049,6 +1063,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
   Widget _buildBariSolutionsList(BusProvider busProvider, MapStateProvider mapState) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100),
       itemCount: busProvider.bariSolutions.length,
       itemBuilder: (context, index) {
         final solution = busProvider.bariSolutions[index];
@@ -1168,6 +1183,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 const Divider(height: 24),
                 Expanded(
                   child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 60),
                     controller: scrollController,
                     itemCount: route.stops?.length ?? 0,
                     itemBuilder: (context, index) {

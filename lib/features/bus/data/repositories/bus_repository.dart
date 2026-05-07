@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/api_constants.dart';
 import '../models/bus_model.dart';
@@ -141,21 +142,71 @@ class BusRepository {
   }
 
   Future<List<BusLine>> fetchBusLines(String providerName) async {
+    final List<BusLine> allLines = [];
+    await fetchBusLinesIncremental(
+      providerName,
+      onChunk: (chunk) => allLines.addAll(chunk),
+    );
+    return allLines;
+  }
+
+  Future<void> fetchBusLinesIncremental(
+    String providerName, {
+    required void Function(List<BusLine> chunk) onChunk,
+    String? query,
+  }) async {
     try {
       final country = await _countryForProviderName(providerName);
-      final url = "${ApiConstants.baseUrl}/api/$country/bus/$providerName/lines";
-      print('BusRepository: Fetching lines from $url');
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        final List lines = json['lines'] ?? [];
-        return lines.map((l) => BusLine.fromJson(l)).toList();
-      }
-      return [];
+      int currentPage = 1;
+      int totalPages = 1;
+      const int chunkSize = 100;
+
+      do {
+        var url = "${ApiConstants.baseUrl}/api/$country/bus/$providerName/lines?page=$currentPage&chunkSize=$chunkSize";
+        if (query != null && query.isNotEmpty) {
+          url += "&q=${Uri.encodeComponent(query)}";
+        }
+        
+        print('BusRepository: Fetching chunk $currentPage from $url');
+        final response = await http.get(Uri.parse(url));
+        
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = jsonDecode(response.body);
+          final List linesJson = data['lines'] ?? [];
+          
+          // Background parsing for the chunk
+          final chunk = await compute(_parseBusLinesList, linesJson);
+          onChunk(chunk);
+
+          final pagination = data['pagination'];
+          if (pagination != null) {
+            totalPages = pagination['totalPages'] ?? 1;
+          } else {
+            // If no pagination object, it means it returned all lines in one go
+            break;
+          }
+        } else {
+          break;
+        }
+        currentPage++;
+      } while (currentPage <= totalPages);
+
     } catch (e) {
-      print("Error fetching bus lines for $providerName: $e");
-      return [];
+      print("Error fetching incremental bus lines for $providerName: $e");
     }
+  }
+
+  // Helper for parsing a list of lines in background
+  static List<BusLine> _parseBusLinesList(dynamic linesJson) {
+    if (linesJson is! List) return [];
+    return linesJson.map((l) => BusLine.fromJson(Map<String, dynamic>.from(l))).toList();
+  }
+
+  // Top-level or static helper for compute
+  static List<BusLine> _parseBusLines(String responseBody) {
+    final Map<String, dynamic> data = jsonDecode(responseBody);
+    final List linesJson = data['lines'] ?? [];
+    return linesJson.map((l) => BusLine.fromJson(Map<String, dynamic>.from(l))).toList();
   }
 
   Future<List<BusVehicle>> fetchFlixbusDepartures(String stationId) async {
@@ -180,14 +231,19 @@ class BusRepository {
       if (offline) url += "?offline=true";
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((e) => BariStop.fromJson(e)).toList();
+        // Use compute for parsing potentially large stop lists (like Turin)
+        return await compute(_parseBariStops, response.body);
       }
       return [];
     } catch (e) {
       print("Error fetching stops for ${provider.name}: $e");
       return [];
     }
+  }
+
+  static List<BariStop> _parseBariStops(String responseBody) {
+    final List<dynamic> data = json.decode(responseBody);
+    return data.map((e) => BariStop.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<BariStop>> fetchBariStops() async {

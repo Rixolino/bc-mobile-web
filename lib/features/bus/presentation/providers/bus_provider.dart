@@ -410,21 +410,23 @@ class BusProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final lines = await _repository.fetchBusLines(cityAtStart);
-      // Only update if we are still on the same city
-      if (_selectedCity == cityAtStart) {
-        _busLines = lines;
-      }
+      await _repository.fetchBusLinesIncremental(
+        cityAtStart,
+        onChunk: (chunk) {
+          if (_selectedCity == cityAtStart) {
+            _busLines.addAll(chunk);
+            notifyListeners();
+          }
+        },
+      );
     } catch (e) {
       print("Error fetching bus lines for $cityAtStart: $e");
       if (_selectedCity == cityAtStart) {
         _busLines = [];
       }
     } finally {
-      if (_selectedCity == cityAtStart) {
-        _isLoadingLines = false;
-        notifyListeners();
-      }
+      _isLoadingLines = false;
+      notifyListeners();
     }
   }
 
