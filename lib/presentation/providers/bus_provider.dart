@@ -118,7 +118,7 @@ class BusProvider with ChangeNotifier {
             identifier: _selectedCity,
           );
           if (cachedData != null && cachedData is List) {
-            _vehicles = (cachedData as List)
+            _vehicles = cachedData
                 .map((item) => BusVehicle.fromJson(item as Map<String, dynamic>))
                 .toList();
             debugPrint('[BusProvider] Loaded offline data for $_selectedCity');

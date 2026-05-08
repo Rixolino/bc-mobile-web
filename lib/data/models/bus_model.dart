@@ -94,6 +94,34 @@ class BusVehicle {
       provider: 'Flixbus',
     );
   }
+
+  factory BusVehicle.fromJson(Map<String, dynamic> json) {
+    return BusVehicle(
+      id: json['id']?.toString() ?? '?',
+      line: json['line']?.toString() ?? '?',
+      destination: json['destination']?.toString(),
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      heading: json['heading']?.toString(),
+      speed: json['speed']?.toString(),
+      provider: json['provider']?.toString(),
+      isLivePosition: json['isLivePosition'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'line': line,
+      'destination': destination,
+      'latitude': latitude,
+      'longitude': longitude,
+      'heading': heading,
+      'speed': speed,
+      'provider': provider,
+      'isLivePosition': isLivePosition,
+    };
+  }
 }
 
 class BusTripUpdate {

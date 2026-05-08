@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
+import '../../data/models/plane_model.dart';
 import '../providers/plane_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -270,6 +271,10 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
           Text("RISULTATO RICERCA", style: TextStyle(color: theme.secondaryTextColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
           const SizedBox(height: 12),
           _buildAirportCard(provider.selectedAirport!, theme, mapState),
+          const SizedBox(height: 16),
+          _buildArrivalDepartureToggle(theme, provider),
+          const SizedBox(height: 16),
+          _buildAirportFlightsSection(theme, provider, mapState),
           const SizedBox(height: 24),
         ],
         Text("AEROPORTI VICINI", style: TextStyle(color: theme.secondaryTextColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
@@ -298,9 +303,160 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
         subtitle: Text(a.iata.isNotEmpty ? a.iata : a.city, style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
         trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
         onTap: () {
+          final airport = a as Airport;
+          Provider.of<PlaneProvider>(context, listen: false).selectAirport(airport);
           if (a.lat != 0 && a.lng != 0) {
             mapState.flyTo(a.lat, a.lng, zoom: 13);
           }
+        },
+      ),
+    );
+  }
+
+  Widget _buildArrivalDepartureToggle(ThemeProvider theme, PlaneProvider provider) {
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: () => provider.setArrivalMode(false),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: provider.isArrivalMode ? theme.surfaceColor : theme.primaryColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(
+                  'Partenze',
+                  style: TextStyle(
+                    color: provider.isArrivalMode ? theme.textColor : Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => provider.setArrivalMode(true),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: provider.isArrivalMode ? theme.primaryColor : theme.surfaceColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(
+                  'Arrivi',
+                  style: TextStyle(
+                    color: provider.isArrivalMode ? Colors.white : theme.textColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAirportFlightsSection(ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    if (provider.isLoadingAirports) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: CircularProgressIndicator(),
+      ));
+    }
+
+    if (provider.scheduledFlights.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'Nessun volo disponibile per questo aeroporto.',
+          style: TextStyle(color: theme.secondaryTextColor),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          provider.isArrivalMode ? 'ARRIVI' : 'PARTENZE',
+          style: TextStyle(
+            color: theme.secondaryTextColor,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...provider.scheduledFlights.map((f) => _buildScheduledFlightCard(f, theme, provider, mapState)),
+      ],
+    );
+  }
+
+  Widget _buildScheduledFlightCard(Flight f, ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    String fmt(DateTime? d) {
+      if (d == null) return '--:--';
+      final hh = d.hour.toString().padLeft(2, '0');
+      final mm = d.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    }
+
+    final scheduled = provider.isArrivalMode ? f.scheduledArrival : f.scheduledDeparture;
+    final estimated = provider.isArrivalMode ? f.estimatedArrival : f.estimatedDeparture;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
+      ),
+      child: ListTile(
+        leading: Icon(
+          provider.isArrivalMode ? Icons.flight_land_rounded : Icons.flight_takeoff_rounded,
+          color: theme.primaryColor,
+        ),
+        title: Text(
+          '${f.flightNumber} • ${f.airline}',
+          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          provider.isArrivalMode ? f.origin : f.destination,
+          style: TextStyle(color: theme.secondaryTextColor),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(fmt(scheduled), style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700)),
+            if (estimated != null && estimated != scheduled)
+              Text('Est ${fmt(estimated)}', style: TextStyle(color: theme.warningColor, fontSize: 12)),
+          ],
+        ),
+        onTap: () {
+          provider.selectFlight(f);
+
+          if (f.latitude != null && f.longitude != null) {
+            mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);
+          }
+
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (ctx) => FractionallySizedBox(
+              heightFactor: 0.85,
+              child: FlightDetailsSheet(flight: f),
+            ),
+          );
         },
       ),
     );
