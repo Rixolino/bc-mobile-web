@@ -5,6 +5,8 @@ import '../models/plane_model.dart';
 
 class PlaneRepository {
   static const String skyscannerBase = "https://www.skyscanner.it/g";
+  // Use the public proxy for airport arrival/departure data (set by server)
+  static const String skyscannerProxyBase = "https://betacloud-transporter.is-cool.dev/proxy/skyscanner/airport";
 
   Future<List<Airport>> searchAirports(String query) async {
     if (query.length < 2) return [];
@@ -29,7 +31,8 @@ class PlaneRepository {
 
   Future<List<Flight>> fetchAirportFlights(String iata, {bool isArrival = false}) async {
     final type = isArrival ? 'arrivals' : 'departures';
-    final url = "$skyscannerBase/arrival-departure-svc/api/airports/$iata/$type?locale=it-IT";
+    // Prefer proxy endpoint to avoid direct requests to Skyscanner from the mobile app
+    final url = "$skyscannerProxyBase/${Uri.encodeComponent(iata)}/$type";
 
     try {
       final response = await http.get(Uri.parse(url));

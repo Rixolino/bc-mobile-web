@@ -164,7 +164,7 @@ class _TrainMapPageState extends State<TrainMapPage> {
               final loc = s['location'];
               if (loc != null) {
                    _stopLogics.add({
-                       'name': s['name'] ?? 'Station',
+                       'name': s['stationName'] ?? s['name'] ?? 'Station',
                        'coords': LatLng((loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble()),
                    });
               }
@@ -305,8 +305,8 @@ class _TrainMapPageState extends State<TrainMapPage> {
                 id: 'openrailwaymap-layer',
                 type: 'raster',
                 source: 'openrailwaymap',
-                minzoom: 2,
-                maxzoom: 19,
+                minzoom: 0,
+                maxzoom: 22,
                 paint: { 'raster-opacity': 0.8 }
            });
 
