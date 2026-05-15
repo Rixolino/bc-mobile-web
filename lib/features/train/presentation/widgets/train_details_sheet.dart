@@ -863,6 +863,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 
   Future<bool> _hasInternetConnection() async {
+    if (kIsWeb) return true;
     Socket? socket;
     try {
       socket = await Socket.connect(

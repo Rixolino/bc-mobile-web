@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -64,15 +65,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Future<void> _checkConnectivity() async {
-    Socket? socket;
-    bool hasInternet = false;
-    try {
-      socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 2));
-      hasInternet = true;
-    } catch (_) {
-      hasInternet = false;
-    } finally {
-      socket?.destroy();
+    bool hasInternet = true;
+    if (!kIsWeb) {
+      Socket? socket;
+      try {
+        socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 2));
+        hasInternet = true;
+      } catch (_) {
+        hasInternet = false;
+      } finally {
+        socket?.destroy();
+      }
     }
     
     if (mounted && _isOffline != !hasInternet) {

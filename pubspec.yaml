@@ -31,7 +31,7 @@ dependencies:
 
   # Persistence & DB
   shared_preferences: ^2.5.4
-  libsql_dart: ^0.8.0
+  libsql_dart: ^0.7.0
   bcrypt: ^1.1.3
 
   # Map

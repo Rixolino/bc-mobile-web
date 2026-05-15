@@ -1,4 +1,4 @@
-import 'package:libsql_dart/libsql_dart.dart';
+import '../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 import 'package:bcrypt/bcrypt.dart';
 import '../models/user.dart';
 
