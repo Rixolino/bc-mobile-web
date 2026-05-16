@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../repositories/auth_repository.dart';
+import '../../../core/services/session_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthRepository _repository = AuthRepository();
@@ -24,21 +25,31 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _initializeSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userIdString = prefs.getString(_userIdKey);
+      // Prova a caricare la sessione offline prima
+      final offlineUser = await SessionService.loadSession();
+      if (offlineUser != null) {
+        _currentUser = offlineUser;
+        print('Sessione offline caricata per: ${offlineUser.nickname ?? offlineUser.email}');
+      } else {
+        // Se non c'è sessione offline, prova a ripristinare dal vecchio formato
+        final prefs = await SharedPreferences.getInstance();
+        final userIdString = prefs.getString(_userIdKey);
 
-      if (userIdString != null) {
-        final userId = int.tryParse(userIdString);
-        if (userId != null) {
-          // Verifica se l'utente esiste ancora nel database
-          final user = await _repository.getUserById(userId);
-          if (user != null) {
-            _currentUser = user;
-            print('Session restored for user: ${user.nickname ?? user.email}');
-          } else {
-            // L'utente non esiste più, cancella la sessione
-            await _clearSession();
-            print('User not found, session cleared');
+        if (userIdString != null) {
+          final userId = int.tryParse(userIdString);
+          if (userId != null) {
+            // Verifica se l'utente esiste ancora nel database
+            final user = await _repository.getUserById(userId);
+            if (user != null) {
+              _currentUser = user;
+              // Salva il profilo nel nuovo formato SessionService
+              await SessionService.saveSession(user);
+              print('Session restored for user: ${user.nickname ?? user.email}');
+            } else {
+              // L'utente non esiste più, cancella la sessione
+              await _clearSession();
+              print('User not found, session cleared');
+            }
           }
         }
       }
@@ -54,6 +65,9 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _saveSession(User user) async {
     try {
+      // Salva il profilo completo usando SessionService
+      await SessionService.saveSession(user);
+      // Mantieni anche l'ID nel vecchio formato per compatibilità
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userIdKey, user.id.toString());
     } catch (e) {
@@ -63,6 +77,9 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _clearSession() async {
     try {
+      // Cancella la sessione offline
+      await SessionService.clearSession();
+      // Cancella anche il vecchio formato per compatibilità
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_userIdKey);
     } catch (e) {

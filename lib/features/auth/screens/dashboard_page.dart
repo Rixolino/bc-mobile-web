@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../repositories/auth_repository.dart';
 import '../../favorites/screens/favorites_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -14,6 +15,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  
+  final AuthRepository _authRepository = AuthRepository();
+  bool _isChangingPassword = false;
 
   @override
   void initState() {
@@ -39,6 +43,181 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _showChangePasswordDialog() {
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureOld = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.security, color: Theme.of(context).primaryColor),
+                ),
+                const SizedBox(width: 12),
+                const Text('Cambia Password', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Password Attuale
+                  TextField(
+                    controller: oldPasswordController,
+                    obscureText: obscureOld,
+                    decoration: InputDecoration(
+                      labelText: 'Password Attuale',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureOld = !obscureOld),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Nuova Password
+                  TextField(
+                    controller: newPasswordController,
+                    obscureText: obscureNew,
+                    decoration: InputDecoration(
+                      labelText: 'Nuova Password',
+                      prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureNew = !obscureNew),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      helperText: 'Almeno 8 caratteri',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Conferma Password
+                  TextField(
+                    controller: confirmPasswordController,
+                    obscureText: obscureConfirm,
+                    decoration: InputDecoration(
+                      labelText: 'Conferma Password',
+                      prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureConfirm = !obscureConfirm),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  oldPasswordController.dispose();
+                  newPasswordController.dispose();
+                  confirmPasswordController.dispose();
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Annulla'),
+              ),
+              ElevatedButton(
+                onPressed: _isChangingPassword
+                    ? null
+                    : () async {
+                        // Validazione
+                        if (oldPasswordController.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Inserisci la password attuale')),
+                          );
+                          return;
+                        }
+                        if (newPasswordController.text.length < 8) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('La password deve avere almeno 8 caratteri')),
+                          );
+                          return;
+                        }
+                        if (newPasswordController.text != confirmPasswordController.text) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Le password non coincidono')),
+                          );
+                          return;
+                        }
+                        if (oldPasswordController.text == newPasswordController.text) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('La nuova password deve essere diversa da quella attuale')),
+                          );
+                          return;
+                        }
+
+                        setState(() => _isChangingPassword = true);
+                        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                        final userId = authProvider.currentUser?.id;
+
+                        if (userId != null) {
+                          final success = await _authRepository.updatePassword(
+                            userId,
+                            oldPasswordController.text,
+                            newPasswordController.text,
+                          );
+
+                          if (success) {
+                            oldPasswordController.dispose();
+                            newPasswordController.dispose();
+                            confirmPasswordController.dispose();
+                            if (mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Password cambiata con successo!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Password attuale non corretta'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                        setState(() => _isChangingPassword = false);
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                ),
+                child: _isChangingPassword
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)),
+                      )
+                    : const Text('Aggiorna', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -145,15 +324,17 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                               colors: [
                                 theme.primaryColor,
-                                theme.primaryColor.withOpacity(0.8),
+                                theme.primaryColor.withOpacity(0.7),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: theme.primaryColor.withOpacity(0.3),
+                                color: theme.primaryColor.withOpacity(0.4),
                                 blurRadius: 20,
                                 offset: const Offset(0, 10),
                               ),
@@ -165,35 +346,42 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.all(12),
+                                    padding: const EdgeInsets.all(14),
                                     decoration: BoxDecoration(
                                       color: Colors.white.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.white.withOpacity(0.3)),
                                     ),
                                     child: const Icon(
                                       Icons.waving_hand,
                                       color: Colors.white,
-                                      size: 24,
+                                      size: 28,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
-                                    child: Text(
-                                      'Benvenuto${user?.nickname != null ? ', ${user!.nickname}' : ''}!',
-                                      style: theme.textTheme.headlineSmall?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Benvenuto${user?.nickname != null ? ', ${user!.nickname}' : ''}!',
+                                          style: theme.textTheme.headlineSmall?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Esplora i trasporti pubblici',
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            color: Colors.white.withOpacity(0.9),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Esplora i trasporti pubblici con BC Transporter',
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: Colors.white.withOpacity(0.9),
-                                ),
                               ),
                             ],
                           ),
@@ -226,7 +414,6 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               subtitle: 'Trova autobus',
                               color: theme.primaryColor,
                               onTap: () {
-                                // Navigate to bus section
                                 Navigator.of(context).pop();
                               },
                             ),
@@ -237,7 +424,6 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               subtitle: 'Orari treni',
                               color: theme.colorScheme.secondary,
                               onTap: () {
-                                // Navigate to train section
                                 Navigator.of(context).pop();
                               },
                             ),
@@ -248,7 +434,6 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               subtitle: 'Informazioni voli',
                               color: Colors.orange,
                               onTap: () {
-                                // Navigate to flights section
                                 Navigator.of(context).pop();
                               },
                             ),
@@ -259,7 +444,6 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               subtitle: 'Visualizza percorsi',
                               color: Colors.green,
                               onTap: () {
-                                // Navigate to map
                                 Navigator.of(context).pop();
                               },
                             ),
@@ -271,64 +455,115 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                         // User Profile Card
                         Card(
                           elevation: 8,
+                          shadowColor: Colors.black.withOpacity(0.15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  theme.colorScheme.surface,
+                                  theme.colorScheme.surface.withOpacity(0.8),
+                                ],
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: theme.primaryColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(14),
+                                          border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+                                        ),
+                                        child: Icon(
+                                          Icons.person_outline,
+                                          color: theme.primaryColor,
+                                          size: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Text(
+                                        'Il tuo Profilo',
+                                        style: theme.textTheme.titleLarge?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                  _buildProfileItem(
+                                    context,
+                                    icon: Icons.email_outlined,
+                                    label: 'Email',
+                                    value: user?.email ?? 'N/A',
+                                  ),
+                                  const SizedBox(height: 16),
+                                  if (user?.nickname != null)
+                                    _buildProfileItem(
+                                      context,
+                                      icon: Icons.person_outline,
+                                      label: 'Nickname',
+                                      value: user!.nickname!,
+                                    ),
+                                  if (user?.nickname != null) const SizedBox(height: 16),
+                                  _buildProfileItem(
+                                    context,
+                                    icon: Icons.calendar_today_outlined,
+                                    label: 'Membro dal',
+                                    value: user?.createdAt != null
+                                        ? '${user!.createdAt!.day}/${user.createdAt!.month}/${user.createdAt!.year}'
+                                        : 'N/A',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Security Section
+                        Text(
+                          'Sicurezza',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        Card(
+                          elevation: 4,
                           shadowColor: Colors.black.withOpacity(0.1),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: theme.primaryColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(
-                                        Icons.person,
-                                        color: theme.primaryColor,
-                                        size: 24,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Text(
-                                      'Il tuo Profilo',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                _buildProfileItem(
-                                  context,
-                                  icon: Icons.email,
-                                  label: 'Email',
-                                  value: user?.email ?? 'N/A',
-                                ),
-                                const SizedBox(height: 12),
-                                if (user?.nickname != null)
-                                  _buildProfileItem(
-                                    context,
-                                    icon: Icons.person_outline,
-                                    label: 'Nickname',
-                                    value: user!.nickname!,
-                                  ),
-                                if (user?.nickname != null) const SizedBox(height: 12),
-                                _buildProfileItem(
-                                  context,
-                                  icon: Icons.calendar_today,
-                                  label: 'Membro dal',
-                                  value: user?.createdAt != null
-                                      ? '${user!.createdAt!.day}/${user.createdAt!.month}/${user.createdAt!.year}'
-                                      : 'N/A',
-                                ),
-                              ],
+                          child: ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.security, color: Colors.orange),
                             ),
+                            title: const Text(
+                              'Cambia Password',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: const Text('Modifica la tua password di accesso'),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            onTap: _showChangePasswordDialog,
                           ),
                         ),
 
@@ -336,7 +571,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
                         // Features Preview
                         Text(
-                          'Funzionalità in Arrivo',
+                          'Prossimamente',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
@@ -345,38 +580,60 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                         const SizedBox(height: 16),
 
                         Container(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                theme.colorScheme.primary.withOpacity(0.08),
+                                theme.colorScheme.primary.withOpacity(0.02),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: theme.colorScheme.outline.withOpacity(0.2),
+                              color: theme.colorScheme.primary.withOpacity(0.1),
                             ),
                           ),
                           child: Column(
                             children: [
-                              Icon(
-                                Icons.lightbulb_outline,
-                                size: 48,
-                                color: theme.colorScheme.primary.withOpacity(0.6),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  Icons.lightbulb_outline,
+                                  size: 48,
+                                  color: theme.colorScheme.primary.withOpacity(0.7),
+                                ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 20),
                               Text(
-                                'Stiamo sviluppando nuove funzionalità per migliorare la tua esperienza!',
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                'Nuove funzionalità in arrivo!',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Stiamo lavorando per offrirti un\'esperienza ancora migliore con nuove features esclusive.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
                                 ),
                                 textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 20),
                               Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
+                                spacing: 10,
+                                runSpacing: 10,
                                 children: [
-                                  _buildFeatureChip(context, 'Preferiti'),
-                                  _buildFeatureChip(context, 'Cronologia'),
-                                  _buildFeatureChip(context, 'Notifiche'),
-                                  _buildFeatureChip(context, 'Sincronizzazione'),
+                                  _buildFeatureChip(context, 'Statistiche'),
+                                  _buildFeatureChip(context, 'Avvisi'),
+                                  _buildFeatureChip(context, 'Condivisione'),
+                                  _buildFeatureChip(context, 'Backup'),
                                 ],
                               ),
                             ],
@@ -407,48 +664,62 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     final theme = Theme.of(context);
 
     return Card(
-      elevation: 4,
-      shadowColor: color.withOpacity(0.3),
+      elevation: 6,
+      shadowColor: color.withOpacity(0.4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withOpacity(0.08),
+                color.withOpacity(0.02),
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: color.withOpacity(0.3)),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 36,
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 32,
+                const SizedBox(height: 14),
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -463,63 +734,81 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
   }) {
     final theme = Theme.of(context);
 
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(8),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: theme.primaryColor,
+            ),
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: theme.colorScheme.onSurface.withOpacity(0.7),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  fontWeight: FontWeight.w500,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              Text(
-                value,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildFeatureChip(BuildContext context, String label) {
     final theme = Theme.of(context);
 
-    return Chip(
-      label: Text(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary.withOpacity(0.12),
+            theme.colorScheme.primary.withOpacity(0.06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.primary.withOpacity(0.2),
+        ),
+      ),
+      child: Text(
         label,
         style: TextStyle(
           color: theme.colorScheme.primary,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
         ),
       ),
-      backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-      side: BorderSide(
-        color: theme.colorScheme.primary.withOpacity(0.2),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 }

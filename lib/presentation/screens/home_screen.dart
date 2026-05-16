@@ -162,6 +162,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _refresh() async {
+    try {
+      // Aggiorna TUTTI i provider
+      final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+      final busProvider = Provider.of<BusProvider>(context, listen: false);
+      final planeProvider = Provider.of<PlaneProvider>(context, listen: false);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+
+      // Ricarica i dati
+      trainProvider.clearAll();
+      busProvider.clearAll();
+      planeProvider.clearAll();
+      
+      // Ricarica i provider bus
+      busProvider.loadProviders();
+      
+      // Ricarica i favoriti se autenticato
+      if (authProvider.isAuthenticated) {
+        final userId = authProvider.currentUser!.id.toString();
+        favoritesProvider.loadFavorites(userId);
+      }
+      
+      // Aggiungi un piccolo delay per evitare refresh troppo veloce
+      await Future.delayed(const Duration(milliseconds: 500));
+    } catch (e) {
+      debugPrint('Errore durante il refresh: $e');
+    }
+  }
+
   // --- WIDGETS BUILDER ---
 
   @override
@@ -174,8 +204,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: theme.backgroundColor,
-      body: Stack(
-        children: [
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: Stack(
+          children: [
           // 1. BACKGROUND / PANELS
           _selectedModeIndex == 0
               ? Positioned.fill(child: DashboardFeed(onOpenMap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen(initialCategory: -1)))))
@@ -217,6 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // 4. FLOATING BOTTOM DOCK
           _buildBottomDock(theme, accentColor),
         ],
+        ),
       ),
     );
   }

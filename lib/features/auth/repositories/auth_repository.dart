@@ -1,6 +1,9 @@
 import '../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 import 'package:bcrypt/bcrypt.dart';
 import '../models/user.dart';
+import '../../../core/services/session_service.dart';
+import '../../../core/services/session_service.dart';
+import '../../../core/services/session_service.dart';
 
 class AuthRepository {
   // Turso database configuration
@@ -72,6 +75,8 @@ class AuthRepository {
             createdAt: DateTime.parse(row['created_at'] as String),
           );
           print('Login successful for user: $email');
+          // Salva la sessione offline
+          await SessionService.saveSession(user);
           return user;
         }
       }
@@ -187,6 +192,74 @@ class AuthRepository {
     } catch (e) {
       print('Get user by ID error: $e');
       return null;
+    }
+  }
+
+  /// Carica la sessione offline se disponibile
+  Future<User?> loadOfflineSession() async {
+    try {
+      print('Attempting to load offline session');
+      final user = await SessionService.loadSession();
+      if (user != null) {
+        print('Offline session loaded for: ${user.email}');
+      }
+      return user;
+    } catch (e) {
+      print('Load offline session error: $e');
+      return null;
+    }
+  }
+
+  /// Cancella la sessione offline
+  Future<void> clearOfflineSession() async {
+    try {
+      await SessionService.clearSession();
+      print('Offline session cleared');
+    } catch (e) {
+      print('Clear offline session error: $e');
+    }
+  }
+
+  /// Aggiorna la password dell'utente
+  Future<bool> updatePassword(int userId, String oldPassword, String newPassword) async {
+    try {
+      print('Updating password for user ID: $userId');
+      final client = await _getClient();
+
+      // Recupera l'utente
+      final result = await client.query(
+        'SELECT * FROM users WHERE id = ?',
+        positional: [userId],
+      );
+
+      if (result.isEmpty) {
+        print('User not found');
+        return false;
+      }
+
+      final row = result.first;
+      final storedPassword = row['password'] as String;
+
+      // Verifica la vecchia password
+      if (!await _verifyPassword(oldPassword, storedPassword)) {
+        print('Old password verification failed');
+        return false;
+      }
+
+      // Cripta la nuova password
+      final newHashedPassword = await _hashPassword(newPassword);
+
+      // Aggiorna il database
+      await client.execute(
+        'UPDATE users SET password = ? WHERE id = ?',
+        positional: [newHashedPassword, userId],
+      );
+
+      print('Password updated successfully for user: $userId');
+      return true;
+    } catch (e) {
+      print('Update password error: $e');
+      return false;
     }
   }
 }
