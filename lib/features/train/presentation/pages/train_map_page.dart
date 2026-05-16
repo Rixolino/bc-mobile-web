@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:latlong2/latlong.dart';
@@ -28,7 +29,7 @@ class TrainMapPage extends StatefulWidget {
 }
 
 class _TrainMapPageState extends State<TrainMapPage> {
-  late final WebViewController _webViewController;
+  WebViewController? _webViewController;
   
   // MultiLineString for Mapbox: List<List<[lng, lat]>>
   List<List<List<double>>> _processedMultiLine = [];
@@ -61,6 +62,14 @@ class _TrainMapPageState extends State<TrainMapPage> {
   }
 
   void _initWebView() {
+    if (kIsWeb) {
+      setState(() {
+        _isLoading = false;
+        _statusMessage = 'Anteprima mappa non disponibile su web';
+      });
+      return;
+    }
+
     // Listener invoked when settings change (for map style).
     // defined here so it can access _webViewController and _isMapReady.
     final theme = Provider.of<ThemeProvider>(context, listen: false);
@@ -218,7 +227,8 @@ class _TrainMapPageState extends State<TrainMapPage> {
   }
 
   void _redrawMap() {
-    if (!_isMapReady) {
+    final controller = _webViewController;
+    if (!_isMapReady || controller == null) {
         debugPrint('Map not ready, skipping redraw');
         return;
     }
@@ -229,7 +239,7 @@ class _TrainMapPageState extends State<TrainMapPage> {
         final coordsJson = jsonEncode(_processedMultiLine);
         debugPrint('Polyline JSON length: ${coordsJson.length}');
         // Pass MultiLineString geometry
-        _webViewController.runJavaScript('if(window.addRouteLayer) window.addRouteLayer($coordsJson);');
+        controller.runJavaScript('if(window.addRouteLayer) window.addRouteLayer($coordsJson);');
     } else {
         debugPrint('No polyline data to draw');
     }
@@ -249,7 +259,7 @@ class _TrainMapPageState extends State<TrainMapPage> {
         }
       }
       debugPrint('Drawing ${validMarkers.length} station markers');
-      _webViewController.runJavaScript('if(window.updateStationMarkers) window.updateStationMarkers(${jsonEncode(validMarkers)});');
+      controller.runJavaScript('if(window.updateStationMarkers) window.updateStationMarkers(${jsonEncode(validMarkers)});');
     } else {
       debugPrint('No station data to draw');
     }
@@ -261,8 +271,9 @@ class _TrainMapPageState extends State<TrainMapPage> {
   }
 
   void _updateMarkerPosition() {
-    if (_currentTrainPos != null && _isMapReady) {
-       _webViewController.runJavaScript('if(window.updateTrainMarker) window.updateTrainMarker(${_currentTrainPos!.latitude}, ${_currentTrainPos!.longitude});');
+     final controller = _webViewController;
+     if (_currentTrainPos != null && _isMapReady && controller != null) {
+       controller.runJavaScript('if(window.updateTrainMarker) window.updateTrainMarker(${_currentTrainPos!.latitude}, ${_currentTrainPos!.longitude});');
     }
   }
 
@@ -270,8 +281,9 @@ class _TrainMapPageState extends State<TrainMapPage> {
   void _onSettingsChanged() {
     final raw = Provider.of<SettingsProvider>(context, listen: false).mapStyle;
     final style = SettingsProvider.normalizeStyleUrl(raw);
-    if (_isMapReady && style.isNotEmpty) {
-      _webViewController.runJavaScript("if(window.setMapStyle) window.setMapStyle('$style');");
+    final controller = _webViewController;
+    if (_isMapReady && style.isNotEmpty && controller != null) {
+      controller.runJavaScript("if(window.setMapStyle) window.setMapStyle('$style');");
     }
   }
 
@@ -534,7 +546,35 @@ class _TrainMapPageState extends State<TrainMapPage> {
     return Scaffold(
       body: Stack(
         children: [
-          WebViewWidget(controller: _webViewController),
+          if (!kIsWeb && _webViewController != null)
+            WebViewWidget(controller: _webViewController!)
+          else
+            Container(
+              color: theme.backgroundColor,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.map_outlined, size: 56, color: theme.primaryColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Mappa interattiva non disponibile su web',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.textColor),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Apri questa schermata su Android o iOS per vedere il tracciamento completo del treno.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: theme.secondaryTextColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           
           // Header Card
           Positioned(

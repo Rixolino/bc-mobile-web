@@ -10,6 +10,7 @@ class OfflineSyncService {
   static const String _cacheDir = 'bc_transporter_offline_cache';
   static const String _metadataPrefix = 'offline_metadata_';
   static const String _lastSyncPrefix = 'offline_lastsync_';
+  static const String _webDataPrefix = 'offline_webdata_';
 
   /// Saves transport data to local cache.
   /// [transportType] should be 'bus', 'train', or 'plane'.
@@ -20,8 +21,17 @@ class OfflineSyncService {
     required dynamic data,
   }) async {
     try {
+      if (kIsWeb) {
+        await _saveTransportDataWeb(
+          transportType: transportType,
+          identifier: identifier,
+          data: data,
+        );
+        return;
+      }
+
       final cacheDir = await _getCacheDir();
-      final file = File('${cacheDir.path}/${transportType}_${identifier}.json');
+      final file = File('${cacheDir.path}/${transportType}_${_safeFileName(identifier)}.json');
       
       final jsonStr = jsonEncode(data);
       await file.writeAsString(jsonStr);
@@ -55,8 +65,15 @@ class OfflineSyncService {
     required String identifier,
   }) async {
     try {
+      if (kIsWeb) {
+        return await _getTransportDataWeb(
+          transportType: transportType,
+          identifier: identifier,
+        );
+      }
+
       final cacheDir = await _getCacheDir();
-      final file = File('${cacheDir.path}/${transportType}_${identifier}.json');
+      final file = File('${cacheDir.path}/${transportType}_${_safeFileName(identifier)}.json');
       
       if (!await file.exists()) {
         debugPrint('[OfflineSync] No cached data for $transportType/$identifier');
@@ -83,8 +100,15 @@ class OfflineSyncService {
     required String identifier,
   }) async {
     try {
+      if (kIsWeb) {
+        return await _isCachedWeb(
+          transportType: transportType,
+          identifier: identifier,
+        );
+      }
+
       final cacheDir = await _getCacheDir();
-      final file = File('${cacheDir.path}/${transportType}_${identifier}.json');
+      final file = File('${cacheDir.path}/${transportType}_${_safeFileName(identifier)}.json');
       return await file.exists();
     } catch (e) {
       return false;
@@ -94,6 +118,10 @@ class OfflineSyncService {
   /// Returns all cached identifiers for a specific transport type.
   static Future<List<String>> getAllCachedIdentifiers(String transportType) async {
     try {
+      if (kIsWeb) {
+        return await _getAllCachedIdentifiersWeb(transportType);
+      }
+
       final cacheDir = await _getCacheDir();
       final dir = Directory(cacheDir.path);
       if (!await dir.exists()) return [];
@@ -126,6 +154,11 @@ class OfflineSyncService {
     required String identifier,
   }) async {
     try {
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        return prefs.getInt('$_lastSyncPrefix${transportType}_${Uri.encodeComponent(identifier)}');
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final timestamp = prefs.getInt('$_lastSyncPrefix${transportType}_$identifier');
       return timestamp;
@@ -137,6 +170,11 @@ class OfflineSyncService {
   /// Clears all cached data for a specific transport type.
   static Future<void> clearTransportCache(String transportType) async {
     try {
+      if (kIsWeb) {
+        await _clearTransportCacheWeb(transportType);
+        return;
+      }
+
       final cacheDir = await _getCacheDir();
       final dir = Directory(cacheDir.path);
       if (await dir.exists()) {
@@ -167,6 +205,11 @@ class OfflineSyncService {
   /// Clears all cached data.
   static Future<void> clearAllCache() async {
     try {
+      if (kIsWeb) {
+        await _clearAllCacheWeb();
+        return;
+      }
+
       final cacheDir = await _getCacheDir();
       if (await cacheDir.exists()) {
         await cacheDir.delete(recursive: true);
@@ -190,6 +233,10 @@ class OfflineSyncService {
   /// Gets the total size of cached data in bytes.
   static Future<int> getCacheSize() async {
     try {
+      if (kIsWeb) {
+        return await _getCacheSizeWeb();
+      }
+
       int totalSize = 0;
       final cacheDir = await _getCacheDir();
       if (await cacheDir.exists()) {
@@ -207,12 +254,126 @@ class OfflineSyncService {
   }
 
   static Future<Directory> _getCacheDir() async {
+    if (kIsWeb) {
+      throw UnsupportedError('Filesystem cache not available on web');
+    }
+
     final appDir = await getApplicationDocumentsDirectory();
     final cacheDir = Directory('${appDir.path}/$_cacheDir');
     if (!await cacheDir.exists()) {
       await cacheDir.create(recursive: true);
     }
     return cacheDir;
+  }
+
+  static String _safeFileName(String value) {
+    return Uri.encodeComponent(value);
+  }
+
+  static String _webDataKey(String transportType, String identifier) {
+    return '$_webDataPrefix${transportType}_${Uri.encodeComponent(identifier)}';
+  }
+
+  static Future<void> _saveTransportDataWeb({
+    required String transportType,
+    required String identifier,
+    required dynamic data,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonStr = jsonEncode(data);
+    final dataKey = _webDataKey(transportType, identifier);
+    await prefs.setString(dataKey, jsonStr);
+    await prefs.setString(
+      '$_metadataPrefix${transportType}_${Uri.encodeComponent(identifier)}',
+      jsonEncode({'hash': jsonStr.hashCode.toString(), 'size': jsonStr.length}),
+    );
+    await prefs.setInt(
+      '$_lastSyncPrefix${transportType}_${Uri.encodeComponent(identifier)}',
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    _logJson(label: 'SAVED $transportType/$identifier -> $dataKey', jsonStr: jsonStr);
+    debugPrint('[OfflineSync] Saved $transportType/$identifier (${jsonStr.length} bytes) [web]');
+  }
+
+  static Future<dynamic> _getTransportDataWeb({
+    required String transportType,
+    required String identifier,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonStr = prefs.getString(_webDataKey(transportType, identifier));
+    if (jsonStr == null || jsonStr.isEmpty) {
+      debugPrint('[OfflineSync] No cached data for $transportType/$identifier [web]');
+      return null;
+    }
+
+    _logJson(label: 'LOADED $transportType/$identifier [web]', jsonStr: jsonStr);
+    debugPrint('[OfflineSync] Retrieved cached $transportType/$identifier [web]');
+    return jsonDecode(jsonStr);
+  }
+
+  static Future<bool> _isCachedWeb({
+    required String transportType,
+    required String identifier,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_webDataKey(transportType, identifier));
+  }
+
+  static Future<List<String>> _getAllCachedIdentifiersWeb(String transportType) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = '$_webDataPrefix${transportType}_';
+    final identifiers = <String>[];
+
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(prefix)) continue;
+      identifiers.add(Uri.decodeComponent(key.substring(prefix.length)));
+    }
+
+    return identifiers;
+  }
+
+  static Future<void> _clearTransportCacheWeb(String transportType) async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    final dataPrefix = '$_webDataPrefix${transportType}_';
+    final metaPrefix = '$_metadataPrefix${transportType}_';
+    final syncPrefix = '$_lastSyncPrefix${transportType}_';
+
+    for (final key in keys) {
+      if (key.startsWith(dataPrefix) || key.startsWith(metaPrefix) || key.startsWith(syncPrefix)) {
+        await prefs.remove(key);
+      }
+    }
+
+    debugPrint('[OfflineSync] Cleared cache for $transportType [web]');
+  }
+
+  static Future<void> _clearAllCacheWeb() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+
+    for (final key in keys) {
+      if (key.startsWith(_webDataPrefix) || key.startsWith(_metadataPrefix) || key.startsWith(_lastSyncPrefix)) {
+        await prefs.remove(key);
+      }
+    }
+
+    debugPrint('[OfflineSync] Cleared all cache [web]');
+  }
+
+  static Future<int> _getCacheSizeWeb() async {
+    final prefs = await SharedPreferences.getInstance();
+    int totalSize = 0;
+
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_webDataPrefix)) continue;
+      final value = prefs.getString(key);
+      if (value != null) {
+        totalSize += value.length;
+      }
+    }
+
+    return totalSize;
   }
 
   static void _logJson({

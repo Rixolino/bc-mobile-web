@@ -686,6 +686,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   bool _preventOnlineAutoRefresh = false;
   bool _isHandlingConnectivityChange = false;
   bool _isCachedOffline = false;
+  bool _manualOfflineSaved = false;
 
   @override
   void initState() {
@@ -708,6 +709,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     if (mounted) {
       setState(() {
         _isCachedOffline = isCached;
+        if (!isCached) {
+          _manualOfflineSaved = false;
+        }
       });
     }
   }
@@ -1318,27 +1322,32 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               // Offline Sync
               Consumer<SettingsProvider>(
                 builder: (context, settings, child) {
-                  if (!settings.offlineSyncEnabled) {
-                    return const SizedBox.shrink(); // Hide if not enabled
-                  }
                   return Expanded(
                     child: _buildOfflineSyncButton(
                       context: context,
                       theme: theme,
-                      isCached: _isCachedOffline,
+                      isCached: _isCachedOffline || _manualOfflineSaved,
+                      manualMode: !settings.offlineSyncEnabled,
                       onSync: () async {
                         final trainProvider = Provider.of<TrainProvider>(context, listen: false);
                         await trainProvider.saveTrainOffline(widget.departure);
-                        await _checkCacheStatus();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text('Treno salvato per modalità offline'),
+                              content: Text(
+                                settings.offlineSyncEnabled
+                                    ? 'Treno salvato per modalità offline'
+                                    : 'Treno salvato manualmente (auto-sync offline disattivata)'
+                              ),
                               backgroundColor: theme.primaryColor,
                               duration: const Duration(seconds: 2),
                             ),
                           );
+                          setState(() {
+                            _manualOfflineSaved = true;
+                          });
                         }
+                        await _checkCacheStatus();
                       },
                     ),
                   );
@@ -1887,10 +1896,13 @@ Widget _buildOfflineSyncButton({
   required ThemeProvider theme,
   required VoidCallback onSync,
   bool isCached = false,
+  bool manualMode = false,
 }) {
   return _PrimaryActionChip(
-    icon: isCached ? Icons.cloud_done_rounded : Icons.cloud_download_rounded,
-    label: "Offline mode",
+    icon: isCached
+        ? Icons.cloud_done_rounded
+        : (manualMode ? Icons.save_alt_rounded : Icons.cloud_download_rounded),
+    label: manualMode ? "Salva offline" : "Offline mode",
     isActive: isCached,
     theme: theme,
     onTap: onSync,
