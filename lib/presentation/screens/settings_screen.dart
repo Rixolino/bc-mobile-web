@@ -129,6 +129,13 @@ class SettingsScreen extends StatelessWidget {
               
               _buildOfflineSyncToggle(context, settings, theme),
 
+              const SizedBox(height: 32),
+              
+              _buildSectionTitle('Informazioni e Disclaimer', theme),
+              const SizedBox(height: 16),
+              
+              _buildDisclaimerSection(context, theme),
+
               const SizedBox(height: 48),
             ],
           );
@@ -959,6 +966,57 @@ class SettingsScreen extends StatelessWidget {
           Text(
             'Scarica automaticamente i dati di percorsi e orari quando sincronizzi da una città. I dati verranno salvati localmente e disponibili anche senza connessione.',
             style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisclaimerSection(BuildContext context, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Informazioni Importanti',
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'BC Transporter Non Sostituisce i Canali Ufficiali',
+            style: TextStyle(
+              color: Colors.orange,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Questa applicazione non intende in alcun modo sostituire le piattaforme ufficiali delle compagnie ferroviarie o i loro canali di vendita. BC Transporter fornisce informazioni e dati di tracciamento a scopo puramente informativo.\n\n'
+            'Per l\'acquisto dei biglietti e per verificare disponibilità, tariffe, condizioni di viaggio e conferme ufficiali, è necessario rivolgersi esclusivamente ai canali ufficiali delle compagnie ferroviarie (siti web, app ufficiali, agenzie autorizzate o rivenditori certificati).\n\n'
+            'I biglietti devono essere acquistati tramite le piattaforme ufficiali; BC Transporter non vende biglietti e non sostituisce i canali ufficiali di vendita.\n\n'
+            'Non ci assumiamo responsabilità per acquisti effettuati su canali non ufficiali o per informazioni di prezzo/condizioni non aggiornate. Eventuali link a siti di terze parti sono forniti a scopo di comodità e non implicano approvazione o partnership.',
+            style: TextStyle(
+              color: theme.secondaryTextColor,
+              fontSize: 12,
+              height: 1.6,
+            ),
           ),
         ],
       ),
