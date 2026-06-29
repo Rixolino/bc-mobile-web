@@ -551,10 +551,16 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: countries.map((c) => Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: _buildCountryChip(c, provider, theme, countries),
-                    )).toList(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _buildGlobalChip(provider, theme, countries),
+                  ),
+                  ...countries.map((c) => Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: _buildCountryChip(c, provider, theme, countries),
+                      )).toList(),
+                ],
               ),
             ),
             // Riga Città (se presenti)
@@ -597,6 +603,45 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         showCheckmark: false,
       ),
+    );
+  }
+
+  Widget _buildGlobalChip(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
+    final isSelected = _selectedCountry == 'GLOBAL';
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text("Global ", style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : theme.secondaryTextColor)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white.withOpacity(0.2) : theme.primaryColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              "BETA",
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : theme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+      selected: isSelected,
+      onSelected: (val) {
+        setState(() { 
+          _selectedCountry = val ? 'GLOBAL' : ''; 
+          _selectedCity = ''; 
+        });
+        _onSearchChanged(_searchController.text, provider, countries);
+      },
+      selectedColor: theme.primaryColor,
+      backgroundColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      showCheckmark: false,
     );
   }
 
@@ -659,6 +704,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (_selectedCountry.isNotEmpty) {
       if (_selectedCountry == 'EU') {
         provider.searchTrainByNumber(query);
+      } else if (_selectedCountry == 'GLOBAL') {
+        provider.searchStations(query, country: 'GLOBAL');
       } else {
         // Se c'è una città selezionata, passiamo il provider specifico della città
         String? cityProvider;

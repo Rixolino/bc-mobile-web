@@ -62,6 +62,8 @@ class TrainRepository {
         url = "$tbUrl/gb/london/stations?query=${Uri.encodeComponent(query)}";
     } else if (country == 'FAL') {
         url = "$tbUrl/it/stations?query=${Uri.encodeComponent(query)}&limit=10";
+    } else if (country == 'GLOBAL') {
+        url = "$tbUrl/global/stations?query=${Uri.encodeComponent(query)}";
     } else {
         // include city segment if provided
         if (city != null && city.isNotEmpty) {
@@ -105,6 +107,8 @@ class TrainRepository {
        final endpoint = isArrival ? "arrivals" : "departures";
        if (country == 'UK_LONDON') {
            url = "$tbUrl/gb/london/$endpoint?stationId=$stationId";
+       } else if (country == 'GLOBAL') {
+           url = "$tbUrl/global/$endpoint?stationId=$stationId";
        } else {
            url = "$tbUrl/$country/$endpoint?stationId=$stationId";
        }
@@ -168,7 +172,11 @@ class TrainRepository {
        // If the tripId contains special chars like '/', they are usually delimiters in some APIs but here it is a query param
        // Let's try to encode it because it's a query param.
        final encodedTripId = Uri.encodeComponent(tripId);
-       url = "$tbUrl/$country/trip?tripId=$encodedTripId";
+       if (country == 'GLOBAL') {
+           url = "$tbUrl/global/trip?tripId=$encodedTripId";
+       } else {
+           url = "$tbUrl/$country/trip?tripId=$encodedTripId";
+       }
     }
 
     print("Fetching Trip URL: $url"); // Debug log
