@@ -12,6 +12,8 @@ import 'shimmer_and_toggle.dart';
 import 'scrolling_text.dart';
 import 'bus_details_sheet.dart';
 import 'bus_stop_details_sheet.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
+import '../../../../core/services/runtime_localizations.dart';
 
 class BusPanelContent extends StatefulWidget {
   const BusPanelContent({super.key});
@@ -25,14 +27,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
   final TextEditingController _stopSearchController = TextEditingController();
   // String _stopSearchQuery = ""; // Removed local state
   int _selectedMode = 0; // 0: Fermate/Realtime, 1: Soluzioni
-  
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final busProvider = Provider.of<BusProvider>(context, listen: false);
       if (busProvider.savedStopSearchQuery.isNotEmpty) {
-          _stopSearchController.text = busProvider.savedStopSearchQuery;
+        _stopSearchController.text = busProvider.savedStopSearchQuery;
       }
     });
   }
@@ -59,44 +61,53 @@ class _BusPanelContentState extends State<BusPanelContent> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: GlassmorphicContainer(
-                 width: double.infinity,
-                 height: 120,
-                 borderRadius: 20,
-                 blur: 15,
-                 alignment: Alignment.center,
-                 border: 1.5,
-                 linearGradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      theme.surfaceColor.withOpacity(0.8),
-                      theme.surfaceColor.withOpacity(0.6),
-                    ],
-                 ),
-                 borderGradient: LinearGradient(
-                   begin: Alignment.topLeft,
-                   end: Alignment.bottomRight,
-                   colors: [
-                     theme.secondaryTextColor.withOpacity(0.2),
-                     theme.secondaryTextColor.withOpacity(0.05),
-                   ],
-                 ),
-                 child: Column(
+                width: double.infinity,
+                height: 120,
+                borderRadius: 20,
+                blur: 15,
+                alignment: Alignment.center,
+                border: 1.5,
+                linearGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.surfaceColor.withOpacity(0.8),
+                    theme.surfaceColor.withOpacity(0.6),
+                  ],
+                ),
+                borderGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.secondaryTextColor.withOpacity(0.2),
+                    theme.secondaryTextColor.withOpacity(0.05),
+                  ],
+                ),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 4.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            "Operatore",
-                            style: TextStyle(color: theme.textColor.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                            AppLocalizations.of(context)?.operator ??
+                                "Operatore",
+                            style: TextStyle(
+                                color: theme.textColor.withOpacity(0.7),
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5),
                           ),
                           IconButton(
-                            icon: Icon(Icons.reorder, color: theme.secondaryTextColor),
-                            tooltip: 'Riordina provider',
+                            icon: Icon(Icons.reorder,
+                                color: theme.secondaryTextColor),
+                            tooltip: AppLocalizations.of(context)
+                                    ?.reorderProviders ??
+                                'Riordina provider',
                             onPressed: () async {
                               // Open bottom sheet with reorderable list
                               await showModalBottomSheet(
@@ -109,7 +120,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                     maxChildSize: 0.95,
                                     minChildSize: 0.3,
                                     builder: (_, controller) {
-                                      return _buildReorderSheet(ctx, busProvider, controller);
+                                      return _buildReorderSheet(
+                                          ctx, busProvider, controller);
                                     },
                                   );
                                 },
@@ -124,8 +136,12 @@ class _BusPanelContentState extends State<BusPanelContent> {
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
-                        children: busProvider.providers.where((provider) => busProvider.isProviderVisible(provider)).map((provider) {
-                          final isSelected = busProvider.selectedCity == provider.name;
+                        children: busProvider.providers
+                            .where((provider) =>
+                                busProvider.isProviderVisible(provider))
+                            .map((provider) {
+                          final isSelected =
+                              busProvider.selectedCity == provider.name;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8.0),
                             child: GestureDetector(
@@ -134,13 +150,17 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                 setState(() => _selectedMode = 0);
                                 final p = busProvider.providers.firstWhere(
                                   (p) => p.name == provider.name,
-                                  orElse: () => BusProviderConfig(name: provider.name, provider: '', endpoints: {}),
+                                  orElse: () => BusProviderConfig(
+                                      name: provider.name,
+                                      provider: '',
+                                      endpoints: {}),
                                 );
                                 if (p.latitude != null && p.longitude != null) {
                                   // Imposta la categoria a Bus (1) sulla mappa
                                   mapState.setCategory(1);
-                                  mapState.flyTo(p.latitude!, p.longitude!, zoom: p.zoom ?? 12.0);
-                                  
+                                  mapState.flyTo(p.latitude!, p.longitude!,
+                                      zoom: p.zoom ?? 12.0);
+
                                   // Carica bus e fermate quando selezioni un provider
                                   busProvider.fetchVehicles();
                                   if (provider.name != "Flixbus") {
@@ -150,26 +170,39 @@ class _BusPanelContentState extends State<BusPanelContent> {
                               },
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isSelected ? theme.primaryColor.withOpacity(0.9) : Colors.transparent,
+                                  color: isSelected
+                                      ? theme.primaryColor.withOpacity(0.9)
+                                      : Colors.transparent,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: isSelected ? Colors.transparent : theme.secondaryTextColor.withOpacity(0.2),
+                                    color: isSelected
+                                        ? Colors.transparent
+                                        : theme.secondaryTextColor
+                                            .withOpacity(0.2),
                                   ),
                                 ),
                                 child: Row(
                                   children: [
-                                    if (isSelected) 
-                                      const Icon(Icons.check, size: 14, color: Colors.white)
+                                    if (isSelected)
+                                      const Icon(Icons.check,
+                                          size: 14, color: Colors.white)
                                     else
-                                      Icon(Icons.directions_bus_outlined, size: 14, color: theme.secondaryTextColor),
+                                      Icon(Icons.directions_bus_outlined,
+                                          size: 14,
+                                          color: theme.secondaryTextColor),
                                     const SizedBox(width: 6),
                                     Text(
                                       provider.name,
                                       style: TextStyle(
-                                        color: isSelected ? Colors.white : theme.textColor,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : theme.textColor,
+                                        fontWeight: isSelected
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
                                         fontSize: 13,
                                       ),
                                     ),
@@ -185,11 +218,12 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 ),
               ),
             ),
-            
+
             // 2. Mode Toggle Chips
             if (supportsSolutions || supportsLines)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: GlassmorphicContainer(
                   width: double.infinity,
                   height: 50,
@@ -197,18 +231,43 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   blur: 15,
                   alignment: Alignment.center,
                   border: 1.0,
-                  linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.6), theme.surfaceColor.withOpacity(0.4)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
+                  linearGradient: LinearGradient(colors: [
+                    theme.surfaceColor.withOpacity(0.6),
+                    theme.surfaceColor.withOpacity(0.4)
+                  ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderGradient: LinearGradient(colors: [
+                    theme.secondaryTextColor.withOpacity(0.1),
+                    theme.secondaryTextColor.withOpacity(0.05)
+                  ]),
                   child: Row(
                     children: [
-                      Expanded(child: _buildGlassModeChip("Fermate", 0, theme)),
+                      Expanded(
+                          child: _buildGlassModeChip(
+                              AppLocalizations.of(context)?.stops ?? "Fermate",
+                              0,
+                              theme)),
                       if (supportsLines) ...[
-                        Container(width: 1, height: 24, color: theme.secondaryTextColor.withOpacity(0.1)),
-                        Expanded(child: _buildGlassModeChip("Linee", 2, theme)),
+                        Container(
+                            width: 1,
+                            height: 24,
+                            color: theme.secondaryTextColor.withOpacity(0.1)),
+                        Expanded(
+                            child: _buildGlassModeChip(
+                                AppLocalizations.of(context)?.lines ?? "Linee",
+                                2,
+                                theme)),
                       ],
                       if (supportsSolutions) ...[
-                        Container(width: 1, height: 24, color: theme.secondaryTextColor.withOpacity(0.1)),
-                        Expanded(child: _buildGlassModeChip("Soluzioni", 1, theme)),
+                        Container(
+                            width: 1,
+                            height: 24,
+                            color: theme.secondaryTextColor.withOpacity(0.1)),
+                        Expanded(
+                            child: _buildGlassModeChip(
+                                AppLocalizations.of(context)?.solutions ??
+                                    "Soluzioni",
+                                1,
+                                theme)),
                       ],
                     ],
                   ),
@@ -223,9 +282,9 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
             // 4. Results Area
             Expanded(
-              child: busProvider.isLoading 
-                ? ShimmerLoading(baseColor: theme.textColor)
-                : _buildResultsList(busProvider, mapState),
+              child: busProvider.isLoading
+                  ? ShimmerLoading(baseColor: theme.textColor)
+                  : _buildResultsList(busProvider, mapState),
             ),
           ],
         );
@@ -251,70 +310,78 @@ class _BusPanelContentState extends State<BusPanelContent> {
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            fontSize: 14
-          ),
+              color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              fontSize: 14),
         ),
       ),
     );
   }
 
-  Widget _buildActionArea(BusProvider busProvider, ThemeProvider theme, bool supportsSolutions) {
+  Widget _buildActionArea(
+      BusProvider busProvider, ThemeProvider theme, bool supportsSolutions) {
     // If Flixbus, it overrides standard logic (it's a special provider)
     if (busProvider.selectedCity == "Flixbus") {
-       return Padding(
-         padding: const EdgeInsets.all(16.0),
-         child: _buildFlixbusSearch(busProvider),
-       );
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: _buildFlixbusSearch(busProvider),
+      );
     }
-    
+
     // If Solutions Mode selected
     if (_selectedMode == 1 && supportsSolutions) {
-       return Padding(
-         padding: const EdgeInsets.all(16.0),
-         child: _buildBariRouting(busProvider),
-       );
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: _buildBariRouting(busProvider),
+      );
     }
-    
+
     // If Linee Mode selected
     if (_selectedMode == 2) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: GlassmorphicContainer(
-           width: double.infinity,
-           height: 56,
-           borderRadius: 16,
-           blur: 15,
-           alignment: Alignment.center,
-           border: 1.0,
-           linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.8), theme.surfaceColor.withOpacity(0.6)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-           borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
-           child: TextField(
-             controller: _searchController,
-             onChanged: (val) {
-                // We use search controller for lines search
-                setState(() {});
-             },
-             decoration: InputDecoration(
-                hintText: "Cerca linea...",
-                hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
-                prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
-                suffixIcon: _searchController.text.isNotEmpty 
+          width: double.infinity,
+          height: 56,
+          borderRadius: 16,
+          blur: 15,
+          alignment: Alignment.center,
+          border: 1.0,
+          linearGradient: LinearGradient(colors: [
+            theme.surfaceColor.withOpacity(0.8),
+            theme.surfaceColor.withOpacity(0.6)
+          ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderGradient: LinearGradient(colors: [
+            theme.secondaryTextColor.withOpacity(0.1),
+            theme.secondaryTextColor.withOpacity(0.05)
+          ]),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (val) {
+              // We use search controller for lines search
+              setState(() {});
+            },
+            decoration: InputDecoration(
+              hintText: AppLocalizations.of(context)?.searchLineHint ??
+                  "Cerca linea...",
+              hintStyle:
+                  TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
+              prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
+              suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                      icon: Icon(Icons.clear, color: theme.secondaryTextColor), 
-                      onPressed: () { 
-                        _searchController.clear(); 
+                      icon: Icon(Icons.clear, color: theme.secondaryTextColor),
+                      onPressed: () {
+                        _searchController.clear();
                         setState(() {});
-                      }
-                    ) 
+                      })
                   : null,
-                filled: false,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-             ),
-             style: TextStyle(color: theme.textColor),
-           ),
+              filled: false,
+              border: InputBorder.none,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            style: TextStyle(color: theme.textColor),
+          ),
         ),
       );
     }
@@ -327,60 +394,78 @@ class _BusPanelContentState extends State<BusPanelContent> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: GlassmorphicContainer(
-             width: double.infinity,
-             height: 56,
-             borderRadius: 16,
-             blur: 15,
-             alignment: Alignment.center,
-             border: 1.0,
-             linearGradient: LinearGradient(colors: [theme.surfaceColor.withOpacity(0.8), theme.surfaceColor.withOpacity(0.6)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-             borderGradient: LinearGradient(colors: [theme.secondaryTextColor.withOpacity(0.1), theme.secondaryTextColor.withOpacity(0.05)]),
-             child: TextField(
-               controller: _stopSearchController,
-               onChanged: (val) {
-                  // Update global state
-                  busProvider.setSavedStopSearchQuery(val);
-               },
-               decoration: InputDecoration(
-                  hintText: "Cerca fermata...",
-                  hintStyle: TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
-                  prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
-                  suffixIcon: busProvider.savedStopSearchQuery.isNotEmpty 
+            width: double.infinity,
+            height: 56,
+            borderRadius: 16,
+            blur: 15,
+            alignment: Alignment.center,
+            border: 1.0,
+            linearGradient: LinearGradient(colors: [
+              theme.surfaceColor.withOpacity(0.8),
+              theme.surfaceColor.withOpacity(0.6)
+            ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderGradient: LinearGradient(colors: [
+              theme.secondaryTextColor.withOpacity(0.1),
+              theme.secondaryTextColor.withOpacity(0.05)
+            ]),
+            child: TextField(
+              controller: _stopSearchController,
+              onChanged: (val) {
+                // Update global state
+                busProvider.setSavedStopSearchQuery(val);
+              },
+              decoration: InputDecoration(
+                hintText: AppLocalizations.of(context)?.searchStopHint ??
+                    "Cerca fermata...",
+                hintStyle:
+                    TextStyle(color: theme.secondaryTextColor.withOpacity(0.7)),
+                prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
+                suffixIcon: busProvider.savedStopSearchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear, color: theme.secondaryTextColor), 
-                        onPressed: () { 
-                          _stopSearchController.clear(); 
+                        icon:
+                            Icon(Icons.clear, color: theme.secondaryTextColor),
+                        onPressed: () {
+                          _stopSearchController.clear();
                           busProvider.setSavedStopSearchQuery("");
-                        }
-                      ) 
+                        })
                     : null,
-                  filled: false,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-               ),
-               style: TextStyle(color: theme.textColor),
-             ),
+                filled: false,
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              style: TextStyle(color: theme.textColor),
+            ),
           ),
         ),
-        
+
         // Show "Vicini a te" only if not searching
         if (busProvider.savedStopSearchQuery.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Vicini a te", style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
+                Text(AppLocalizations.of(context)?.nearYou ?? "Vicini a te",
+                    style: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontWeight: FontWeight.w600)),
                 TextButton.icon(
-                  onPressed: busProvider.isLoading ? null : () => busProvider.fetchVehicles(),
-                  icon: busProvider.isLoading
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text("Aggiorna"),
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.primaryColor,
-                  )
-                ),
+                    onPressed: busProvider.isLoading
+                        ? null
+                        : () => busProvider.fetchVehicles(),
+                    icon: busProvider.isLoading
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text(
+                        AppLocalizations.of(context)?.refresh ?? "Aggiorna"),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.primaryColor,
+                    )),
               ],
             ),
           ),
@@ -388,7 +473,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
-  Widget _buildReorderSheet(BuildContext context, BusProvider busProvider, ScrollController controller) {
+  Widget _buildReorderSheet(BuildContext context, BusProvider busProvider,
+      ScrollController controller) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -400,7 +486,10 @@ class _BusPanelContentState extends State<BusPanelContent> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Text('Riordina provider', style: Theme.of(context).textTheme.titleLarge),
+            child: Text(
+                AppLocalizations.of(context)?.reorderProviders ??
+                    'Riordina provider',
+                style: Theme.of(context).textTheme.titleLarge),
           ),
           Expanded(
             child: Consumer<BusProvider>(
@@ -416,7 +505,10 @@ class _BusPanelContentState extends State<BusPanelContent> {
                     final p = providersLive[index];
                     final title = p.provider.isNotEmpty ? p.provider : p.name;
                     final subtitle = p.name;
-                    final country = p.country ?? (p.apiPrefix != null && p.apiPrefix!.contains('/') ? p.apiPrefix!.split('/').first : 'it');
+                    final country = p.country ??
+                        (p.apiPrefix != null && p.apiPrefix!.contains('/')
+                            ? p.apiPrefix!.split('/').first
+                            : 'it');
                     final visible = bp.isProviderVisible(p);
                     return ListTile(
                       key: ValueKey(p.name),
@@ -426,7 +518,13 @@ class _BusPanelContentState extends State<BusPanelContent> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(subtitle),
-                          Text(country, style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color)),
+                          Text(country,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.color)),
                         ],
                       ),
                       trailing: Switch(
@@ -448,7 +546,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Chiudi'),
+                  child: Text(AppLocalizations.of(context)?.close ?? 'Chiudi'),
                 )
               ],
             ),
@@ -464,13 +562,21 @@ class _BusPanelContentState extends State<BusPanelContent> {
       decoration: BoxDecoration(
         color: theme.surfaceColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
         border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
       ),
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: "Cerca fermata Flixbus...",
+          hintText: AppLocalizations.of(context)
+                  ?.searchStopHint
+                  .replaceAll('...', ' Flixbus...') ??
+              "Cerca fermata Flixbus...",
           hintStyle: TextStyle(color: theme.secondaryTextColor),
           prefixIcon: Icon(Icons.search, color: theme.primaryColor),
           suffixIcon: IconButton(
@@ -478,7 +584,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
             onPressed: () => busProvider.searchFlixbus(_searchController.text),
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
         style: TextStyle(color: theme.textColor),
         onSubmitted: (val) => busProvider.searchFlixbus(val),
@@ -491,7 +598,9 @@ class _BusPanelContentState extends State<BusPanelContent> {
     return Card(
       elevation: 0,
       color: theme.surfaceColor.withOpacity(0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -501,28 +610,50 @@ class _BusPanelContentState extends State<BusPanelContent> {
               children: [
                 Icon(Icons.alt_route_rounded, color: theme.primaryColor),
                 const SizedBox(width: 8),
-                Text("Pianifica Viaggio", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                    AppLocalizations.of(context)?.planJourney ??
+                        "Pianifica Viaggio",
+                    style: TextStyle(
+                        color: theme.textColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16)),
               ],
             ),
             const SizedBox(height: 16),
-            _buildStopSelector("Partenza", busProvider.selectedFromStop, (BariStop? stop) => busProvider.selectFromStop(stop), busProvider),
+            _buildStopSelector(
+                AppLocalizations.of(context)?.departure ?? "Partenza",
+                busProvider.selectedFromStop,
+                (BariStop? stop) => busProvider.selectFromStop(stop),
+                busProvider),
             const SizedBox(height: 12),
-            _buildStopSelector("Arrivo", busProvider.selectedToStop, (BariStop? stop) => busProvider.selectToStop(stop), busProvider),
+            _buildStopSelector(
+                AppLocalizations.of(context)?.arrival ?? "Arrivo",
+                busProvider.selectedToStop,
+                (BariStop? stop) => busProvider.selectToStop(stop),
+                busProvider),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (busProvider.selectedFromStop != null && busProvider.selectedToStop != null && !busProvider.isLoadingSolutions)
+                onPressed: (busProvider.selectedFromStop != null &&
+                        busProvider.selectedToStop != null &&
+                        !busProvider.isLoadingSolutions)
                     ? () => busProvider.fetchBariSolutions()
                     : null,
                 icon: busProvider.isLoadingSolutions
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.search_rounded),
-                label: const Text("Cerca Soluzioni"),
+                label: Text(AppLocalizations.of(context)?.searchSolutions ??
+                    "Cerca Soluzioni"),
                 style: FilledButton.styleFrom(
                   backgroundColor: theme.primaryColor,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
@@ -532,10 +663,12 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
-  Widget _buildStopSelector(String label, BariStop? selectedStop, Function(BariStop?) onSelect, BusProvider busProvider) {
+  Widget _buildStopSelector(String label, BariStop? selectedStop,
+      Function(BariStop?) onSelect, BusProvider busProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return InkWell(
-      onTap: () => _showStopSelectionDialog(context, label, busProvider, onSelect),
+      onTap: () =>
+          _showStopSelectionDialog(context, label, busProvider, onSelect),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -547,18 +680,25 @@ class _BusPanelContentState extends State<BusPanelContent> {
         child: Row(
           children: [
             Icon(
-              selectedStop != null ? Icons.my_location : Icons.circle_outlined, 
-              color: selectedStop != null ? theme.primaryColor : theme.secondaryTextColor,
-              size: 20
-            ),
+                selectedStop != null
+                    ? Icons.my_location
+                    : Icons.circle_outlined,
+                color: selectedStop != null
+                    ? theme.primaryColor
+                    : theme.secondaryTextColor,
+                size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                selectedStop?.stopName ?? "Seleziona $label...",
+                selectedStop?.stopName ??
+                    "${AppLocalizations.of(context)?.select ?? 'Seleziona'} $label...",
                 style: TextStyle(
-                  color: selectedStop != null ? theme.textColor : theme.secondaryTextColor,
-                  fontWeight: selectedStop != null ? FontWeight.w500 : FontWeight.normal
-                ),
+                    color: selectedStop != null
+                        ? theme.textColor
+                        : theme.secondaryTextColor,
+                    fontWeight: selectedStop != null
+                        ? FontWeight.w500
+                        : FontWeight.normal),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -570,8 +710,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
-
-  void _showStopSelectionDialog(BuildContext context, String label, BusProvider busProvider, Function(BariStop?) onSelect) {
+  void _showStopSelectionDialog(BuildContext context, String label,
+      BusProvider busProvider, Function(BariStop?) onSelect) {
     if (busProvider.stops.isEmpty && !busProvider.isLoadingStops) {
       busProvider.fetchStops();
     }
@@ -584,28 +724,41 @@ class _BusPanelContentState extends State<BusPanelContent> {
         final theme = Provider.of<ThemeProvider>(context, listen: false);
         return StatefulBuilder(
           builder: (context, setState) {
-            final filteredStops = busProvider.stops.where((stop) =>
-                stop.stopName.toLowerCase().contains(searchController.text.toLowerCase())).toList();
+            final filteredStops = busProvider.stops
+                .where((stop) => stop.stopName
+                    .toLowerCase()
+                    .contains(searchController.text.toLowerCase()))
+                .toList();
             return AlertDialog(
               backgroundColor: theme.surfaceColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text("Seleziona $label", style: TextStyle(color: theme.textColor)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+                title: Text(RuntimeLocalizations.t(context, 'select_item', params: {'label': label}),
+                  style: TextStyle(color: theme.textColor)),
               content: SizedBox(
                 width: double.maxFinite,
                 height: 400,
                 child: busProvider.isLoadingStops
-                    ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                    ? Center(
+                        child: CircularProgressIndicator(
+                            color: theme.primaryColor))
                     : Column(
                         children: [
                           TextField(
                             controller: searchController,
                             decoration: InputDecoration(
-                              hintText: "Cerca fermata...",
-                              hintStyle: TextStyle(color: theme.secondaryTextColor),
-                              prefixIcon: Icon(Icons.search, color: theme.secondaryTextColor),
+                              hintText: AppLocalizations.of(context)
+                                      ?.searchStopHint ??
+                                  "Cerca fermata...",
+                              hintStyle:
+                                  TextStyle(color: theme.secondaryTextColor),
+                              prefixIcon: Icon(Icons.search,
+                                  color: theme.secondaryTextColor),
                               filled: true,
                               fillColor: theme.surfaceColor.withOpacity(0.1),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none),
                             ),
                             style: TextStyle(color: theme.textColor),
                             onChanged: (value) => setState(() {}),
@@ -614,12 +767,18 @@ class _BusPanelContentState extends State<BusPanelContent> {
                           Expanded(
                             child: ListView.separated(
                               itemCount: filteredStops.length,
-                              separatorBuilder: (_, __) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
+                              separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  color: theme.secondaryTextColor
+                                      .withOpacity(0.1)),
                               itemBuilder: (context, index) {
                                 final stop = filteredStops[index];
                                 return ListTile(
-                                  title: Text(stop.stopName, style: TextStyle(color: theme.textColor)),
-                                  leading: Icon(Icons.place_outlined, color: theme.secondaryTextColor, size: 20),
+                                  title: Text(stop.stopName,
+                                      style: TextStyle(color: theme.textColor)),
+                                  leading: Icon(Icons.place_outlined,
+                                      color: theme.secondaryTextColor,
+                                      size: 20),
                                   onTap: () {
                                     onSelect(stop);
                                     Navigator.of(context).pop();
@@ -634,7 +793,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text("Annulla", style: TextStyle(color: theme.secondaryTextColor)),
+                  child: Text(AppLocalizations.of(context)?.cancel ?? "Annulla",
+                      style: TextStyle(color: theme.secondaryTextColor)),
                 ),
               ],
             );
@@ -650,29 +810,40 @@ class _BusPanelContentState extends State<BusPanelContent> {
     // Mode 2: Linee
     if (_selectedMode == 2) {
       if (busProvider.isLoadingLines && busProvider.busLines.isEmpty) {
-        return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+        return Center(
+            child: CircularProgressIndicator(color: theme.primaryColor));
       }
-      
-      final filteredLines = _searchController.text.isEmpty 
-          ? busProvider.busLines 
-          : busProvider.busLines.where((l) => l.lineNumber.toLowerCase().contains(_searchController.text.toLowerCase())).toList();
+
+      final filteredLines = _searchController.text.isEmpty
+          ? busProvider.busLines
+          : busProvider.busLines
+              .where((l) => l.lineNumber
+                  .toLowerCase()
+                  .contains(_searchController.text.toLowerCase()))
+              .toList();
 
       if (filteredLines.isEmpty) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.directions_bus, size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
+              Icon(Icons.directions_bus,
+                  size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
               const SizedBox(height: 16),
               Text(
-                busProvider.busLines.isEmpty ? "Nessuna linea caricata" : "Nessuna linea trovata",
+                busProvider.busLines.isEmpty
+                    ? (AppLocalizations.of(context)?.noLinesLoaded ??
+                        "Nessuna linea caricata")
+                    : (AppLocalizations.of(context)?.noLinesFound ??
+                        "Nessuna linea trovata"),
                 style: TextStyle(color: theme.secondaryTextColor),
               ),
               if (busProvider.busLines.isEmpty) ...[
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => busProvider.fetchBusLines(),
-                  child: const Text("Carica Linee"),
+                  child: Text(AppLocalizations.of(context)?.loadLines ??
+                      "Carica Linee"),
                 )
               ]
             ],
@@ -691,7 +862,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: theme.primaryColor),
                 ),
               ),
             );
@@ -703,25 +875,32 @@ class _BusPanelContentState extends State<BusPanelContent> {
               color: theme.surfaceColor,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2))
               ],
-              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+              border:
+                  Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
             ),
             child: ExpansionTile(
               leading: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: theme.primaryColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   line.lineNumber,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
               title: Text(
                 "Linea ${line.lineNumber}",
-                style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: theme.textColor, fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
                 "${line.totalRoutes} percorsi, ${line.totalStops} fermate",
@@ -730,12 +909,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
               children: line.routes.map((route) {
                 return ListTile(
                   dense: true,
-                  leading: Icon(Icons.alt_route, color: theme.secondaryTextColor, size: 18),
+                  leading: Icon(Icons.alt_route,
+                      color: theme.secondaryTextColor, size: 18),
                   title: Text(
                     route.directionLabel,
                     style: TextStyle(color: theme.textColor, fontSize: 13),
                   ),
-                  trailing: Icon(Icons.arrow_forward_ios, size: 12, color: theme.secondaryTextColor),
+                  trailing: Icon(Icons.arrow_forward_ios,
+                      size: 12, color: theme.secondaryTextColor),
                   onTap: () {
                     if (route.stops != null && route.stops!.isNotEmpty) {
                       _showRouteStops(context, line.lineNumber, route, theme);
@@ -751,83 +932,99 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     // Mode 1: Solutions
     if (_selectedMode == 1) {
-       if (busProvider.bariSolutions.isNotEmpty) {
-         return _buildBariSolutionsList(busProvider, mapState);
-       } else {
-         if (busProvider.isLoadingSolutions) {
-            return Center(child: CircularProgressIndicator(color: theme.primaryColor));
-         }
-         return Center(
-           child: Column(
-             mainAxisAlignment: MainAxisAlignment.center,
-             children: [
-               Icon(Icons.alt_route, size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
-               const SizedBox(height: 16),
-               Text(
-                 "Cerca una soluzione di viaggio",
-                 style: TextStyle(color: theme.secondaryTextColor),
-               )
-             ],
-           ),
-         );
-       }
+      if (busProvider.bariSolutions.isNotEmpty) {
+        return _buildBariSolutionsList(busProvider, mapState);
+      } else {
+        if (busProvider.isLoadingSolutions) {
+          return Center(
+              child: CircularProgressIndicator(color: theme.primaryColor));
+        }
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.alt_route,
+                  size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
+              const SizedBox(height: 16),
+              Text(
+                AppLocalizations.of(context)?.searchTravelSolution ??
+                    "Cerca una soluzione di viaggio",
+                style: TextStyle(color: theme.secondaryTextColor),
+              )
+            ],
+          ),
+        );
+      }
     }
 
     // Search Results for Stops (Mode 0)
     if (_selectedMode == 0 && busProvider.savedStopSearchQuery.isNotEmpty) {
-       final filteredStops = busProvider.stops.where((s) => s.stopName.toLowerCase().contains(busProvider.savedStopSearchQuery.toLowerCase())).toList();
-       if (filteredStops.isEmpty) {
-         return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.search_off, size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
-                const SizedBox(height: 16),
-                Text("Nessuna fermata trovata", style: TextStyle(color: theme.secondaryTextColor)),
-              ],
+      final filteredStops = busProvider.stops
+          .where((s) => s.stopName
+              .toLowerCase()
+              .contains(busProvider.savedStopSearchQuery.toLowerCase()))
+          .toList();
+      if (filteredStops.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.search_off,
+                  size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
+              const SizedBox(height: 16),
+              Text(
+                  AppLocalizations.of(context)?.noStopsFound ??
+                      "Nessuna fermata trovata",
+                  style: TextStyle(color: theme.secondaryTextColor)),
+            ],
+          ),
+        );
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.only(bottom: 100),
+        itemCount: filteredStops.length,
+        separatorBuilder: (_, __) => Divider(
+            height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
+        itemBuilder: (context, index) {
+          final stop = filteredStops[index];
+          return ListTile(
+            title: Text(stop.stopName,
+                style: TextStyle(
+                    color: theme.textColor, fontWeight: FontWeight.w500)),
+            leading: CircleAvatar(
+              backgroundColor: theme.primaryColor.withOpacity(0.1),
+              child: Icon(Icons.place, color: theme.primaryColor, size: 20),
             ),
-         );
-       }
-       return ListView.separated(
-         padding: const EdgeInsets.only(bottom: 100),
-         itemCount: filteredStops.length,
-         separatorBuilder: (_,__) => Divider(height: 1, color: theme.secondaryTextColor.withOpacity(0.1)),
-         itemBuilder: (context, index) {
-            final stop = filteredStops[index];
-            return ListTile(
-              title: Text(stop.stopName, style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w500)),
-              leading: CircleAvatar(
-                 backgroundColor: theme.primaryColor.withOpacity(0.1),
-                 child: Icon(Icons.place, color: theme.primaryColor, size: 20),
-              ),
-              trailing: IconButton(
-                icon: Icon(Icons.map_outlined, color: theme.primaryColor),
-                onPressed: () {
-                   FocusScope.of(context).unfocus();
-                   // Save current query handled by provider already (via onChanged)
-                   
-                   mapState.flyTo(stop.latitude, stop.longitude, zoom: 16.0);
-                   busProvider.selectStop(stop); // Seleziona la fermata (nasconde il pannello)
-                   
-                   // Se siamo in una schermata a schermo intero (es. BusSearchScreen), chiudiamola
-                   if (Navigator.of(context).canPop()) {
-                     Navigator.of(context).pop();
-                   }
-                },
-                tooltip: "Mostra su mappa",
-              ),
-              onTap: () {
-                 mapState.flyTo(stop.latitude, stop.longitude, zoom: 16.0);
-                 showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (ctx) => BusStopDetailsSheet(stop: stop),
-                 );
+            trailing: IconButton(
+              icon: Icon(Icons.map_outlined, color: theme.primaryColor),
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                // Save current query handled by provider already (via onChanged)
+
+                mapState.flyTo(stop.latitude, stop.longitude, zoom: 16.0);
+                busProvider.selectStop(
+                    stop); // Seleziona la fermata (nasconde il pannello)
+
+                // Se siamo in una schermata a schermo intero (es. BusSearchScreen), chiudiamola
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
               },
-            );
-         },
-       );
+              tooltip:
+                  AppLocalizations.of(context)?.showOnMap ?? "Mostra su mappa",
+            ),
+            onTap: () {
+              mapState.flyTo(stop.latitude, stop.longitude, zoom: 16.0);
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (ctx) => BusStopDetailsSheet(stop: stop),
+              );
+            },
+          );
+        },
+      );
     }
 
     if (busProvider.selectedCity == "Flixbus") {
@@ -841,16 +1038,19 @@ class _BusPanelContentState extends State<BusPanelContent> {
               backgroundColor: Colors.lightGreen.withOpacity(0.2),
               child: const Icon(Icons.directions_bus, color: Colors.lightGreen),
             ),
-            title: Text(station['name'] ?? '', style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-            subtitle: Text(station['country_code'] ?? '', style: TextStyle(color: theme.secondaryTextColor)),
+            title: Text(station['name'] ?? '',
+                style: TextStyle(
+                    color: theme.textColor, fontWeight: FontWeight.bold)),
+            subtitle: Text(station['country_code'] ?? '',
+                style: TextStyle(color: theme.secondaryTextColor)),
             onTap: () {
               final dynamic coords = station['coords'];
-              if (coords != null && coords['lat'] != null && coords['lng'] != null) {
-                mapState.flyTo(
-                  (coords['lat'] as num).toDouble(), 
-                  (coords['lng'] as num).toDouble(), 
-                  zoom: 14
-                );
+              if (coords != null &&
+                  coords['lat'] != null &&
+                  coords['lng'] != null) {
+                mapState.flyTo((coords['lat'] as num).toDouble(),
+                    (coords['lng'] as num).toDouble(),
+                    zoom: 14);
               }
             },
           );
@@ -863,10 +1063,13 @@ class _BusPanelContentState extends State<BusPanelContent> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.directions_bus_outlined, size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
+            Icon(Icons.directions_bus_outlined,
+                size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
             const SizedBox(height: 16),
             Text(
-              "Nessun autobus attivo trovato\nper ${busProvider.selectedCity}",
+              AppLocalizations.of(context)
+                      ?.noActiveBusFound(busProvider.selectedCity) ??
+                  "Nessun autobus attivo trovato\nper ${busProvider.selectedCity}",
               textAlign: TextAlign.center,
               style: TextStyle(color: theme.secondaryTextColor, fontSize: 16),
             ),
@@ -882,7 +1085,7 @@ class _BusPanelContentState extends State<BusPanelContent> {
       itemBuilder: (context, index) {
         final v = busProvider.vehicles[index];
         final cityColor = _getCityColor(busProvider.selectedCity);
-        
+
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
@@ -890,12 +1093,12 @@ class _BusPanelContentState extends State<BusPanelContent> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 3)
-              )
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3))
             ],
-            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
+            border:
+                Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
           ),
           child: Material(
             color: Colors.transparent,
@@ -911,22 +1114,25 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   final lineCode = v.line;
                   final selected = busProvider.selectedProvider!;
                   final apiPrefix = selected.apiPathPrefix;
-                  final url = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}&lineCode=${Uri.encodeComponent(lineCode)}';
+                  final url =
+                      '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}&lineCode=${Uri.encodeComponent(lineCode)}';
                   print('Fetching bus details from URL: $url');
-    
+
                   final response = await http.get(Uri.parse(url));
                   if (response.statusCode == 200) {
                     final jsonData = jsonDecode(response.body);
-                    if (jsonData['vehicles'] != null && jsonData['vehicles'].isNotEmpty) {
+                    if (jsonData['vehicles'] != null &&
+                        jsonData['vehicles'].isNotEmpty) {
                       final vehicleData = jsonData['vehicles'][0];
-                      final stops = vehicleData['stops'] as List<dynamic>? ?? [];
-    
+                      final stops =
+                          vehicleData['stops'] as List<dynamic>? ?? [];
+
                       // Update bus destination if available
                       final destination = vehicleData['destination'] as String?;
                       if (destination != null && destination.isNotEmpty) {
                         busProvider.updateBusDestination(v.id, destination);
                       }
-    
+
                       // Convert stops to BusTripUpdate
                       final tripUpdates = stops.map((stop) {
                         return BusTripUpdate(
@@ -936,10 +1142,11 @@ class _BusPanelContentState extends State<BusPanelContent> {
                           delay: stop['delay'] ?? 0,
                           isRealtime: stop['isRealtime'] ?? false,
                           status: stop['status'] ?? 'future',
-                          arrivalEstimate: stop['estimatedArrivalUnix']?.toString(),
+                          arrivalEstimate:
+                              stop['estimatedArrivalUnix']?.toString(),
                         );
                       }).toList();
-    
+
                       // Set the trip updates in the provider
                       busProvider.setApiTripUpdates(tripUpdates);
                     }
@@ -952,15 +1159,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       builder: (_) => DraggableScrollableSheet(
-                        initialChildSize: 0.6,
-                        minChildSize: 0.4,
-                        maxChildSize: 0.95,
-                        expand: false,
-                        builder: (_, controller) => BusDetailsSheet(
-                          bus: v,
-                          scrollController: controller,
-                        )
-                      ),
+                          initialChildSize: 0.6,
+                          minChildSize: 0.4,
+                          maxChildSize: 0.95,
+                          expand: false,
+                          builder: (_, controller) => BusDetailsSheet(
+                                bus: v,
+                                scrollController: controller,
+                              )),
                     );
                   }
                 } catch (e) {
@@ -973,15 +1179,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       builder: (_) => DraggableScrollableSheet(
-                        initialChildSize: 0.6,
-                        minChildSize: 0.4,
-                        maxChildSize: 0.95,
-                        expand: false,
-                        builder: (_, controller) => BusDetailsSheet(
-                          bus: v,
-                          scrollController: controller,
-                        )
-                      ),
+                          initialChildSize: 0.6,
+                          minChildSize: 0.4,
+                          maxChildSize: 0.95,
+                          expand: false,
+                          builder: (_, controller) => BusDetailsSheet(
+                                bus: v,
+                                scrollController: controller,
+                              )),
                     );
                   }
                 }
@@ -996,59 +1201,71 @@ class _BusPanelContentState extends State<BusPanelContent> {
                       height: 50,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: cityColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cityColor.withOpacity(0.3), width: 1.5)
-                      ),
+                          color: cityColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: cityColor.withOpacity(0.3), width: 1.5)),
                       child: Text(
                         "${v.line}",
                         style: TextStyle(
-                          fontSize: 16, 
-                          fontWeight: FontWeight.w900, 
-                          color: cityColor
-                        ),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: cityColor),
                       ),
                     ),
-                    
+
                     const SizedBox(width: 16),
-                    
+
                     // Destination Info
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ScrollingText(
-                            text: v.destination ?? 'Destinazione non disponibile',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
+                            text:
+                                v.destination ?? 'Destinazione non disponibile',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: theme.textColor),
                           ),
                           const SizedBox(height: 4),
                           Row(
                             children: [
                               Container(
-                                width: 8, 
-                                height: 8, 
-                                decoration: BoxDecoration(color: theme.successColor, shape: BoxShape.circle)
-                              ),
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                      color: theme.successColor,
+                                      shape: BoxShape.circle)),
                               const SizedBox(width: 6),
                               Text(
-                                "In viaggio", // Placeholder for status
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.successColor),
+                                AppLocalizations.of(context)?.inTransit ??
+                                    "In transit",
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.successColor),
                               ),
                             ],
                           )
                         ],
                       ),
                     ),
-                    
+
                     // Action Icon
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: theme.surfaceColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]
-                      ),
-                      child: Icon(Icons.arrow_forward_ios_rounded, size: 12, color: theme.primaryColor),
+                          color: theme.surfaceColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4)
+                          ]),
+                      child: Icon(Icons.arrow_forward_ios_rounded,
+                          size: 12, color: theme.primaryColor),
                     ),
                   ],
                 ),
@@ -1060,7 +1277,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
-  Widget _buildBariSolutionsList(BusProvider busProvider, MapStateProvider mapState) {
+  Widget _buildBariSolutionsList(
+      BusProvider busProvider, MapStateProvider mapState) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100),
@@ -1072,25 +1290,32 @@ class _BusPanelContentState extends State<BusPanelContent> {
           color: theme.surfaceColor,
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))
-          ),
+              borderRadius: BorderRadius.circular(12),
+              side:
+                  BorderSide(color: theme.secondaryTextColor.withOpacity(0.1))),
           child: ExpansionTile(
             shape: Border.all(color: Colors.transparent),
             title: Text(
               "${solution.departureTime} - ${solution.arrivalTime}",
-              style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  color: theme.textColor, fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
               "${solution.totalDuration} min, ${solution.transfers} cambi",
               style: TextStyle(color: theme.secondaryTextColor),
             ),
-            children: solution.legs.map((leg) => ListTile(
-              leading: Icon(Icons.directions_bus, color: theme.primaryColor),
-              title: Text("${leg.fromStop} → ${leg.toStop}", style: TextStyle(color: theme.textColor)),
-              subtitle: Text("Linea ${leg.lineCode} - ${leg.duration} min", style: TextStyle(color: theme.secondaryTextColor)),
-              onTap: () {},
-            )).toList(),
+            children: solution.legs
+                .map((leg) => ListTile(
+                      leading:
+                          Icon(Icons.directions_bus, color: theme.primaryColor),
+                      title: Text("${leg.fromStop} → ${leg.toStop}",
+                          style: TextStyle(color: theme.textColor)),
+                      subtitle: Text(
+                          "Linea ${leg.lineCode} - ${leg.duration} min",
+                          style: TextStyle(color: theme.secondaryTextColor)),
+                      onTap: () {},
+                    ))
+                .toList(),
           ),
         );
       },
@@ -1099,10 +1324,14 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
   Color _getCityColor(String city) {
     switch (city) {
-      case "Roma": return Provider.of<ThemeProvider>(context, listen: false).errorColor;
-      case "Bari": return Provider.of<ThemeProvider>(context, listen: false).primaryColor;
-      case "Emilia-Romagna": return Provider.of<ThemeProvider>(context, listen: false).warningColor;
-      default: return Provider.of<ThemeProvider>(context, listen: false).primaryColor;
+      case "Roma":
+        return Provider.of<ThemeProvider>(context, listen: false).errorColor;
+      case "Bari":
+        return Provider.of<ThemeProvider>(context, listen: false).primaryColor;
+      case "Emilia-Romagna":
+        return Provider.of<ThemeProvider>(context, listen: false).warningColor;
+      default:
+        return Provider.of<ThemeProvider>(context, listen: false).primaryColor;
     }
   }
 
@@ -1118,7 +1347,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
-  void _showRouteStops(BuildContext context, String lineNumber, BusRoute route, ThemeProvider theme) {
+  void _showRouteStops(BuildContext context, String lineNumber, BusRoute route,
+      ThemeProvider theme) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1132,7 +1362,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
           return Container(
             decoration: BoxDecoration(
               color: theme.surfaceColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               children: [
@@ -1150,21 +1381,28 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: theme.primaryColor,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           lineNumber,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           route.directionLabel,
-                          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                              color: theme.textColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1176,8 +1414,9 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
-                    "Percorso verso ${route.destination}",
-                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 13),
+                    "${AppLocalizations.of(context)?.routeTowards ?? 'Percorso verso'} ${route.destination}",
+                    style: TextStyle(
+                        color: theme.secondaryTextColor, fontSize: 13),
                   ),
                 ),
                 const Divider(height: 24),
@@ -1201,14 +1440,16 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                   decoration: BoxDecoration(
                                     color: theme.primaryColor,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: theme.surfaceColor, width: 2),
+                                    border: Border.all(
+                                        color: theme.surfaceColor, width: 2),
                                   ),
                                 ),
                                 if (!isLast)
                                   Expanded(
                                     child: Container(
                                       width: 2,
-                                      color: theme.primaryColor.withOpacity(0.3),
+                                      color:
+                                          theme.primaryColor.withOpacity(0.3),
                                     ),
                                   ),
                               ],
@@ -1222,27 +1463,43 @@ class _BusPanelContentState extends State<BusPanelContent> {
                                     onTap: () {
                                       Navigator.pop(ctx);
                                       // Find full stop data to show details
-                                      final busProvider = Provider.of<BusProvider>(context, listen: false);
-                                      final fullStop = busProvider.stops.firstWhere(
+                                      final busProvider =
+                                          Provider.of<BusProvider>(context,
+                                              listen: false);
+                                      final fullStop =
+                                          busProvider.stops.firstWhere(
                                         (s) => s.stopId == stop.stopId,
-                                        orElse: () => BariStop(stopId: stop.stopId, stopName: stop.stopName, latitude: 0, longitude: 0),
+                                        orElse: () => BariStop(
+                                            stopId: stop.stopId,
+                                            stopName: stop.stopName,
+                                            latitude: 0,
+                                            longitude: 0),
                                       );
                                       if (fullStop.latitude != 0) {
-                                        final mapState = Provider.of<MapStateProvider>(context, listen: false);
-                                        mapState.flyTo(fullStop.latitude, fullStop.longitude, zoom: 16);
+                                        final mapState =
+                                            Provider.of<MapStateProvider>(
+                                                context,
+                                                listen: false);
+                                        mapState.flyTo(fullStop.latitude,
+                                            fullStop.longitude,
+                                            zoom: 16);
                                       }
                                       showModalBottomSheet(
                                         context: context,
                                         isScrollControlled: true,
                                         backgroundColor: Colors.transparent,
-                                        builder: (_) => BusStopDetailsSheet(stop: fullStop),
+                                        builder: (_) =>
+                                            BusStopDetailsSheet(stop: fullStop),
                                       );
                                     },
                                     child: Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
                                       child: Text(
                                         stop.stopName,
-                                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w500),
+                                        style: TextStyle(
+                                            color: theme.textColor,
+                                            fontWeight: FontWeight.w500),
                                       ),
                                     ),
                                   ),

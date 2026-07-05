@@ -8,6 +8,7 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
+import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../data/models/train_model.dart';
 import '../providers/train_provider.dart';
 import '../../../../core/services/offline_sync_service.dart';
@@ -20,6 +21,7 @@ import '../../../../core/services/android_background_service.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
+import '../../../../core/services/runtime_localizations.dart';
 
 class _ActualTime {
   final DateTime time;
@@ -377,14 +379,14 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
     // Show explicit delay/advance line without duplicating words
     if (delay > 0) {
-      buffer.writeln('Ritardo: ${delay} min');
+      buffer.writeln(RuntimeLocalizations.t(context, 'delay_minutes', params: {'minutes': delay.toString()}));
     } else if (delay < 0) {
-      buffer.writeln('Anticipo: ${-delay} min');
+      buffer.writeln(RuntimeLocalizations.t(context, 'early_minutes', params: {'minutes': (-delay).toString()}));
     } else {
-      buffer.writeln('In orario');
+      buffer.writeln(RuntimeLocalizations.t(context, 'on_time'));
     }
 
-    buffer.writeln('Fermate rimanenti: $remaining');
+    buffer.writeln(RuntimeLocalizations.t(context, 'remaining_stops', params: {'count': remaining.toString()}));
 
     return buffer.toString().trim();
   }
@@ -412,8 +414,8 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ListTile(title: const Text('Notifica fino a...'), subtitle: const Text('Scegli una fermata dalla lista')),
-                  if (stops.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('Lista fermate non disponibile, verrà usata notifica generale.')),
+                  ListTile(title: Text(RuntimeLocalizations.t(context, 'notify_until')), subtitle: Text(RuntimeLocalizations.t(context, 'choose_stop_from_list'))),
+                  if (stops.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(RuntimeLocalizations.t(context, 'stops_list_unavailable_general_notification'))),
                   if (stops.isNotEmpty)
                     SizedBox(
                       height: 200,
@@ -466,10 +468,10 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                   // Preview
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Column(
+                        child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Anteprima notifica', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(RuntimeLocalizations.t(context, 'notification_preview'), style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         Text(previewTitle(), style: TextStyle(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 6),
@@ -484,7 +486,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            child: const Text('Notifica fino alla fermata selezionata'),
+                            child: Text(RuntimeLocalizations.t(context, 'notify_to_selected_stop')),
                             onPressed: selectedStop == null && stops.isNotEmpty ? null : () async {
                               Navigator.pop(ctx);
                               // schedule with destination
@@ -511,7 +513,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            child: const Text('Notifica generale'),
+                            child: Text(RuntimeLocalizations.t(context, 'notify_general')),
                             onPressed: () async {
                               Navigator.pop(ctx);
                               final settings = Provider.of<SettingsProvider>(context, listen: false);
@@ -534,14 +536,14 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: TextButton(
-                      child: const Text('Disattiva notifiche per questo treno', style: TextStyle(color: Colors.red)),
+                      child: Text(RuntimeLocalizations.t(context, 'disable_notifications_for_this_train'), style: TextStyle(color: Colors.red)),
                       onPressed: () async {
                         Navigator.pop(ctx);
                       final monitorKey = tripId.isNotEmpty ? tripId : (widget.departure.trainNumber ?? '');
                       if (monitorKey.isNotEmpty) await AndroidBackgroundService.removeMonitoredTrip(monitorKey);
                       final key = 'train:$monitorKey';
                         await AndroidBackgroundService.cancelNotification(key: key);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifiche disattivate')));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'notifications_disabled'))));
                         setState(() => _enabled = false);
                       },
                     ),
@@ -602,24 +604,24 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       final candidate = '$prodBase/${countryFromMeta}/trip?tripId=${Uri.encodeComponent(tripId)}';
       try {
         final resp = await http.get(Uri.parse(candidate)).timeout(const Duration(seconds: 6));
-        if (resp.statusCode == 200) {
+            if (resp.statusCode == 200) {
           // Basic heuristic: response must contain stops or data
           final body = resp.body;
           if (body.contains('stops') || body.contains('data') || body.contains('trip')) {
             resolvedEndpoint = candidate;
             usedCountry = countryFromMeta;
           } else {
-            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Impossibile verificare l\'endpoint dal country selezionata')));
+            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'endpoint_check_failed_country'))));
           }
-        } else {
-          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Richiesta all\'endpoint ${candidate} fallita: HTTP ${resp.statusCode}')));
+          } else {
+          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'endpoint_request_failed', params: {'candidate': candidate, 'code': resp.statusCode.toString()}))));
         }
       } catch (e) {
-        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Errore di rete durante la verifica dell\'endpoint')));
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'network_error_endpoint_check'))));
       }
     } else if (tripId != null && tripId.isNotEmpty) {
       // No country available: ask user to set it instead of guessing
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Non è possibile determinare l\'URL esatto: imposta la country del pannello o utilizza l\'endpoint manuale')));
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'cannot_determine_url_set_country'))));
     }
 
     // Proceed to schedule even if resolvedEndpoint is null (service will skip fetch if no country/endpoint)
@@ -638,7 +640,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       arrivalNoticeMinutes: settings.trainArrivalPreNoticeMinutes,
     );
 
-    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Notifica impostata')));
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'notification_set'))));
 
     // If user requested destination-specific notify, do an immediate proximity check (may trigger the pre-notice now)
     if (notifyMode == 'to_destination' && destinationStop != null && destinationStop.isNotEmpty) {
@@ -655,7 +657,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       return Expanded(
         child: _PrimaryActionChip(
           icon: _enabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
-          label: "Notifiche",
+          label: RuntimeLocalizations.t(context, 'notifications'),
           isActive: _enabled,
           theme: theme,
           onTap: _toggle,
@@ -924,7 +926,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                           Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
                           const SizedBox(height: 24),
                           Text(
-                            "Ops! Qualcosa è andato storto",
+                            RuntimeLocalizations.t(context, 'something_went_wrong'),
                             style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
@@ -939,7 +941,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                             child: ElevatedButton.icon(
                               onPressed: _refreshTrainDetails,
                               icon: const Icon(Icons.refresh_rounded),
-                              label: const Text("Riprova"),
+                              label: Text(RuntimeLocalizations.t(context, 'retry')),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: theme.primaryColor,
                                 foregroundColor: Colors.white,
@@ -1282,10 +1284,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                     departure.origin ?? '',
                     departure.destination ?? '',
                   );
-                  return Expanded(
+                    return Expanded(
                     child: _PrimaryActionChip(
                       icon: isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      label: "Salva",
+                      label: AppLocalizations.of(context)?.save ?? 'Salva',
                       isActive: isFavorite,
                       activeColor: Colors.red,
                       theme: theme,
@@ -1336,8 +1338,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                             SnackBar(
                               content: Text(
                                 settings.offlineSyncEnabled
-                                    ? 'Treno salvato per modalità offline'
-                                    : 'Treno salvato manualmente (auto-sync offline disattivata)'
+                                    ? RuntimeLocalizations.t(context, 'train_saved_offline')
+                                    : RuntimeLocalizations.t(context, 'train_saved_manual_offline')
                               ),
                               backgroundColor: theme.primaryColor,
                               duration: const Duration(seconds: 2),
@@ -1404,7 +1406,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 // Map
                 _buildInfoChip(
                   Icons.map_rounded,
-                  "Mappa",
+                  RuntimeLocalizations.t(context, 'map'),
                   theme,
                   () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (ctx) => TrainMapPage(departure: departure, isArrivalMode: widget.isArrivalMode, currentDelay: delay)),
@@ -1414,7 +1416,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 // Refresh
                 _buildInfoChip(
                   Icons.refresh_rounded,
-                  "Aggiorna",
+                  RuntimeLocalizations.t(context, 'update'),
                   theme,
                   _refreshTrainDetails,
                 ),
@@ -1427,7 +1429,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       isOffline
                           ? Icons.cloud_off_rounded
                           : (_autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded),
-                      isOffline ? "Offline" : "Live",
+                      isOffline ? RuntimeLocalizations.t(context, 'offline') : RuntimeLocalizations.t(context, 'live'),
                       theme,
                       isOffline ? null : () => _toggleAutoRefresh(),
                       isActive: !isOffline && _autoRefreshTimer != null,
@@ -1439,7 +1441,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 if (_hasMessages())
                   _buildInfoChip(
                     Icons.warning_amber_rounded,
-                    "Avvisi (${_messages()?.length ?? 0})",
+                    '${RuntimeLocalizations.t(context, 'alerts')} (${_messages()?.length ?? 0})',
                     theme,
                     _showMessagesSheet,
                     isActive: true,
@@ -1642,12 +1644,12 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               children: [
                 Row(
                   children: [
-                    Text('Messaggi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(RuntimeLocalizations.t(context, 'messages'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const Spacer(),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('${msgs.length}'),
+                        Text(RuntimeLocalizations.t(context, 'messages_count', params: {'count': msgs.length.toString()})),
                         if (priCounts.isNotEmpty) const SizedBox(height: 6),
                         if (priCounts.isNotEmpty)
                           Wrap(
@@ -1686,8 +1688,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(station, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                              const SizedBox(height: 4),
-                              Text(text),
+                              const SizedBox(height: 8),
+                              Text(text, style: TextStyle(fontSize: 13)),
                             ],
                           )
                         : Text(text);
@@ -1728,7 +1730,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Chiudi'))),
+                Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.pop(ctx), child: Text(RuntimeLocalizations.t(context, 'close')))),
               ],
             ),
           ),
@@ -1784,7 +1786,7 @@ class _TimelineRow extends StatelessWidget {
       final delayStr = effectiveDelay != 0 ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)" : "";
       
       if (scheduled != null && (estimated != null || effectiveDelay != 0)) {
-        return '$type: $effStr$delayStr (Previsto: ${timeFormatter(scheduled, stop.country)})';
+        return '$type: $effStr$delayStr (${RuntimeLocalizations.t(context, 'scheduled_label')}: ${timeFormatter(scheduled, stop.country)})';
       }
       return '$type: $effStr';
     }
@@ -1807,7 +1809,7 @@ class _TimelineRow extends StatelessWidget {
                     Expanded(
                       child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
                     ),
-                    if (stop.cancelled)
+                        if (stop.cancelled)
                       Container(
                         margin: const EdgeInsets.only(left: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1816,14 +1818,14 @@ class _TimelineRow extends StatelessWidget {
                           border: Border.all(color: theme.errorColor.withOpacity(0.3)),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text('Annullata', style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.w800)),
+                        child: Text(RuntimeLocalizations.t(context, 'cancelled'), style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.w800)),
                       ),
                   ],),
                   if (stop.arrival != null) 
-                    Text(buildTimeString('Arrivo', stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : (stop.arrivalDelay ?? 0)),
+                Text(buildTimeString(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : (stop.arrivalDelay ?? 0)),
                         style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
                   if (stop.departure != null)
-                    Text(buildTimeString('Partenza', stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : (stop.departureDelay ?? 0)),
+                Text(buildTimeString(RuntimeLocalizations.t(context, 'departure'), stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : (stop.departureDelay ?? 0)),
                         style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
 
                 ],
@@ -1902,7 +1904,9 @@ Widget _buildOfflineSyncButton({
     icon: isCached
         ? Icons.cloud_done_rounded
         : (manualMode ? Icons.save_alt_rounded : Icons.cloud_download_rounded),
-    label: manualMode ? "Salva offline" : "Offline mode",
+    label: manualMode
+        ? RuntimeLocalizations.t(context, 'save_offline')
+        : RuntimeLocalizations.t(context, 'offline_mode'),
     isActive: isCached,
     theme: theme,
     onTap: onSync,

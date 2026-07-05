@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/train_model.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
+import '../../../../core/services/runtime_localizations.dart';
 
 const String _kMapboxAccessToken = 'pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g';
 
@@ -639,11 +640,11 @@ class _TrainMapPageState extends State<TrainMapPage> {
                        Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text("Ritardo", style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
+                            Text(RuntimeLocalizations.t(context, 'delay_label'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                             const SizedBox(height: 4),
-                            Text("$currentDelay min", style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.bold, 
-                                color: currentDelay > 0 ? Colors.red : Colors.green)),
+                            Text(RuntimeLocalizations.t(context, 'minutes_short', params: {'minutes': currentDelay.toString()}), style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.bold, 
+                              color: currentDelay > 0 ? Colors.red : Colors.green)),
                           ],
                         ),
                       
@@ -652,7 +653,7 @@ class _TrainMapPageState extends State<TrainMapPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text("Origine", style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
+                              Text(RuntimeLocalizations.t(context, 'origin'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                               const SizedBox(height: 4),
                               Text(dep.origin ?? "?", 
                                   textAlign: TextAlign.center,
@@ -666,7 +667,7 @@ class _TrainMapPageState extends State<TrainMapPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text("Destinazione", style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
+                              Text(RuntimeLocalizations.t(context, 'destination'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                               const SizedBox(height: 4),
                               Text(dep.destination ?? "?", 
                                   textAlign: TextAlign.center,

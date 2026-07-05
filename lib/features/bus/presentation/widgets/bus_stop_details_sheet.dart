@@ -8,6 +8,8 @@ import '../../../../core/api_constants.dart';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
+import '../../../../core/services/runtime_localizations.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../../core/services/android_background_service.dart';
@@ -55,7 +57,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     }
 
     if (dep == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nessun percorso disponibile per la linea $line')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'no_route_for_line', params: {'line': line}))));
       return;
     }
 
@@ -136,7 +138,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Prossime Partenze", 
+                Text(RuntimeLocalizations.t(context, 'upcoming_departures'), 
                   style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                 if (_isLoadingDepartures) 
                   SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor)),
@@ -217,7 +219,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                     ),
                   ),
                 const SizedBox(height: 6),
-                Text('Fermata di ${_capitalizeFirst(provider.selectedProvider?.name ?? 'Bus')}', 
+                Text(RuntimeLocalizations.t(context, 'stop_of', params: {'provider': _capitalizeFirst(provider.selectedProvider?.name ?? 'Bus')}), 
                   style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w600, fontSize: 13)),
               ],
             ),
@@ -238,8 +240,8 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
           child: Consumer2<FavoritesProvider, AuthProvider>(
             builder: (ctx, favs, auth, _) {
               final isFav = favs.isStopFavorite(widget.stop.stopId, StopType.busStop);
-              return _buildActionButton(
-                label: isFav ? "Salvato" : "Preferito",
+                return _buildActionButton(
+                label: isFav ? RuntimeLocalizations.t(context, 'saved') : RuntimeLocalizations.t(context, 'favorite_action'),
                 icon: isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
                 active: isFav, color: Colors.redAccent, theme: theme,
                 onTap: () async {
@@ -363,7 +365,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(diff <= 0 ? "Adesso" : "$diff min", style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 16)),
-                if (dep.isRealtime) Text("• LIVE", style: TextStyle(color: theme.successColor, fontSize: 9, fontWeight: FontWeight.w900)),
+                if (dep.isRealtime) Text("• ${RuntimeLocalizations.t(context, 'live')}", style: TextStyle(color: theme.successColor, fontSize: 9, fontWeight: FontWeight.w900)),
               ],
             ),
           ],
@@ -379,7 +381,7 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
         children: [
           Icon(Icons.bus_alert_rounded, size: 40, color: theme.secondaryTextColor.withOpacity(0.2)),
           const SizedBox(height: 8),
-          Text("Nessun bus previsto", style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
+          Text(RuntimeLocalizations.t(context, 'no_bus_scheduled'), style: TextStyle(color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
         ],
       ),
     );

@@ -13,6 +13,9 @@ import 'presentation/providers/map_state_provider.dart';
 import 'presentation/screens/splash_screen.dart';
 import 'core/services/android_background_service.dart';
 
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
+
 void main() {
   runApp(const BcTransporterApp());
 }
@@ -31,9 +34,10 @@ class BcTransporterApp extends StatefulWidget {
   State<BcTransporterApp> createState() => _BcTransporterAppState();
 }
 
-class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBindingObserver {
+class _BcTransporterAppState extends State<BcTransporterApp>
+    with WidgetsBindingObserver {
   MapStateProvider? _mapStateProvider;
-  
+
   @override
   void initState() {
     super.initState();
@@ -45,9 +49,20 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
       try {
         await AndroidBackgroundService.requestPermission();
         final settings = Provider.of<SettingsProvider>(context, listen: false);
-        if (settings.trainsWorkerEnabled) await AndroidBackgroundService.scheduleTrainsWorker(intervalSeconds: settings.trainRefreshSeconds, stationId: settings.trainStationId.isNotEmpty ? settings.trainStationId : null, service: settings.trainService);
-        if (settings.busesWorkerEnabled) await AndroidBackgroundService.scheduleBusesWorker(intervalSeconds: settings.busRefreshSeconds, provider: settings.busProvider, baseUrl: settings.busBaseUrl);
-        if (settings.functionsWorkerEnabled) await AndroidBackgroundService.scheduleFunctionsWorker();
+        if (settings.trainsWorkerEnabled)
+          await AndroidBackgroundService.scheduleTrainsWorker(
+              intervalSeconds: settings.trainRefreshSeconds,
+              stationId: settings.trainStationId.isNotEmpty
+                  ? settings.trainStationId
+                  : null,
+              service: settings.trainService);
+        if (settings.busesWorkerEnabled)
+          await AndroidBackgroundService.scheduleBusesWorker(
+              intervalSeconds: settings.busRefreshSeconds,
+              provider: settings.busProvider,
+              baseUrl: settings.busBaseUrl);
+        if (settings.functionsWorkerEnabled)
+          await AndroidBackgroundService.scheduleFunctionsWorker();
       } catch (_) {}
     });
   }
@@ -61,11 +76,12 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    
+
     // Salva la posizione della mappa quando l'app viene messa in background o chiusa
-    if ((state == AppLifecycleState.paused || 
-        state == AppLifecycleState.detached || 
-        state == AppLifecycleState.inactive) && _mapStateProvider != null) {
+    if ((state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached ||
+            state == AppLifecycleState.inactive) &&
+        _mapStateProvider != null) {
       _mapStateProvider!.saveCurrentPosition();
     }
   }
@@ -114,11 +130,12 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
         ChangeNotifierProvider(create: (_) => MapStateProvider()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, theme, child) {
+      child: Consumer2<ThemeProvider, SettingsProvider>(
+        builder: (context, theme, settings, child) {
           // Salva riferimento al MapStateProvider per il lifecycle
-          _mapStateProvider = Provider.of<MapStateProvider>(context, listen: false);
-          
+          _mapStateProvider =
+              Provider.of<MapStateProvider>(context, listen: false);
+
           return Consumer<AuthProvider>(
             builder: (context, auth, child) {
               return MaterialApp(
@@ -127,6 +144,18 @@ class _BcTransporterAppState extends State<BcTransporterApp> with WidgetsBinding
                 theme: AppTheme.lightTheme,
                 darkTheme: AppTheme.darkTheme,
                 themeMode: theme.themeMode,
+                locale: settings.appLocale,
+                localizationsDelegates: const [
+                  AppLocalizations.delegate,
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                supportedLocales: const [
+                  Locale('it'), // Italiano (default)
+                  Locale('en'), // Inglese
+                  Locale('de'), // Tedesco
+                ],
                 home: const SplashScreen(),
               );
             },

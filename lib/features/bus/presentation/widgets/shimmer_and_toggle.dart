@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class ShimmerLoading extends StatefulWidget {
   final Color baseColor;
@@ -139,7 +140,7 @@ class SlidingTabToggle extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: !isArrival ? Colors.white : theme.secondaryTextColor,
                       ),
-                      child: const Text("Partenze"),
+                      child: Text(AppLocalizations.of(context)?.departures ?? 'Partenze'),
                     ),
                   ),
                 ),
@@ -157,7 +158,7 @@ class SlidingTabToggle extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: isArrival ? Colors.white : theme.secondaryTextColor,
                       ),
-                      child: const Text("Arrivi"),
+                      child: Text(AppLocalizations.of(context)?.arrivals ?? 'Arrivi'),
                     ),
                   ),
                 ),

@@ -15,6 +15,8 @@ import '../models/favorite_item.dart';
 import '../models/favorite_stop.dart';
 import '../models/favorite_train.dart';
 import '../models/favorite_bus_line.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
+import '../../../../core/services/runtime_localizations.dart';
 
 class FavoritesPage extends StatefulWidget {
   const FavoritesPage({super.key});
@@ -129,18 +131,23 @@ class _FavoritesPageState extends State<FavoritesPage> {
     // Uniamo tutte le liste in base al filtro per creare un unico Feed
     List<FavoriteItem> feedItems = [];
     // Aggiungi fermate e stazioni in base al filtro
-    if (_selectedFilter == 'Tutti' || _selectedFilter == 'Fermate') {
+    final filterAll = RuntimeLocalizations.t(context, 'filter_all');
+    final filterStops = AppLocalizations.of(context)?.stops ?? RuntimeLocalizations.t(context, 'filter_stops');
+    final filterTrains = AppLocalizations.of(context)?.trains ?? RuntimeLocalizations.t(context, 'filter_trains');
+    final filterBuses = AppLocalizations.of(context)?.buses ?? RuntimeLocalizations.t(context, 'filter_buses');
+
+    if (_selectedFilter == filterAll || _selectedFilter == filterStops) {
       // Solo fermate bus
       feedItems.addAll(favoritesProvider.favoriteStops.where((s) => s.stopType == StopType.busStop));
     }
 
-    if (_selectedFilter == 'Tutti' || _selectedFilter == 'Treni') {
+    if (_selectedFilter == filterAll || _selectedFilter == filterTrains) {
       // Treni e stazioni (stazioni salvate come FavoriteStop con StopType.trainStation)
       feedItems.addAll(favoritesProvider.favoriteTrains);
       feedItems.addAll(favoritesProvider.favoriteStops.where((s) => s.stopType == StopType.trainStation));
     }
 
-    if (_selectedFilter == 'Tutti' || _selectedFilter == 'Bus') {
+    if (_selectedFilter == filterAll || _selectedFilter == filterBuses) {
       feedItems.addAll(favoritesProvider.favoriteBusLines);
     }
 
@@ -189,12 +196,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                 onDismissed: (direction) async {
                                   final removed = train;
                                   final success = await favoritesProvider.removeTrainFavorite(removed.trainNumber, removed.departureStation, removed.arrivalStation);
-                                  if (success) {
+                                    if (success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: const Text('Treno rimosso dai preferiti'),
+                                        content: Text(RuntimeLocalizations.t(context, 'train_removed_favorites')),
                                         action: SnackBarAction(
-                                          label: 'Annulla',
+                                          label: RuntimeLocalizations.t(context, 'undo'),
                                           onPressed: () async {
                                             await favoritesProvider.addTrainFavorite(removed);
                                           },
@@ -202,7 +209,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                       ),
                                     );
                                   } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante la rimozione del preferito')));
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'error_removing_favorite'))));
                                   }
                                 },
                                 child: _buildFeedItem(context, item, favoritesProvider),
@@ -222,7 +229,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
         onPressed: () {
             // Logica per navigare alla ricerca
         },
-        label: const Text('Esplora'),
+        label: Text(RuntimeLocalizations.t(context, 'explore')),
         icon: const Icon(Icons.add_location_alt_outlined),
         backgroundColor: theme.primaryColor,
       ),
@@ -241,7 +248,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       centerTitle: false,
       titleSpacing: 8.0,
       title: Text(
-        'Preferiti',
+        AppLocalizations.of(context)?.favorites ?? RuntimeLocalizations.t(context, 'favorites'),
         style: TextStyle(
           color: theme.colorScheme.onSurface,
           fontWeight: FontWeight.bold,
@@ -278,14 +285,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Ciao, $userName 👋',
+                            RuntimeLocalizations.t(context, 'greeting', params: {'name': userName}),
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: theme.colorScheme.onSurface.withOpacity(0.6),
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Pronto a partire?',
+                            RuntimeLocalizations.t(context, 'ready_to_go'),
                             style: theme.textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: theme.colorScheme.onSurface,
@@ -311,14 +318,19 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 )
               : const Icon(Icons.refresh),
           onPressed: _isLoadingRealTime ? null : () => _loadRealTimeData(),
-          tooltip: 'Aggiorna dati real-time',
+          tooltip: RuntimeLocalizations.t(context, 'refresh_realtime_tooltip'),
         ),
       ],
     );
   }
 
   Widget _buildFilterChips(ThemeData theme) {
-    final filters = ['Tutti', 'Fermate', 'Treni', 'Bus'];
+    final filters = [
+      RuntimeLocalizations.t(context, 'filter_all'),
+      AppLocalizations.of(context)?.stops ?? RuntimeLocalizations.t(context, 'filter_stops'),
+      AppLocalizations.of(context)?.trains ?? RuntimeLocalizations.t(context, 'filter_trains'),
+      AppLocalizations.of(context)?.buses ?? RuntimeLocalizations.t(context, 'filter_buses'),
+    ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -434,7 +446,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             _buildLiveStatusIndicator(realTimeData),
                             const SizedBox(width: 8),
                             IconButton(
-                              tooltip: isFav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti',
+                              tooltip: isFav ? RuntimeLocalizations.t(context, 'remove_from_favorites') : RuntimeLocalizations.t(context, 'add_to_favorites'),
                               icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? Colors.orange : theme.colorScheme.onSurface),
                               onPressed: () async {
                                 // toggle favorite and show snackbar with undo
@@ -444,9 +456,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                   if (success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Treno rimosso dai preferiti'),
+                                        content: Text(RuntimeLocalizations.t(context, 'train_removed_favorites')),
                                         action: SnackBarAction(
-                                          label: 'Annulla',
+                                          label: RuntimeLocalizations.t(context, 'undo'),
                                           onPressed: () async {
                                             await provider.addTrainFavorite(train);
                                           },
@@ -454,16 +466,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                       ),
                                     );
                                   } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante la rimozione')));
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'error_removing_favorite'))));
                                   }
                                 } else {
                                   final success = await provider.addTrainFavorite(train);
-                                  if (success) {
+                                    if (success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Treno aggiunto ai preferiti'),
+                                        content: Text(RuntimeLocalizations.t(context, 'train_added_favorites')),
                                         action: SnackBarAction(
-                                          label: 'Annulla',
+                                          label: RuntimeLocalizations.t(context, 'undo'),
                                           onPressed: () async {
                                             await provider.removeTrainFavorite(train.trainNumber, train.departureStation, train.arrivalStation);
                                           },
@@ -471,7 +483,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                       ),
                                     );
                                   } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore durante l\'aggiunta')));
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'error_adding_favorite'))));
                                   }
                                 }
                               },
@@ -541,10 +553,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
             border: Border.all(color: Colors.blue.withOpacity(0.3)),
           ),
           child: Row(
-            children: const [
+            children: [
               Icon(Icons.directions_run, size: 8, color: Colors.blue),
-              SizedBox(width: 4),
-              Text('In viaggio', style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 4),
+              Text(RuntimeLocalizations.t(context, 'in_transit'), style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
             ],
           ),
         );
@@ -560,7 +572,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             children: [
               const Icon(Icons.schedule, size: 8, color: Colors.red),
               const SizedBox(width: 4),
-              Text('+${delay}min', style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+              Text(RuntimeLocalizations.t(context, 'delay_short', params: {'minutes': delay.toString()}), style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
             ],
           ),
         );
@@ -573,10 +585,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
             border: Border.all(color: Colors.green.withOpacity(0.3)),
           ),
           child: Row(
-            children: const [
-              Icon(Icons.check_circle, size: 8, color: Colors.green),
-              SizedBox(width: 4),
-              Text('In orario', style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+            children: [
+              const Icon(Icons.check_circle, size: 8, color: Colors.green),
+              const SizedBox(width: 4),
+              Text(RuntimeLocalizations.t(context, 'on_time_small'), style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
             ],
           ),
         );
@@ -592,10 +604,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
         border: Border.all(color: Colors.grey.withOpacity(0.3)),
       ),
       child: Row(
-        children: const [
-          Icon(Icons.access_time, size: 8, color: Colors.grey),
-          SizedBox(width: 4),
-          Text('Caricamento...', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        children: [
+          const Icon(Icons.access_time, size: 8, color: Colors.grey),
+          const SizedBox(width: 4),
+          Text(RuntimeLocalizations.t(context, 'loading'), style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -1019,7 +1031,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             Icon(Icons.train, size: 64, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              'Treno ${train.trainNumber} non trovato',
+                              RuntimeLocalizations.t(context, 'train_not_found', params: {'number': train.trainNumber}),
                               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                 color: Colors.grey[600],
                               ),
@@ -1040,9 +1052,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
                               leading: const Icon(Icons.train, color: Colors.orange),
-                              title: Text('Treno ${result.trainNumber}'),
-                              subtitle: Text('${result.origin ?? 'N/A'} → ${result.destination ?? 'N/A'}'),
-                              trailing: Text(result.scheduledTime != null ? '${result.scheduledTime!.hour.toString().padLeft(2, '0')}:${result.scheduledTime!.minute.toString().padLeft(2, '0')}' : 'N/A'),
+                              title: Text(RuntimeLocalizations.t(context, 'train_label', params: {'number': result.trainNumber ?? ''})),
+                              subtitle: Text('${result.origin ?? RuntimeLocalizations.t(context, 'na')} → ${result.destination ?? RuntimeLocalizations.t(context, 'na')}'),
+                              trailing: Text(result.scheduledTime != null ? '${result.scheduledTime!.hour.toString().padLeft(2, '0')}:${result.scheduledTime!.minute.toString().padLeft(2, '0')}' : RuntimeLocalizations.t(context, 'na')),
                               onTap: () {
                                 Navigator.pop(context);
                                 showModalBottomSheet(
@@ -1156,8 +1168,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                 ),
                               ),
                             ),
-                            title: Text(vehicle.destination ?? 'Sconosciuta'),
-                            subtitle: Text('ID: ${vehicle.id}'),
+                            title: Text(vehicle.destination ?? RuntimeLocalizations.t(context, 'unknown')),
+                            subtitle: Text(RuntimeLocalizations.t(context, 'id_prefix', params: {'id': vehicle.id})),
                             trailing: const Icon(Icons.check_circle, color: Colors.green),
                             onTap: () {
                               Navigator.pop(context);
@@ -1237,7 +1249,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             Icon(Icons.location_on, size: 64, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              'Fermata "${stop.name}" non trovata',
+                              RuntimeLocalizations.t(context, 'stop_not_found', params: {'name': stop.name}),
                               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                 color: Colors.grey[600],
                               ),
@@ -1258,7 +1270,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                           child: ListTile(
                             leading: const Icon(Icons.location_on, color: Colors.green),
                             title: Text(foundStop.stopName),
-                            subtitle: Text('ID: ${foundStop.stopId}'),
+                            subtitle: Text(RuntimeLocalizations.t(context, 'id_prefix', params: {'id': foundStop.stopId})),
                             onTap: () {
                               Navigator.pop(context);
                               showModalBottomSheet(

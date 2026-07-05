@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'login_page.dart';
 import 'dashboard_page.dart';
 import '../../../presentation/screens/home_screen.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -12,7 +13,8 @@ class RegisterPage extends StatefulWidget {
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMixin {
+class _RegisterPageState extends State<RegisterPage>
+    with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -50,6 +52,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
       return;
     }
 
+    final loc = AppLocalizations.of(context);
     print('Starting registration process...');
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final success = await authProvider.register(
@@ -69,11 +72,12 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
       // Mostra un messaggio di successo
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Row(
+          content: Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 8),
-              Text('Registrazione completata con successo!'),
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(loc?.registrationSuccess ??
+                  'Registrazione completata con successo!'),
             ],
           ),
           backgroundColor: Colors.green,
@@ -98,6 +102,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -110,7 +115,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
               MaterialPageRoute(builder: (_) => const HomeScreen()),
             );
           },
-          tooltip: 'Torna indietro',
+          tooltip: loc?.back ?? 'Torna indietro',
         ),
       ),
       body: Container(
@@ -159,7 +164,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                   const SizedBox(height: 32),
                   // Title Section
                   Text(
-                    'Crea il tuo\nAccount',
+                    loc?.createAccountTitle ?? 'Crea il tuo\nAccount',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -194,22 +199,27 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                             TextFormField(
                               controller: _emailController,
                               decoration: InputDecoration(
-                                labelText: 'Email',
-                                hintText: 'Inserisci la tua email',
+                                labelText: loc?.email ?? 'Email',
+                                hintText:
+                                    loc?.emailHint ?? 'Inserisci la tua email',
                                 prefixIcon: const Icon(Icons.email_outlined),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               keyboardType: TextInputType.emailAddress,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Inserisci l\'email';
+                                  return loc?.emailRequired ??
+                                      'Inserisci l\'email';
                                 }
-                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                                  return 'Inserisci un\'email valida';
+                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                                    .hasMatch(value)) {
+                                  return loc?.emailInvalid ??
+                                      'Inserisci un\'email valida';
                                 }
                                 return null;
                               },
@@ -219,21 +229,25 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                             TextFormField(
                               controller: _nicknameController,
                               decoration: InputDecoration(
-                                labelText: 'Nickname',
-                                hintText: 'Scegli un nickname',
+                                labelText: loc?.nickname ?? 'Nickname',
+                                hintText:
+                                    loc?.nicknameHint ?? 'Scegli un nickname',
                                 prefixIcon: const Icon(Icons.person_outline),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Inserisci un nickname';
+                                  return loc?.nicknameRequired ??
+                                      'Inserisci un nickname';
                                 }
                                 if (value.length < 3) {
-                                  return 'Il nickname deve essere di almeno 3 caratteri';
+                                  return loc?.nicknameMin3 ??
+                                      'Il nickname deve essere di almeno 3 caratteri';
                                 }
                                 return null;
                               },
@@ -243,22 +257,26 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                             TextFormField(
                               controller: _passwordController,
                               decoration: InputDecoration(
-                                labelText: 'Password',
-                                hintText: 'Crea una password sicura',
+                                labelText: loc?.password ?? 'Password',
+                                hintText: loc?.createPasswordHint ??
+                                    'Crea una password sicura',
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               obscureText: true,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Inserisci la password';
+                                  return loc?.passwordRequired ??
+                                      'Inserisci la password';
                                 }
                                 if (value.length < 6) {
-                                  return 'La password deve essere di almeno 6 caratteri';
+                                  return loc?.passwordMin6 ??
+                                      'La password deve essere di almeno 6 caratteri';
                                 }
                                 return null;
                               },
@@ -268,22 +286,27 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                             TextFormField(
                               controller: _confirmPasswordController,
                               decoration: InputDecoration(
-                                labelText: 'Conferma Password',
-                                hintText: 'Ripeti la password',
+                                labelText:
+                                    loc?.confirmPassword ?? 'Conferma Password',
+                                hintText:
+                                    loc?.repeatPassword ?? 'Ripeti la password',
                                 prefixIcon: const Icon(Icons.lock_reset),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               obscureText: true,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Conferma la password';
+                                  return loc?.confirmPasswordRequired ??
+                                      'Conferma la password';
                                 }
                                 if (value != _passwordController.text) {
-                                  return 'Le password non coincidono';
+                                  return loc?.passwordsDoNotMatch ??
+                                      'Le password non coincidono';
                                 }
                                 return null;
                               },
@@ -294,10 +317,12 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.error.withOpacity(0.1),
+                                  color:
+                                      theme.colorScheme.error.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: theme.colorScheme.error.withOpacity(0.3),
+                                    color: theme.colorScheme.error
+                                        .withOpacity(0.3),
                                   ),
                                 ),
                                 child: Row(
@@ -320,12 +345,14 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                                   ],
                                 ),
                               ),
-                            if (authProvider.error != null) const SizedBox(height: 20),
+                            if (authProvider.error != null)
+                              const SizedBox(height: 20),
                             // Register Button
                             SizedBox(
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: authProvider.isLoading ? null : _register,
+                                onPressed:
+                                    authProvider.isLoading ? null : _register,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: theme.colorScheme.secondary,
                                   foregroundColor: Colors.white,
@@ -333,7 +360,8 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   elevation: 4,
-                                  shadowColor: theme.colorScheme.secondary.withOpacity(0.3),
+                                  shadowColor: theme.colorScheme.secondary
+                                      .withOpacity(0.3),
                                 ),
                                 child: authProvider.isLoading
                                     ? const SizedBox(
@@ -341,11 +369,14 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                                         width: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
                                         ),
                                       )
                                     : const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Icon(Icons.person_add),
                                           SizedBox(width: 8),
@@ -380,7 +411,8 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                       TextButton(
                         onPressed: () {
                           Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const LoginPage()),
+                            MaterialPageRoute(
+                                builder: (_) => const LoginPage()),
                           );
                         },
                         style: TextButton.styleFrom(
@@ -390,7 +422,7 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        child: const Text('Accedi'),
+                        child: Text(loc?.login ?? 'Accedi'),
                       ),
                     ],
                   ),

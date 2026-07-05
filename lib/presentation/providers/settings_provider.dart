@@ -9,7 +9,7 @@ class SettingsProvider with ChangeNotifier {
   static const String keyBusInterval = 'bus_refresh_interval';
   static const String keyTrainInterval = 'train_refresh_interval';
   static const String keyPlaneInterval = 'plane_refresh_interval';
-  
+
   // Value constant for Auto mode
   static const int AUTO_REFRESH = -1;
 
@@ -22,11 +22,13 @@ class SettingsProvider with ChangeNotifier {
 
   static const String keyMapStyle = 'map_style';
   static const String keyVectorLogos = 'ui_vector_logos_enabled';
+  static const String keyLanguage = 'app_language';
 
   // Configurable parameters for background workers
   static const String keyTrainStationId = 'train_station_id';
   static const String keyTrainService = 'train_service';
-  static const String keyTrainArrivalPreNotice = 'train_arrival_prenotice_minutes';
+  static const String keyTrainArrivalPreNotice =
+      'train_arrival_prenotice_minutes';
   static const String keyBusProvider = 'bus_provider';
   static const String keyBusBaseUrl = 'bus_base_url';
   static const String keyOfflineSyncEnabled = 'offline_sync_enabled';
@@ -35,14 +37,15 @@ class SettingsProvider with ChangeNotifier {
   int _busRefreshSeconds = AUTO_REFRESH; // Default to Auto (-1)
   int _trainRefreshSeconds = AUTO_REFRESH;
   int _planeRefreshSeconds = AUTO_REFRESH;
-  
+
   // Auto rates fetched from server (dynamic load balancing)
   int _autoBusRate = 10;
   int _autoTrainRate = 15;
   int _autoPlaneRate = 15;
   Timer? _serverPollTimer;
-  
+
   ThemeMode _themeMode = ThemeMode.dark;
+  Locale? _appLocale; // Null means system default
   // stores a Mapbox style URL, e.g. 'mapbox://styles/mapbox/dark-v11'
   // older values (osm/cartodb_*) will be migrated when loaded.
   String _mapStyle = 'mapbox://styles/mapbox/dark-v11';
@@ -66,24 +69,31 @@ class SettingsProvider with ChangeNotifier {
   bool _offlineSyncEnabled = false;
 
   // Returns effective rate (either manual or server-suggested auto)
-  int get busRefreshSeconds => _busRefreshSeconds == AUTO_REFRESH ? _autoBusRate : _busRefreshSeconds;
-  int get trainRefreshSeconds => _trainRefreshSeconds == AUTO_REFRESH ? _autoTrainRate : _trainRefreshSeconds;
-  int get planeRefreshSeconds => _planeRefreshSeconds == AUTO_REFRESH ? _autoPlaneRate : _planeRefreshSeconds;
+  int get busRefreshSeconds =>
+      _busRefreshSeconds == AUTO_REFRESH ? _autoBusRate : _busRefreshSeconds;
+  int get trainRefreshSeconds => _trainRefreshSeconds == AUTO_REFRESH
+      ? _autoTrainRate
+      : _trainRefreshSeconds;
+  int get planeRefreshSeconds => _planeRefreshSeconds == AUTO_REFRESH
+      ? _autoPlaneRate
+      : _planeRefreshSeconds;
 
   // Raw preferences for UI (use these for Dropdown value)
   int get busRefreshPreference => _busRefreshSeconds;
   int get trainRefreshPreference => _trainRefreshSeconds;
   int get planeRefreshPreference => _planeRefreshSeconds;
-  
+
   bool get isBusAuto => _busRefreshSeconds == AUTO_REFRESH;
   bool get isTrainAuto => _trainRefreshSeconds == AUTO_REFRESH;
   bool get isPlaneAuto => _planeRefreshSeconds == AUTO_REFRESH;
-  
+
   int get currentAutoBusRate => _autoBusRate;
   int get currentAutoTrainRate => _autoTrainRate;
   int get currentAutoPlaneRate => _autoPlaneRate;
 
   ThemeMode get themeMode => _themeMode;
+  Locale? get appLocale => _appLocale;
+  bool get isLocaleAutomatic => _appLocale == null;
   String get mapStyle => _mapStyle;
   bool get busClusteringEnabled => _busClusteringEnabled;
   bool get stopsClusteringEnabled => _stopsClusteringEnabled;
@@ -99,7 +109,7 @@ class SettingsProvider with ChangeNotifier {
 
   // New: arrival pre-notice in minutes
   int get trainArrivalPreNoticeMinutes => _trainArrivalPreNoticeMinutes;
-  
+
   // New: offline sync feature (beta)
   bool get offlineSyncEnabled => _offlineSyncEnabled;
 
@@ -113,18 +123,28 @@ class SettingsProvider with ChangeNotifier {
     _busRefreshSeconds = prefs.getInt(keyBusInterval) ?? AUTO_REFRESH;
     _trainRefreshSeconds = prefs.getInt(keyTrainInterval) ?? AUTO_REFRESH;
     _planeRefreshSeconds = prefs.getInt(keyPlaneInterval) ?? AUTO_REFRESH;
-    final themeIndex = prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
+    final themeIndex =
+        prefs.getInt(keyThemeMode) ?? 2; // 0: light, 1: dark, 2: system
     _themeMode = ThemeMode.values[themeIndex];
-    
+
+    final langCode = prefs.getString(keyLanguage);
+    if (langCode != null && langCode.isNotEmpty) {
+      _appLocale = Locale(langCode);
+    } else {
+      _appLocale = null;
+    }
+
     // Default Map Style saved (style URL).  Normalize any legacy names.
     String stored = prefs.getString(keyMapStyle) ?? '';
     _mapStyle = _normalizeStyleUrl(stored);
     if (_mapStyle.isEmpty) {
       // fallback according to theme
       final isDark = _themeMode == ThemeMode.dark;
-      _mapStyle = isDark ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v11';
+      _mapStyle = isDark
+          ? 'mapbox://styles/mapbox/dark-v11'
+          : 'mapbox://styles/mapbox/streets-v11';
     }
-    
+
     _busClusteringEnabled = prefs.getBool(keyBusClustering) ?? false;
     _stopsClusteringEnabled = prefs.getBool(keyStopsClustering) ?? false;
     _vectorLogosEnabled = prefs.getBool(keyVectorLogos) ?? false;
@@ -135,15 +155,17 @@ class SettingsProvider with ChangeNotifier {
     // Load worker params
     _trainStationId = prefs.getString(keyTrainStationId) ?? '';
     _trainService = prefs.getString(keyTrainService) ?? 'trainboardeu';
-    _trainArrivalPreNoticeMinutes = prefs.getInt(keyTrainArrivalPreNotice) ?? 10;
+    _trainArrivalPreNoticeMinutes =
+        prefs.getInt(keyTrainArrivalPreNotice) ?? 10;
     _busProvider = prefs.getString(keyBusProvider) ?? 'bari';
-    _busBaseUrl = prefs.getString(keyBusBaseUrl) ?? 'https://betacloud-transporter.is-cool.dev';
-    
+    _busBaseUrl = prefs.getString(keyBusBaseUrl) ??
+        'https://betacloud-transporter.is-cool.dev';
+
     // Load offline sync feature
     _offlineSyncEnabled = prefs.getBool(keyOfflineSyncEnabled) ?? false;
 
     notifyListeners();
-    
+
     // Start fetching server rates for Auto mode
     _startServerPolling();
   }
@@ -151,7 +173,8 @@ class SettingsProvider with ChangeNotifier {
   void _startServerPolling() {
     _fetchServerRates();
     _serverPollTimer?.cancel();
-    _serverPollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchServerRates());
+    _serverPollTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) => _fetchServerRates());
   }
 
   Future<void> _fetchServerRates() async {
@@ -165,7 +188,7 @@ class SettingsProvider with ChangeNotifier {
           final newBus = rates['buses'] as int?;
           final newTrain = rates['trains'] as int?;
           final newPlane = rates['planes'] as int?;
-          
+
           if (newBus != null && newBus != _autoBusRate) {
             _autoBusRate = newBus;
             if (isBusAuto) notifyListeners();
@@ -188,7 +211,8 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setMapStyle(String styleUrl) async {
     // always normalize before storing
     final normalized = _normalizeStyleUrl(styleUrl);
-    debugPrint('SettingsProvider.setMapStyle: input="$styleUrl" -> norm="$normalized"');
+    debugPrint(
+        'SettingsProvider.setMapStyle: input="$styleUrl" -> norm="$normalized"');
     _mapStyle = normalized;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
@@ -204,7 +228,11 @@ class SettingsProvider with ChangeNotifier {
     // If buses worker is enabled, reschedule with new interval
     if (_busesWorkerEnabled) {
       try {
-        await AndroidBackgroundService.scheduleBusesWorker(provider: _busProvider, baseUrl: _busBaseUrl, enableNotifications: true, intervalSeconds: seconds);
+        await AndroidBackgroundService.scheduleBusesWorker(
+            provider: _busProvider,
+            baseUrl: _busBaseUrl,
+            enableNotifications: true,
+            intervalSeconds: seconds);
       } catch (e) {
         print('Error rescheduling buses worker: $e');
       }
@@ -220,7 +248,12 @@ class SettingsProvider with ChangeNotifier {
     // If trains worker is enabled, reschedule with new interval
     if (_trainsWorkerEnabled) {
       try {
-        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: seconds, arrivalNoticeMinutes: _trainArrivalPreNoticeMinutes);
+        await AndroidBackgroundService.scheduleTrainsWorker(
+            stationId: _trainStationId.isNotEmpty ? _trainStationId : null,
+            service: _trainService,
+            enableNotifications: true,
+            intervalSeconds: seconds,
+            arrivalNoticeMinutes: _trainArrivalPreNoticeMinutes);
       } catch (e) {
         print('Error rescheduling trains worker: $e');
       }
@@ -239,6 +272,21 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(keyThemeMode, mode.index);
+  }
+
+  Future<void> setAppLocale(String? languageCode) async {
+    if (languageCode == null || languageCode.isEmpty) {
+      _appLocale = null;
+    } else {
+      _appLocale = Locale(languageCode);
+    }
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (languageCode == null || languageCode.isEmpty) {
+      await prefs.remove(keyLanguage);
+    } else {
+      await prefs.setString(keyLanguage, languageCode);
+    }
   }
 
   Future<void> setBusClusteringEnabled(bool enabled) async {
@@ -305,9 +353,12 @@ class SettingsProvider with ChangeNotifier {
 
     final lower = s.toLowerCase();
     if (lower.contains('osm')) return 'mapbox://styles/mapbox/streets-v11';
-    if (lower.contains('cartodb_dark')) return 'mapbox://styles/mapbox/dark-v11';
-    if (lower.contains('cartodb_positron')) return 'mapbox://styles/mapbox/light-v11';
-    if (lower.contains('cartodb_voyager')) return 'mapbox://styles/mapbox/outdoors-v11';
+    if (lower.contains('cartodb_dark'))
+      return 'mapbox://styles/mapbox/dark-v11';
+    if (lower.contains('cartodb_positron'))
+      return 'mapbox://styles/mapbox/light-v11';
+    if (lower.contains('cartodb_voyager'))
+      return 'mapbox://styles/mapbox/outdoors-v11';
     if (lower.startsWith('mapbox://')) return s;
     return s;
   }
@@ -339,9 +390,15 @@ class SettingsProvider with ChangeNotifier {
     // If trains worker is enabled, reschedule with new pre-notice value
     if (_trainsWorkerEnabled) {
       try {
-        await AndroidBackgroundService.scheduleTrainsWorker(stationId: _trainStationId.isNotEmpty ? _trainStationId : null, service: _trainService, enableNotifications: true, intervalSeconds: _trainRefreshSeconds, );
+        await AndroidBackgroundService.scheduleTrainsWorker(
+          stationId: _trainStationId.isNotEmpty ? _trainStationId : null,
+          service: _trainService,
+          enableNotifications: true,
+          intervalSeconds: _trainRefreshSeconds,
+        );
       } catch (e) {
-        print('Error rescheduling trains worker with new arrival pre-notice: $e');
+        print(
+            'Error rescheduling trains worker with new arrival pre-notice: $e');
       }
     }
   }
@@ -368,4 +425,3 @@ class SettingsProvider with ChangeNotifier {
     await prefs.setBool(keyOfflineSyncEnabled, enabled);
   }
 }
-

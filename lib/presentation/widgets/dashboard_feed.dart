@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
+import '../../core/services/runtime_localizations.dart';
 
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_page.dart';
@@ -46,7 +48,7 @@ class DashboardFeed extends StatelessWidget {
                     text: TextSpan(
                       children: [
                         TextSpan(
-                          text: "Ciao, ",
+                          text: RuntimeLocalizations.t(context, 'greeting', params: {'name': ''}).split('{name}').first, // 'Ciao, '
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.w300,
@@ -54,7 +56,7 @@ class DashboardFeed extends StatelessWidget {
                           ),
                         ),
                         TextSpan(
-                          text: authProvider.isAuthenticated ? userName : "Ospite",
+                          text: authProvider.isAuthenticated ? userName : RuntimeLocalizations.t(context, 'guest'),
                           style: GoogleFonts.syne(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -66,7 +68,7 @@ class DashboardFeed extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    "Dove vuoi andare oggi?",
+                    RuntimeLocalizations.t(context, 'where_to_go_today'),
                     style: TextStyle(
                       fontSize: 18,
                       color: theme.textColor.withOpacity(0.7),
@@ -141,7 +143,7 @@ class DashboardFeed extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    "Esplora la Mappa",
+                                    RuntimeLocalizations.t(context, 'explore_map'),
                                     style: GoogleFonts.syne(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
@@ -150,7 +152,7 @@ class DashboardFeed extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    "Visualizza bus e treni in tempo reale sulla mappa interattiva.",
+                                    RuntimeLocalizations.t(context, 'explore_map_desc'),
                                     style: TextStyle(
                                       color: Colors.white70,
                                       fontSize: 14,
@@ -184,14 +186,14 @@ class DashboardFeed extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Stato del Servizio",
+                    Text(RuntimeLocalizations.t(context, 'service_status'),
                       style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.bold, color: theme.textColor)),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                       Expanded(child: _buildStatusCardGrid(theme, "Treni", "Regolare", Icons.train, Colors.green)),
+                       Expanded(child: _buildStatusCardGrid(theme, AppLocalizations.of(context)?.trains ?? 'Treni', RuntimeLocalizations.t(context, 'status_regular'), Icons.train, Colors.green)),
                        const SizedBox(width: 12),
-                       Expanded(child: _buildStatusCardGrid(theme, "Bus", "Ritardi", Icons.directions_bus, Colors.orange)),
+                       Expanded(child: _buildStatusCardGrid(theme, AppLocalizations.of(context)?.buses ?? 'Bus', RuntimeLocalizations.t(context, 'status_delays'), Icons.directions_bus, Colors.orange)),
                     ],
                   ),
                 ],
@@ -208,11 +210,11 @@ class DashboardFeed extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("I tuoi Preferiti",
+                    Text(RuntimeLocalizations.t(context, 'your_favorites'),
                       style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.bold, color: theme.textColor)),
                   if (authProvider.isAuthenticated) TextButton(
                     onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesPage())),
-                    child: Text("Vedi tutti"),
+                    child: Text(RuntimeLocalizations.t(context, 'see_all')),
                   ),
                 ],
               ),
@@ -230,7 +232,7 @@ class DashboardFeed extends StatelessWidget {
                     child: Center(
                        child: Padding(
                          padding: const EdgeInsets.all(16.0),
-                         child: Text("Nessun preferito salvato", style: TextStyle(color: theme.secondaryTextColor)),
+                         child: Text(RuntimeLocalizations.t(context, 'no_favorites_saved'), style: TextStyle(color: theme.secondaryTextColor)),
                        ),
                     ),
                   );
@@ -328,7 +330,7 @@ class DashboardFeed extends StatelessWidget {
                      children: [
                        Icon(Icons.lock_outline, color: theme.secondaryTextColor),
                        const SizedBox(height: 8),
-                       Text("Accedi per vedere i preferiti", style: TextStyle(color: theme.secondaryTextColor)),
+                       Text(RuntimeLocalizations.t(context, 'login_to_see_favorites'), style: TextStyle(color: theme.secondaryTextColor)),
                        const SizedBox(height: 16),
                        Row(
                          mainAxisAlignment: MainAxisAlignment.center,
@@ -344,7 +346,7 @@ class DashboardFeed extends StatelessWidget {
                                  MaterialPageRoute(builder: (_) => const LoginPage()),
                                );
                              },
-                             child: const Text('Accedi'),
+                             child: Text(RuntimeLocalizations.t(context, 'login')),
                            ),
                            const SizedBox(width: 12),
                            OutlinedButton(
@@ -355,10 +357,10 @@ class DashboardFeed extends StatelessWidget {
                              onPressed: () {
                                Navigator.push(
                                  context,
-                                 MaterialPageRoute(builder: (_) => const RegisterPage()),
+                                   MaterialPageRoute(builder: (_) => const RegisterPage()),
                                );
                              },
-                             child: const Text('Registrati'),
+                                 child: Text(RuntimeLocalizations.t(context, 'register')),
                            ),
                          ],
                        ),

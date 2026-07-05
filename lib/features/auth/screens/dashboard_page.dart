@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../repositories/auth_repository.dart';
 import '../../favorites/screens/favorites_page.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -11,11 +12,12 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> with TickerProviderStateMixin {
+class _DashboardPageState extends State<DashboardPage>
+    with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  
+
   final AuthRepository _authRepository = AuthRepository();
   bool _isChangingPassword = false;
 
@@ -34,7 +36,8 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic));
+    ).animate(CurvedAnimation(
+        parent: _animationController, curve: Curves.easeOutCubic));
 
     _animationController.forward();
   }
@@ -46,6 +49,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
   }
 
   void _showChangePasswordDialog() {
+    final loc = AppLocalizations.of(context);
     final oldPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
@@ -58,7 +62,8 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setState) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Row(
               children: [
                 Container(
@@ -67,10 +72,12 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     color: Theme.of(context).primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.security, color: Theme.of(context).primaryColor),
+                  child: Icon(Icons.security,
+                      color: Theme.of(context).primaryColor),
                 ),
                 const SizedBox(width: 12),
-                const Text('Cambia Password', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(loc?.changePassword ?? 'Cambia Password',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             content: SingleChildScrollView(
@@ -82,13 +89,17 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     controller: oldPasswordController,
                     obscureText: obscureOld,
                     decoration: InputDecoration(
-                      labelText: 'Password Attuale',
+                      labelText: loc?.currentPassword ?? 'Password Attuale',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => obscureOld = !obscureOld),
+                        icon: Icon(obscureOld
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => obscureOld = !obscureOld),
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -97,14 +108,18 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     controller: newPasswordController,
                     obscureText: obscureNew,
                     decoration: InputDecoration(
-                      labelText: 'Nuova Password',
+                      labelText: loc?.newPassword ?? 'Nuova Password',
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => obscureNew = !obscureNew),
+                        icon: Icon(obscureNew
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => obscureNew = !obscureNew),
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      helperText: 'Almeno 8 caratteri',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      helperText: loc?.atLeast8Chars ?? 'Almeno 8 caratteri',
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -113,13 +128,17 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     controller: confirmPasswordController,
                     obscureText: obscureConfirm,
                     decoration: InputDecoration(
-                      labelText: 'Conferma Password',
+                      labelText: loc?.confirmPassword ?? 'Conferma Password',
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => obscureConfirm = !obscureConfirm),
+                        icon: Icon(obscureConfirm
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => obscureConfirm = !obscureConfirm),
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ],
@@ -133,7 +152,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                   confirmPasswordController.dispose();
                   Navigator.pop(ctx);
                 },
-                child: const Text('Annulla'),
+                child: Text(loc?.cancel ?? 'Annulla'),
               ),
               ElevatedButton(
                 onPressed: _isChangingPassword
@@ -142,31 +161,42 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                         // Validazione
                         if (oldPasswordController.text.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Inserisci la password attuale')),
+                            SnackBar(
+                                content: Text(loc?.currentPasswordRequired ??
+                                    'Inserisci la password attuale')),
                           );
                           return;
                         }
                         if (newPasswordController.text.length < 8) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('La password deve avere almeno 8 caratteri')),
+                            SnackBar(
+                                content: Text(loc?.passwordMin8 ??
+                                    'La password deve avere almeno 8 caratteri')),
                           );
                           return;
                         }
-                        if (newPasswordController.text != confirmPasswordController.text) {
+                        if (newPasswordController.text !=
+                            confirmPasswordController.text) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Le password non coincidono')),
+                            SnackBar(
+                                content: Text(loc?.passwordsDoNotMatch ??
+                                    'Le password non coincidono')),
                           );
                           return;
                         }
-                        if (oldPasswordController.text == newPasswordController.text) {
+                        if (oldPasswordController.text ==
+                            newPasswordController.text) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('La nuova password deve essere diversa da quella attuale')),
+                            SnackBar(
+                                content: Text(loc?.newPasswordMustDiffer ??
+                                    'La nuova password deve essere diversa da quella attuale')),
                           );
                           return;
                         }
 
                         setState(() => _isChangingPassword = true);
-                        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                        final authProvider =
+                            Provider.of<AuthProvider>(context, listen: false);
                         final userId = authProvider.currentUser?.id;
 
                         if (userId != null) {
@@ -183,8 +213,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                             if (mounted) {
                               Navigator.pop(ctx);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Password cambiata con successo!'),
+                                SnackBar(
+                                  content: Text(loc?.passwordChanged ??
+                                      'Password cambiata con successo!'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -192,8 +223,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                           } else {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Password attuale non corretta'),
+                                SnackBar(
+                                  content: Text(loc?.currentPasswordWrong ??
+                                      'Password attuale non corretta'),
                                   backgroundColor: Colors.red,
                                 ),
                               );
@@ -209,9 +241,12 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.white)),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white)),
                       )
-                    : const Text('Aggiorna', style: TextStyle(color: Colors.white)),
+                    : Text(loc?.update ?? 'Aggiorna',
+                        style: const TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -225,6 +260,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.currentUser;
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Scaffold(
       body: Container(
@@ -268,7 +304,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          'Dashboard',
+                          loc?.dashboard ?? 'Dashboard',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
@@ -290,10 +326,11 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                           color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                         style: IconButton.styleFrom(
-                          backgroundColor: theme.colorScheme.surface.withOpacity(0.8),
+                          backgroundColor:
+                              theme.colorScheme.surface.withOpacity(0.8),
                           padding: const EdgeInsets.all(12),
                         ),
-                        tooltip: 'Preferiti',
+                        tooltip: loc?.favorites ?? 'Preferiti',
                       ),
                       const SizedBox(width: 8),
                       IconButton(
@@ -306,10 +343,11 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                           color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                         style: IconButton.styleFrom(
-                          backgroundColor: theme.colorScheme.surface.withOpacity(0.8),
+                          backgroundColor:
+                              theme.colorScheme.surface.withOpacity(0.8),
                           padding: const EdgeInsets.all(12),
                         ),
-                        tooltip: 'Logout',
+                        tooltip: loc?.logout ?? 'Logout',
                       ),
                     ],
                   ),
@@ -350,7 +388,8 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                     decoration: BoxDecoration(
                                       color: Colors.white.withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                                      border: Border.all(
+                                          color: Colors.white.withOpacity(0.3)),
                                     ),
                                     child: const Icon(
                                       Icons.waving_hand,
@@ -361,11 +400,17 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Benvenuto${user?.nickname != null ? ', ${user!.nickname}' : ''}!',
-                                          style: theme.textTheme.headlineSmall?.copyWith(
+                                          loc?.welcomeUser(
+                                                  user?.nickname != null
+                                                      ? ', ${user!.nickname}'
+                                                      : '') ??
+                                              'Benvenuto${user?.nickname != null ? ', ${user!.nickname}' : ''}!',
+                                          style: theme.textTheme.headlineSmall
+                                              ?.copyWith(
                                             color: Colors.white,
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 0.5,
@@ -373,9 +418,12 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          'Esplora i trasporti pubblici',
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            color: Colors.white.withOpacity(0.9),
+                                          loc?.publicTransportExplore ??
+                                              'Esplora i trasporti pubblici',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color:
+                                                Colors.white.withOpacity(0.9),
                                           ),
                                         ),
                                       ],
@@ -391,7 +439,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
                         // Quick Actions
                         Text(
-                          'Azioni Rapide',
+                          loc?.quickActions ?? 'Azioni Rapide',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
@@ -411,7 +459,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               context,
                               icon: Icons.directions_bus,
                               title: 'Bus',
-                              subtitle: 'Trova autobus',
+                              subtitle: loc?.findBuses ?? 'Trova autobus',
                               color: theme.primaryColor,
                               onTap: () {
                                 Navigator.of(context).pop();
@@ -420,8 +468,8 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                             _buildActionCard(
                               context,
                               icon: Icons.train,
-                              title: 'Treni',
-                              subtitle: 'Orari treni',
+                              title: loc?.trains ?? 'Treni',
+                              subtitle: loc?.trainTimes ?? 'Orari treni',
                               color: theme.colorScheme.secondary,
                               onTap: () {
                                 Navigator.of(context).pop();
@@ -430,8 +478,8 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                             _buildActionCard(
                               context,
                               icon: Icons.flight,
-                              title: 'Voli',
-                              subtitle: 'Informazioni voli',
+                              title: loc?.flights ?? 'Voli',
+                              subtitle: loc?.flightInfo ?? 'Informazioni voli',
                               color: Colors.orange,
                               onTap: () {
                                 Navigator.of(context).pop();
@@ -440,8 +488,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                             _buildActionCard(
                               context,
                               icon: Icons.map,
-                              title: 'Mappa',
-                              subtitle: 'Visualizza percorsi',
+                              title: loc?.map ?? 'Mappa',
+                              subtitle:
+                                  loc?.viewRoutes ?? 'Visualizza percorsi',
                               color: Colors.green,
                               onTap: () {
                                 Navigator.of(context).pop();
@@ -481,9 +530,13 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                       Container(
                                         padding: const EdgeInsets.all(14),
                                         decoration: BoxDecoration(
-                                          color: theme.primaryColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+                                          color: theme.primaryColor
+                                              .withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          border: Border.all(
+                                              color: theme.primaryColor
+                                                  .withOpacity(0.2)),
                                         ),
                                         child: Icon(
                                           Icons.person_outline,
@@ -493,8 +546,9 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                       ),
                                       const SizedBox(width: 16),
                                       Text(
-                                        'Il tuo Profilo',
-                                        style: theme.textTheme.titleLarge?.copyWith(
+                                        loc?.yourProfile ?? 'Il tuo Profilo',
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -504,25 +558,27 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                   _buildProfileItem(
                                     context,
                                     icon: Icons.email_outlined,
-                                    label: 'Email',
-                                    value: user?.email ?? 'N/A',
+                                    label: loc?.email ?? 'Email',
+                                    value: user?.email ??
+                                        (loc?.notAvailable ?? 'N/A'),
                                   ),
                                   const SizedBox(height: 16),
                                   if (user?.nickname != null)
                                     _buildProfileItem(
                                       context,
                                       icon: Icons.person_outline,
-                                      label: 'Nickname',
+                                      label: loc?.nickname ?? 'Nickname',
                                       value: user!.nickname!,
                                     ),
-                                  if (user?.nickname != null) const SizedBox(height: 16),
+                                  if (user?.nickname != null)
+                                    const SizedBox(height: 16),
                                   _buildProfileItem(
                                     context,
                                     icon: Icons.calendar_today_outlined,
-                                    label: 'Membro dal',
+                                    label: loc?.memberSince ?? 'Membro dal',
                                     value: user?.createdAt != null
                                         ? '${user!.createdAt!.day}/${user.createdAt!.month}/${user.createdAt!.year}'
-                                        : 'N/A',
+                                        : loc?.notAvailable ?? 'N/A',
                                   ),
                                 ],
                               ),
@@ -534,7 +590,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
                         // Security Section
                         Text(
-                          'Sicurezza',
+                          loc?.security ?? 'Sicurezza',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
@@ -555,14 +611,17 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                 color: Colors.orange.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: const Icon(Icons.security, color: Colors.orange),
+                              child: const Icon(Icons.security,
+                                  color: Colors.orange),
                             ),
                             title: const Text(
                               'Cambia Password',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            subtitle: const Text('Modifica la tua password di accesso'),
-                            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            subtitle: Text(loc?.changePasswordSubtitle ??
+                                'Modifica la tua password di accesso'),
+                            trailing:
+                                const Icon(Icons.arrow_forward_ios, size: 16),
                             onTap: _showChangePasswordDialog,
                           ),
                         ),
@@ -571,7 +630,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
                         // Features Preview
                         Text(
-                          'Prossimamente',
+                          loc?.comingSoon ?? 'Prossimamente',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,
@@ -600,13 +659,15 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.1),
+                                  color: theme.colorScheme.primary
+                                      .withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: Icon(
                                   Icons.lightbulb_outline,
                                   size: 48,
-                                  color: theme.colorScheme.primary.withOpacity(0.7),
+                                  color: theme.colorScheme.primary
+                                      .withOpacity(0.7),
                                 ),
                               ),
                               const SizedBox(height: 20),
@@ -619,9 +680,11 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Stiamo lavorando per offrirti un\'esperienza ancora migliore con nuove features esclusive.',
+                                loc?.newFeaturesBody ??
+                                    'Stiamo lavorando per offrirti un\'esperienza ancora migliore con nuove features esclusive.',
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7),
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -630,10 +693,14 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
                                 spacing: 10,
                                 runSpacing: 10,
                                 children: [
-                                  _buildFeatureChip(context, 'Statistiche'),
-                                  _buildFeatureChip(context, 'Avvisi'),
-                                  _buildFeatureChip(context, 'Condivisione'),
-                                  _buildFeatureChip(context, 'Backup'),
+                                  _buildFeatureChip(context,
+                                      loc?.statistics ?? 'Statistiche'),
+                                  _buildFeatureChip(
+                                      context, loc?.alerts ?? 'Avvisi'),
+                                  _buildFeatureChip(
+                                      context, loc?.sharing ?? 'Condivisione'),
+                                  _buildFeatureChip(
+                                      context, loc?.backup ?? 'Backup'),
                                 ],
                               ),
                             ],
@@ -662,6 +729,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Card(
       elevation: 6,
@@ -733,6 +801,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
     required String value,
   }) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -785,6 +854,7 @@ class _DashboardPageState extends State<DashboardPage> with TickerProviderStateM
 
   Widget _buildFeatureChip(BuildContext context, String label) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

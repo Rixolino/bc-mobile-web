@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'register_page.dart';
 import 'dashboard_page.dart';
 import '../../../presentation/screens/home_screen.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -60,6 +61,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -72,7 +74,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               MaterialPageRoute(builder: (_) => const HomeScreen()),
             );
           },
-          tooltip: 'Torna indietro',
+          tooltip: loc?.back ?? 'Torna indietro',
         ),
       ),
       body: Container(
@@ -88,14 +90,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           ),
         ),
         child: SafeArea(
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 20),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
                   // Logo/Icon Section
                   Center(
                     child: Container(
@@ -121,7 +123,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   const SizedBox(height: 32),
                   // Title Section
                   Text(
-                    'Benvenuto su\nBC Transporter',
+                    loc?.welcomeTitle ?? 'Benvenuto su\nBC Transporter',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -131,7 +133,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Accedi al tuo account',
+                    loc?.loginSubtitle ?? 'Accedi al tuo account',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: Colors.white.withOpacity(0.9),
                     ),
@@ -156,22 +158,27 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             TextFormField(
                               controller: _emailController,
                               decoration: InputDecoration(
-                                labelText: 'Email',
-                                hintText: 'Inserisci la tua email',
+                                labelText: loc?.email ?? 'Email',
+                                hintText:
+                                    loc?.emailHint ?? 'Inserisci la tua email',
                                 prefixIcon: const Icon(Icons.email_outlined),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               keyboardType: TextInputType.emailAddress,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Inserisci l\'email';
+                                  return loc?.emailRequired ??
+                                      'Inserisci l\'email';
                                 }
-                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                                  return 'Inserisci un\'email valida';
+                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                                    .hasMatch(value)) {
+                                  return loc?.emailInvalid ??
+                                      'Inserisci un\'email valida';
                                 }
                                 return null;
                               },
@@ -181,13 +188,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             TextFormField(
                               controller: _passwordController,
                               decoration: InputDecoration(
-                                labelText: 'Password',
-                                hintText: 'Inserisci la password',
+                                labelText: loc?.password ?? 'Password',
+                                hintText: loc?.passwordHint ??
+                                    'Inserisci la password',
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 suffixIcon: IconButton(
                                   icon: Icon(
                                     Icons.visibility_off,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.6),
                                   ),
                                   onPressed: () {
                                     // TODO: Implement password visibility toggle
@@ -197,15 +206,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 filled: true,
-                                fillColor: theme.colorScheme.surface.withOpacity(0.5),
+                                fillColor:
+                                    theme.colorScheme.surface.withOpacity(0.5),
                               ),
                               obscureText: true,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Inserisci la password';
+                                  return loc?.passwordRequired ??
+                                      'Inserisci la password';
                                 }
                                 if (value.length < 6) {
-                                  return 'La password deve essere di almeno 6 caratteri';
+                                  return loc?.passwordMin6 ??
+                                      'La password deve essere di almeno 6 caratteri';
                                 }
                                 return null;
                               },
@@ -216,10 +228,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.error.withOpacity(0.1),
+                                  color:
+                                      theme.colorScheme.error.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: theme.colorScheme.error.withOpacity(0.3),
+                                    color: theme.colorScheme.error
+                                        .withOpacity(0.3),
                                   ),
                                 ),
                                 child: Row(
@@ -242,12 +256,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                   ],
                                 ),
                               ),
-                            if (authProvider.error != null) const SizedBox(height: 20),
+                            if (authProvider.error != null)
+                              const SizedBox(height: 20),
                             // Login Button
                             SizedBox(
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: authProvider.isLoading ? null : _login,
+                                onPressed:
+                                    authProvider.isLoading ? null : _login,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: theme.primaryColor,
                                   foregroundColor: Colors.white,
@@ -255,7 +271,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   elevation: 4,
-                                  shadowColor: theme.primaryColor.withOpacity(0.3),
+                                  shadowColor:
+                                      theme.primaryColor.withOpacity(0.3),
                                 ),
                                 child: authProvider.isLoading
                                     ? const SizedBox(
@@ -263,11 +280,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                         width: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
                                         ),
                                       )
                                     : const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Icon(Icons.login),
                                           SizedBox(width: 8),
@@ -293,7 +313,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Non hai un account?',
+                        loc?.noAccount ?? 'Non hai un account?',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.8),
                           fontSize: 16,
@@ -302,7 +322,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       TextButton(
                         onPressed: () {
                           Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const RegisterPage()),
+                            MaterialPageRoute(
+                                builder: (_) => const RegisterPage()),
                           );
                         },
                         style: TextButton.styleFrom(
@@ -312,7 +333,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        child: const Text('Registrati'),
+                        child: Text(loc?.register ?? 'Registrati'),
                       ),
                     ],
                   ),

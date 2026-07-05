@@ -6,6 +6,7 @@ import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
+import '../../../../core/services/runtime_localizations.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_bus_line.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -186,7 +187,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                   
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text("Fermate del Viaggio", style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900)),
+                    child: Text(RuntimeLocalizations.t(context, 'trip_stops_title'), style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900)),
                   ),
                   const SizedBox(height: 12),
                   
@@ -198,12 +199,12 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                           ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                           : (provider.apiTripUpdates.isNotEmpty
                             ? _buildBusTimeline(provider.apiTripUpdates, theme)
-                            : (hasTripStopsData
+                              : (hasTripStopsData
                               ? _buildTripStopsTimeline(tripStopsData.stops, theme)
                               : (_isLoadingUpdates
                                 ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                                 : _tripUpdates.isEmpty
-                                  ? Center(child: Text("Nessun aggiornamento", style: TextStyle(color: theme.secondaryTextColor)))
+                                  ? Center(child: Text(RuntimeLocalizations.t(context, 'no_updates'), style: TextStyle(color: theme.secondaryTextColor)))
                                   : _buildBusTimeline(_tripUpdates, theme)))) ,
                     ),
                   ] else ...[
@@ -211,10 +212,10 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                       height: 200,
                       child: Center(
                         child: Text(
-                          "Dettagli fermate non disponibili per ${provider.selectedProvider?.name ?? 'questo operatore'}",
-                          style: TextStyle(color: theme.secondaryTextColor),
-                          textAlign: TextAlign.center,
-                        ),
+                              RuntimeLocalizations.t(context, 'trip_stops_unavailable', params: {'provider': provider.selectedProvider?.name ?? RuntimeLocalizations.t(context, 'press_for_info')}),
+                              style: TextStyle(color: theme.secondaryTextColor),
+                              textAlign: TextAlign.center,
+                            ),
                       ),
                     ),
                   ],
@@ -255,7 +256,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  bus.destination ?? 'Destinazione N/A',
+                  bus.destination ?? RuntimeLocalizations.t(context, 'destination_na'),
                   style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.w900, height: 1.1),
                   maxLines: 2, overflow: TextOverflow.ellipsis,
                 ),
@@ -283,7 +284,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
         children: [
           _PulseDot(color: theme.successColor),
           const SizedBox(width: 4),
-          Text("LIVE", style: TextStyle(color: theme.successColor, fontSize: 9, fontWeight: FontWeight.w900)),
+          Text(RuntimeLocalizations.t(context, 'live'), style: TextStyle(color: theme.successColor, fontSize: 9, fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -348,8 +349,8 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                 decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                 child: Icon(Icons.info_outline_rounded, color: theme.primaryColor, size: 20),
               ),
-              title: Text("Dettagli e Posizione", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-              subtitle: Text("ID: ${bus.id} • Premi per info", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+              title: Text(RuntimeLocalizations.t(context, 'details_and_position'), style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+              subtitle: Text('${RuntimeLocalizations.t(context, 'id_prefix', params: {'id': bus.id})} • ${RuntimeLocalizations.t(context, 'press_for_info')}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
               trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
             ),
             const Divider(height: 1, indent: 16, endIndent: 16),
@@ -475,9 +476,9 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                                   color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor,
                                   fontSize: 12, fontWeight: FontWeight.bold)),
                           if (stop.isRealtime) ...[
-                            const SizedBox(width: 6),
-                            Text("• LIVE", style: TextStyle(color: theme.successColor, fontSize: 10, fontWeight: FontWeight.w900)),
-                          ]
+                              const SizedBox(width: 6),
+                              Text("• ${RuntimeLocalizations.t(context, 'live')}", style: TextStyle(color: theme.successColor, fontSize: 10, fontWeight: FontWeight.w900)),
+                            ]
                         ],
                       ),
                     ],
@@ -548,25 +549,25 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
             children: [
               Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(Icons.directions_bus, color: theme.primaryColor)),
               const SizedBox(width: 12),
-              Text("Info Veicolo", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 18)),
+              Text(RuntimeLocalizations.t(context, 'vehicle_info'), style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildDialogInfoRow("ID Veicolo", bus.id, theme),
-              _buildDialogInfoRow("Linea", bus.line, theme),
-              if (bus.destination != null) _buildDialogInfoRow("Destinazione", bus.destination!, theme),
-              if (bus.speed != null) _buildDialogInfoRow("Velocità", "${bus.speed} km/h", theme),
-              if (bus.heading != null) _buildDialogInfoRow("Direzione", "${bus.heading}°", theme),
-              if (bus.provider != null) _buildDialogInfoRow("Operatore", bus.provider!, theme),
-              if (bus.tripId != null) _buildDialogInfoRow("ID Viaggio", bus.tripId!, theme),
+              _buildDialogInfoRow(RuntimeLocalizations.t(context, 'vehicle_id'), bus.id, theme),
+              _buildDialogInfoRow(RuntimeLocalizations.t(context, 'line'), bus.line, theme),
+              if (bus.destination != null) _buildDialogInfoRow(RuntimeLocalizations.t(context, 'destination_label'), bus.destination!, theme),
+              if (bus.speed != null) _buildDialogInfoRow(RuntimeLocalizations.t(context, 'speed_label'), "${bus.speed} km/h", theme),
+              if (bus.heading != null) _buildDialogInfoRow(RuntimeLocalizations.t(context, 'heading_label'), "${bus.heading}°", theme),
+              if (bus.provider != null) _buildDialogInfoRow(RuntimeLocalizations.t(context, 'operator_label'), bus.provider!, theme),
+              if (bus.tripId != null) _buildDialogInfoRow(RuntimeLocalizations.t(context, 'trip_id_label'), bus.tripId!, theme),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text("Chiudi", style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
+              child: Text(RuntimeLocalizations.t(context, 'close'), style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -628,9 +629,9 @@ class _BusTimelineRow extends StatelessWidget {
                     children: [
                       Text(timeString, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.bold)),
                       if (update.isRealtime) ...[
-                        const SizedBox(width: 6),
-                        Text("• LIVE", style: TextStyle(color: theme.successColor, fontSize: 10, fontWeight: FontWeight.w900)),
-                      ]
+                              const SizedBox(width: 6),
+                              Text("• ${RuntimeLocalizations.t(context, 'live')}", style: TextStyle(color: theme.successColor, fontSize: 10, fontWeight: FontWeight.w900)),
+                            ]
                     ],
                   ),
                   if (update.arrivalEstimate != null && update.arrivalEstimate!.isNotEmpty)

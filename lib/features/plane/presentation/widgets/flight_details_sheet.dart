@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/plane_model.dart';
 import '../providers/plane_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../../core/services/runtime_localizations.dart';
 
 class FlightDetailsSheet extends StatefulWidget {
   final Flight flight;
@@ -92,11 +93,11 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("ORIGINE", style: TextStyle(color: theme.secondaryTextColor, fontSize: 10)),
+                        Text(RuntimeLocalizations.t(context, 'origin').toUpperCase(), style: TextStyle(color: theme.secondaryTextColor, fontSize: 10)),
                         Text(f.origin, style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
                         Text(_formatTime(f.scheduledDeparture), style: TextStyle(color: theme.secondaryTextColor)),
                         if (f.estimatedDeparture != null && f.estimatedDeparture != f.scheduledDeparture)
-                          Text("Est: ${_formatTime(f.estimatedDeparture)}", style: TextStyle(color: theme.warningColor, fontSize: 12)),
+                          Text(RuntimeLocalizations.t(context, 'est_prefix', params: {'time': _formatTime(f.estimatedDeparture)}), style: TextStyle(color: theme.warningColor, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -105,11 +106,11 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text("DESTINAZIONE", style: TextStyle(color: theme.secondaryTextColor, fontSize: 10)),
+                        Text(RuntimeLocalizations.t(context, 'destination').toUpperCase(), style: TextStyle(color: theme.secondaryTextColor, fontSize: 10)),
                         Text(f.destination, style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
                         Text(_formatTime(f.scheduledArrival), style: TextStyle(color: theme.secondaryTextColor)),
                         if (f.estimatedArrival != null && f.estimatedArrival != f.scheduledArrival)
-                          Text("Est: ${_formatTime(f.estimatedArrival)}", style: TextStyle(color: theme.warningColor, fontSize: 12)),
+                          Text(RuntimeLocalizations.t(context, 'est_prefix', params: {'time': _formatTime(f.estimatedArrival)}), style: TextStyle(color: theme.warningColor, fontSize: 12)),
                       ],
                     ),
                   ),
