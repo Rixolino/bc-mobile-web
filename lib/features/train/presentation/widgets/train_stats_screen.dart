@@ -283,11 +283,11 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
           final pred = predictions[index];
           final int hour = pred['hour'] ?? 0;
           final int risk = pred['delayProbability'] ?? 0;
-          final String crowd = pred['crowdLevel'] ?? 'Basso';
+          final String crowd = pred['crowdLevel'] ?? RuntimeLocalizations.t(context, 'low');
 
           Color riskColor = risk < 20 ? Colors.green : (risk < 50 ? Colors.orange : Colors.redAccent);
-          IconData crowdIcon = crowd == 'Alto' ? Icons.groups : (crowd == 'Medio' ? Icons.group : Icons.person);
-          Color crowdColor = crowd == 'Alto' ? Colors.redAccent : (crowd == 'Medio' ? Colors.orangeAccent : Colors.green);
+          IconData crowdIcon = crowd == RuntimeLocalizations.t(context, 'high') ? Icons.groups : (crowd == RuntimeLocalizations.t(context, 'medium') ? Icons.group : Icons.person);
+          Color crowdColor = crowd == RuntimeLocalizations.t(context, 'high') ? Colors.redAccent : (crowd == RuntimeLocalizations.t(context, 'medium') ? Colors.orangeAccent : Colors.green);
 
           return Container(
             width: 120,

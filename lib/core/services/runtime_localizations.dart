@@ -210,7 +210,11 @@ class RuntimeLocalizations {
       'add_now': 'Aggiungi Ora',
       'stats_monitoring_title': 'Monitoraggio Statistiche',
       'stats_monitoring_msg': 'Questa stazione non è ancora inclusa nel sistema di tracciamento. Desideri attivarne il monitoraggio?\n\nNota: L\'elaborazione dei primi dati statistici non sarà immediata e richiederà del tempo per l\'accumulo delle informazioni sui treni.',
-    },
+      'high': 'Alto',
+      'medium': 'Medio',
+      'low': 'Basso',
+      'critical': 'Critico'
+      },
     'en': {
       'trip_stops_title': 'Trip Stops',
       'no_updates': 'No updates',
@@ -416,6 +420,10 @@ class RuntimeLocalizations {
       'add_now': 'Add Now',
       'stats_monitoring_title': 'Statistics Monitoring',
       'stats_monitoring_msg': 'This station is not yet included in the tracking system. Do you want to activate monitoring for it?\n\nNote: The processing of the first statistical data will not be immediate and will require time to accumulate train information.',
+      'high': 'High',
+      'medium': 'Medium',
+      'low': 'Low',
+      'critical': 'Critical',
     },
     'de': {
       'trip_stops_title': 'Haltestellen der Fahrt',
@@ -622,6 +630,10 @@ class RuntimeLocalizations {
       'add_now': 'Jetzt hinzufügen',
       'stats_monitoring_title': 'Statistik-Überwachung',
       'stats_monitoring_msg': 'Dieser Bahnhof ist noch nicht im Tracking-System enthalten. Möchten Sie die Überwachung dafür aktivieren?\n\nHinweis: Die Verarbeitung der ersten statistischen Daten erfolgt nicht sofort und erfordert Zeit, um Zuginformationen zu sammeln.',
+      'high': 'Hoch',
+      'medium': 'Mittel',
+      'low': 'Niedrig',
+      'critical': 'Kritisch'
     }
   };
 
