@@ -46,7 +46,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                            
       String queryString = '';
 
-      // Costruiamo la query API in base al periodo selezionato
       if (_selectedRange == TimeRange.today) {
         queryString = isToday ? '' : '?date=$dateString';
       } else {
@@ -112,6 +111,20 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     }
   }
 
+  // --- WIDGET PER IL RATING ---
+  Widget _buildRatingStars(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        return Icon(
+          index < rating ? Icons.star_rounded : Icons.star_border_rounded,
+          color: Colors.amber,
+          size: 24,
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final general = _currentStats['general'] ?? _currentStats['stats'] ?? _currentStats;
@@ -122,9 +135,10 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     final topWorstRoutes = List.from(general['topWorstRoutes'] ?? []);
     final categoryDistribution = List.from(general['categoryDistribution'] ?? []);
     final distributionData = List.from(general['distribution'] ?? general['hourlyDistribution'] ?? []);
-    
-    // --- NUOVO: Lettura dei dati predittivi ---
     final hourlyPredictions = List.from(general['hourlyPredictions'] ?? []);
+    
+    // Estrazione rating (Default a 0 se non presente)
+    final double stationRating = (general['stationRating'] ?? 0).toDouble();
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -151,6 +165,17 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // RATING E FILTRI
+            Center(
+              child: Column(
+                children: [
+                  _buildRatingStars(stationRating),
+                  const SizedBox(height: 8),
+                  Text("${stationRating.toStringAsFixed(1)} / 5.0", style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             Center(
               child: SegmentedButton<TimeRange>(
                 segments: [
@@ -215,7 +240,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
               ],
             ),
 
-            // --- NUOVA SEZIONE: PREVISIONI ORARIE (Visibile solo se ci sono dati e siamo in vista "Giorno") ---
             if (hourlyPredictions.isNotEmpty && _selectedRange == TimeRange.today) ...[
               const SizedBox(height: 32),
               _buildSectionTitle("Previsioni Orarie (Storico)"),
@@ -272,7 +296,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     return Padding(padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)), Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12))]));
   }
 
-  // --- NUOVO WIDGET: LISTA ORIZZONTALE DELLE PREVISIONI ---
   Widget _buildPredictionsList(List<dynamic> predictions) {
     return SizedBox(
       height: 140,
