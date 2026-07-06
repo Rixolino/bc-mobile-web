@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../core/api_constants.dart';
 import '../models/transport_config_model.dart';
+import '../models/train_stats_model.dart';
 
 class ApiService {
   static const int _maxRetries = 3;
@@ -86,6 +87,23 @@ class ApiService {
     } else {
       throw Exception('Failed to load data from $url');
     }
+  }
+
+  Future<TrainGeneralStats> fetchTrainGeneralStats() async {
+    final data = await fetchData('${ApiConstants.baseUrl}/api/stats/trains/general');
+    if (data is Map && data['ok'] == true) {
+      return TrainGeneralStats.fromJson(data['data']);
+    }
+    throw Exception('Failed to fetch general train stats');
+  }
+
+  Future<List<TrainGeneralStats>> fetchTrainLineStats() async {
+    final data = await fetchData('${ApiConstants.baseUrl}/api/stats/trains/lines');
+    if (data is Map && data['ok'] == true) {
+      final List<dynamic> statsList = data['data'];
+      return statsList.map((item) => TrainGeneralStats.fromJson(item)).toList();
+    }
+    throw Exception('Failed to fetch train line stats');
   }
 }
 

@@ -35,7 +35,7 @@ dependencies:
   shared_preferences: ^2.5.4
   libsql_dart: ^0.7.0
   bcrypt: ^1.1.3
-
+  fl_chart: ^0.68.0
   # Map
   flutter_map: ^8.2.2
   latlong2: ^0.9.1

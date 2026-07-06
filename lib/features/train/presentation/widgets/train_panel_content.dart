@@ -22,6 +22,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import 'train_stats_screen.dart';
+import 'package:bc_transporter/features/train/data/models/train_stats_model.dart';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -40,7 +42,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   String? _selectedPlatformFilter;
 
   List<Map<String, String>> _countries = [];
-  Map<String, List<Map<String, String>>> _citiesByCountry = {};
+  final Map<String, List<Map<String, String>>> _citiesByCountry = {};
   List<String> _countryOrder = [];
   bool _isOffline = false;
   Timer? _connectivityTimer;
@@ -71,6 +73,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     'FAL': 'Puglia (FAL)',
     'EU': 'Realtime EU',
   };
+
+  // Variabili per il monitoraggio delle stazioni nel tabellone risultati
+  bool _isMonitored = false;
+  bool _checkingStatus = false;
+  String? _lastCheckedStationId; // Tiene traccia della stazione attualmente aperta
 
   @override
   void initState() {
@@ -127,6 +134,120 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     super.dispose();
   }
 
+  // Metodo per controllare se la stazione è già nel DB (Richiamato automaticamente all'apertura del tabellone)
+  Future<void> _checkStationStatus(String stationId) async {
+    if (!mounted) return;
+    setState(() => _checkingStatus = true);
+    
+    try {
+      final response = await http.get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/$stationId'));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (mounted) {
+          setState(() => _isMonitored = data['isMonitored'] ?? false);
+        }
+      }
+    } catch (e) {
+      debugPrint("Errore controllo monitoraggio: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _checkingStatus = false);
+      }
+    }
+  }
+
+  // Metodo per aggiungere la stazione al monitoraggio
+  Future<void> _addStationToDb(String stationId, String name) async {
+    try {
+      debugPrint("📝 Aggiunta stazione '$stationId' al DB...");
+      final addResponse = await http.post(
+        Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/add'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'stationId': stationId,
+          'name': name,
+          'country': _selectedCountry.isEmpty ? 'GLOBAL' : _selectedCountry
+        }),
+      );
+
+      if (addResponse.statusCode == 200) {
+        debugPrint("✅ Stazione aggiunta con successo");
+        await _checkStationStatus(stationId); // Ricarica lo stato per aggiornare l'icona
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Stazione aggiunta al monitoraggio"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Errore nell'aggiunta della stazione: ${addResponse.statusCode}"),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Errore durante l'operazione: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Errore di connessione: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Metodo per scaricare le statistiche reali dal server e navigare sullo screen
+  Future<void> _loadStatsAndNavigate(BuildContext context, String stationId) async {
+    setState(() => _checkingStatus = true);
+    try {
+      final response = await http.get(
+        Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/station/$stationId')
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TrainStatsScreen(
+                rawStats: data, 
+                stationId: stationId,
+              ),
+            ),
+          );
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Nessun dato statistico disponibile al momento. Riprova più tardi.")),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Errore caricamento statistiche: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Errore di connessione: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _checkingStatus = false);
+      }
+    }
+  }
+
   // --- LOGICA DATI (Country & City) ---
 
   Future<void> _loadCountries() async {
@@ -137,26 +258,29 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
       if (freshData.isNotEmpty) {
         await prefs.setString('countries_cache', jsonEncode(freshData));
-        if (mounted)
+        if (mounted) {
           setState(() {
             _countries = freshData;
           });
+        }
         await _loadCountryOrder();
       } else if (cachedCountries != null) {
         final cached = List<Map<String, String>>.from(
             (jsonDecode(cachedCountries) as List)
                 .map((i) => Map<String, String>.from(i)));
-        if (mounted)
+        if (mounted) {
           setState(() {
             _countries = cached;
           });
+        }
         await _loadCountryOrder();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _countries = [];
         });
+      }
     }
   }
 
@@ -179,7 +303,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 'name': countryNames[code] ?? code
               };
             }
-            // Logica Città
             if (p['city'] != null) {
               final cityData = {
                 'name': p['city'].toString(),
@@ -201,7 +324,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (mounted) {
       setState(() {
         _countryOrder = order;
-        // apply ordering to countries list when loaded
         if (_countryOrder.isNotEmpty && _countries.isNotEmpty) {
           _countries.sort((a, b) {
             final ia = _countryOrder.indexOf(a['code']!);
@@ -226,10 +348,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (newIndex > oldIndex) newIndex--;
     final moved = currentList[oldIndex];
     final movedCode = moved['code']!;
-    // remove from global list
     final globalOld = _countries.indexWhere((c) => c['code'] == movedCode);
     if (globalOld != -1) _countries.removeAt(globalOld);
-    // determine insert index based on newIndex in currentList
+    
     int insertIndex;
     if (currentList.isEmpty) {
       insertIndex = _countries.length;
@@ -240,10 +361,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     } else {
       final prevCode = currentList[newIndex - 1]['code']!;
       insertIndex = _countries.indexWhere((c) => c['code'] == prevCode);
-      if (insertIndex == -1)
+      if (insertIndex == -1) {
         insertIndex = _countries.length;
-      else
+      } else {
         insertIndex++;
+      }
     }
     if (insertIndex > _countries.length) insertIndex = _countries.length;
     _countries.insert(insertIndex, moved);
@@ -257,15 +379,29 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Widget build(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context);
     final theme = Provider.of<ThemeProvider>(context);
-    // Listen to settings for toggle changes
     final settings = Provider.of<SettingsProvider>(context);
 
     // Auto-load logos if enabled
     if (settings.vectorLogosEnabled && trainProvider.trainLogos.isEmpty) {
-      trainProvider.loadTrainLogos();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        trainProvider.loadTrainLogos();
+      });
     }
 
     final station = trainProvider.selectedStation;
+
+    // --- NUOVA LOGICA: Controllo automatico quando si entra nel tabellone ---
+    if (station != null && station.id != _lastCheckedStationId) {
+      _lastCheckedStationId = station.id; // Aggiorna l'ID in memoria
+      
+      // Esegue il check subito dopo la fine del frame per evitare conflitti di build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkStationStatus(station.id);
+      });
+    } else if (station == null && _lastCheckedStationId != null) {
+      // L'utente è tornato alla ricerca, resettiamo l'ID in memoria
+      _lastCheckedStationId = null;
+    }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
@@ -340,7 +476,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         color: theme.surfaceColor,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)
         ],
       ),
       child: Column(
@@ -370,6 +506,70 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ],
                 ),
               ),
+              // Pulsante Statistiche inserito nel Tabellone della stazione
+              _checkingStatus
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      icon: Icon(
+                        Icons.bar_chart_rounded,
+                        color: _isMonitored ? theme.primaryColor : theme.secondaryTextColor,
+                      ),
+                      onPressed: () async {
+                        // Visto che lo stato è già stato verificato in automatico dall'apertura
+                        if (_isMonitored) {
+                          // Se è monitorata, apri direttamente lo screen dei dati
+                          await _loadStatsAndNavigate(context, station.id);
+                        } else {
+                          // Altrimenti, proponi all'utente di inserirla nel sistema
+                          showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: theme.surfaceColor,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  title: Text(
+                                    RuntimeLocalizations.t(context, 'stats_monitoring_title'),
+                                    style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                                  ),
+                                  content: Text(
+                                    RuntimeLocalizations.t(context, 'stats_monitoring_msg'),
+                                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, height: 1.4),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: Text(
+                                        RuntimeLocalizations.t(context, 'cancel'),
+                                        style: TextStyle(color: theme.secondaryTextColor),
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: theme.primaryColor,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () async {
+                                        Navigator.pop(ctx);
+                                        await _addStationToDb(station.id, station.name);
+                                      },
+                                      child: Text(
+                                        RuntimeLocalizations.t(context, 'add_now'),
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                        }
+                      },
+                      tooltip: 'Statistiche e Monitoraggio Stazione',
+                    ),
               _buildFavoriteToggle(station, theme),
             ],
           ),
@@ -399,10 +599,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       decoration: BoxDecoration(
         color: theme.surfaceColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
+        border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.05)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 8,
               offset: const Offset(0, 4))
         ],
@@ -496,7 +696,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.cloud_off_rounded,
-              size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
+              size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.5)),
           const SizedBox(height: 16),
           Text(
             AppLocalizations.of(context)?.youAreOffline ?? "Sei offline",
@@ -525,9 +725,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           decoration: BoxDecoration(
-            color: theme.primaryColor.withOpacity(_isOffline ? 0.2 : 0.05),
+            color: theme.primaryColor.withValues(alpha: _isOffline ? 0.2 : 0.05),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+            border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
           ),
           child: Row(
             children: [
@@ -581,7 +781,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: theme.secondaryTextColor.withOpacity(0.3),
+                      color: theme.secondaryTextColor.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 20),
               Text(
@@ -596,8 +796,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: provider.getDownloadedTrains(),
                   builder: (ctx, snapshot) {
-                    if (!snapshot.hasData)
+                    if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
+                    }
                     final items = snapshot.data!;
                     if (items.isEmpty) {
                       return Center(
@@ -632,11 +833,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                           isThreeLine: true,
                           onTap: () {
                             Navigator.pop(ctx);
-                            // Use selectSavedTrain to load data without network fetch
                             provider.selectSavedTrain(
                                 station, train, item['service'], item['mode']);
-
-                            // Open details sheet immediately
                             _showTrainDetails(context, train, -1, theme);
                           },
                         );
@@ -661,14 +859,14 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       padding: const EdgeInsets.all(16),
       child: GlassmorphicContainer(
         width: double.infinity,
-        height: hasCities ? 180 : 135, // Si espande se ci sono città
+        height: hasCities ? 180 : 135,
         borderRadius: 24, blur: 20, alignment: Alignment.center, border: 1,
         linearGradient: LinearGradient(colors: [
-          theme.surfaceColor.withOpacity(0.9),
-          theme.surfaceColor.withOpacity(0.5)
+          theme.surfaceColor.withValues(alpha: 0.9),
+          theme.surfaceColor.withValues(alpha: 0.5)
         ]),
         borderGradient: LinearGradient(
-            colors: [theme.primaryColor.withOpacity(0.3), Colors.transparent]),
+            colors: [theme.primaryColor.withValues(alpha: 0.3), Colors.transparent]),
         child: Column(
           children: [
             Padding(
@@ -689,7 +887,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                 ?.searchStationOrTrain ??
                             "Cerca stazione o treno...",
                         hintStyle: TextStyle(
-                            color: theme.secondaryTextColor.withOpacity(0.5)),
+                            color: theme.secondaryTextColor.withValues(alpha: 0.5)),
                         prefixIcon: Icon(Icons.search_rounded,
                             color: theme.primaryColor),
                         border: InputBorder.none,
@@ -769,7 +967,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         onSelected: (val) {
           setState(() {
             _selectedCountry = val ? c['code']! : '';
-            _selectedCity = ''; // Reset città al cambio nazione
+            _selectedCity = '';
           });
           _onSearchChanged(_searchController.text, provider, countries);
         },
@@ -796,8 +994,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: isSelected
-                  ? Colors.white.withOpacity(0.2)
-                  : theme.primaryColor.withOpacity(0.2),
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : theme.primaryColor.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -845,7 +1043,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           });
           _onSearchChanged(_searchController.text, provider, countries);
         },
-        selectedColor: theme.primaryColor.withOpacity(0.15),
+        selectedColor: theme.primaryColor.withValues(alpha: 0.15),
         backgroundColor: Colors.transparent,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -882,9 +1080,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.primaryColor.withOpacity(0.1),
+        color: theme.primaryColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
@@ -916,7 +1114,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       } else if (_selectedCountry == 'GLOBAL') {
         provider.searchStations(query, country: 'GLOBAL');
       } else {
-        // Se c'è una città selezionata, passiamo il provider specifico della città
         String? cityProvider;
         if (_selectedCity.isNotEmpty && _selectedCity != 'Tutte le città') {
           cityProvider = _citiesByCountry[_selectedCountry]!
@@ -934,7 +1131,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
@@ -943,7 +1140,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           height: MediaQuery.of(ctx).size.height * 0.6,
           decoration: BoxDecoration(
             color: theme.surfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -954,7 +1151,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: theme.secondaryTextColor.withOpacity(0.4),
+                    color: theme.secondaryTextColor.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1005,8 +1202,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // (Mantenuti tutti i restanti metodi originali per logica preferiti e dettagli...)
-
   Future<void> _searchStationsMultipleCountries(String query,
       List<Map<String, String>> countries, TrainProvider provider) async {
     final codes = countries.map((c) => c['code']!).toList();
@@ -1022,9 +1217,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   void _showTrainDetails(
       BuildContext context, dynamic dep, int index, ThemeProvider theme) {
-    if (dep.stops == null || dep.stops.isEmpty)
+    if (dep.stops == null || dep.stops.isEmpty) {
       Provider.of<TrainProvider>(context, listen: false)
           .expandTrainDetails(index);
+    }
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -1042,70 +1238,80 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 scrollController: sc)));
   }
 
-  Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
+ Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
     if (dep == null) return const SizedBox.shrink();
 
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
     final category = (dep.category?.toString() ?? 'TRN').trim();
     final number = (dep.trainNumber?.toString() ?? '').trim();
 
-    // Check Settings & Provider for Logos
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-
     if (settings.vectorLogosEnabled) {
-      // Try to find a logo for this category (e.g. FR, IC, REG)
-      // The server returns keys in uppercase.
-      final key = category.toUpperCase();
+      final fileName = category.toLowerCase().replaceAll(' ', '_');
+      final logoUrl = "https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png";
 
-      if (trainProvider.trainLogos.containsKey(key)) {
-        final logoUrl = trainProvider.trainLogos[key]!;
-        // Show logo directly without container wrapper to prevent "distortion" or double-boxing
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: 20,
-              child: SvgPicture.network(
-                logoUrl,
-                fit: BoxFit.contain,
-                colorFilter: ColorFilter.mode(theme.textColor, BlendMode.srcIn),
-                placeholderBuilder: (_) => SizedBox(
-                  width: 30,
-                  height: 20,
-                  child: Shimmer.fromColors(
-                    baseColor: theme.secondaryTextColor.withOpacity(0.1),
-                    highlightColor: theme.secondaryTextColor.withOpacity(0.05),
-                    child: Container(
-                      color: Colors.white,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 20,
+            constraints: const BoxConstraints(maxWidth: 60),
+            child: Image.network(
+              logoUrl,
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              errorBuilder: (context, error, stackTrace) {
+                return _buildColorBadge(category, number, theme);
+              },
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return SizedBox(
+                  width: 20,
+                  child: Center(
+                    child: SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-            if (number.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(number,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      color: theme.textColor)),
-            ]
-          ],
-        );
-      }
+          ),
+          const SizedBox(width: 6),
+          Text(
+            number, 
+            style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)
+          ),
+        ],
+      );
     }
 
-    final color = category.toLowerCase().contains('fr') == true
-        ? Colors.redAccent
-        : theme.primaryColor;
+    return _buildColorBadge(category, number, theme);
+  }
+
+  Widget _buildColorBadge(String category, String number, ThemeProvider theme) {
+    final isHighSpeed = category.toLowerCase().contains('fr') || category.toLowerCase().contains('freccia');
+    final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
+    
     return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(4)),
-        child: Text(RuntimeLocalizations.t(context, 'category_number', params: {'category': category, 'number': number}),
-          style: TextStyle(
-            fontSize: 9, fontWeight: FontWeight.w800, color: color)));
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        "$category $number",
+        style: TextStyle(
+          fontSize: 10, 
+          fontWeight: FontWeight.w800, 
+          color: color
+        ),
+      ),
+    );
   }
 
   Widget _buildBadge(String label, Color color) {
@@ -1113,7 +1319,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         margin: const EdgeInsets.only(top: 4),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(4)),
         child: Text(label,
             style: TextStyle(
@@ -1146,7 +1352,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     return Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-            color: theme.secondaryTextColor.withOpacity(0.1),
+            color: theme.secondaryTextColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(15)),
         child: Row(children: [
           Expanded(
@@ -1217,7 +1423,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 color: theme.surfaceColor,
                 borderRadius: BorderRadius.circular(16),
                 border:
-                    Border.all(color: theme.primaryColor.withOpacity(0.15))),
+                    Border.all(color: theme.primaryColor.withValues(alpha: 0.15))),
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(Icons.star_rounded, color: theme.primaryColor, size: 18),
@@ -1240,16 +1446,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         itemCount: provider.stationSuggestions.length,
         itemBuilder: (ctx, i) {
           final s = provider.stationSuggestions[i];
-          return ListTile(
-              leading:
-                  Icon(Icons.location_on_outlined, color: theme.primaryColor),
-              title: Text(s.name,
-                  style: TextStyle(
-                      color: theme.textColor, fontWeight: FontWeight.bold)),
-              subtitle: Text(s.country,
-                  style:
-                      TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-              onTap: () => provider.selectStation(s));
+          return _StationListTile(
+            station: s,
+            provider: provider,
+            theme: theme,
+            onLoadStats: _loadStatsAndNavigate,
+            onAddStation: _addStationToDb,
+          );
         });
   }
 }
@@ -1276,16 +1479,16 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
     if (widget.isArrivalMode &&
         (widget.departure.origin == null || widget.departure.origin.isEmpty)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted)
+        if (mounted) {
           Provider.of<TrainProvider>(context, listen: false)
               .expandTrainDetails(widget.index);
+        }
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Determine textcontent
     final String text = widget.isArrivalMode
         ? (widget.departure.origin ??
             AppLocalizations.of(context)?.loading ??
@@ -1299,17 +1502,15 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Measure text width
         final textPainter = TextPainter(
           text: TextSpan(text: text, style: style),
           maxLines: 1,
           textDirection: TextDirection.ltr,
-        )..layout(); // layout with infinite width to measure intrinsic width
+        )..layout();
 
-        // If text is wider than available space (maxWidth), use Marquee
         if (textPainter.size.width > constraints.maxWidth) {
           return SizedBox(
-            height: 25, // Height sufficient for font size 17
+            height: 25,
             child: Marquee(
               text: text,
               style: style,
@@ -1326,11 +1527,127 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
             ),
           );
         } else {
-          // Otherwise, static text
           return Text(text,
               style: style, maxLines: 1, overflow: TextOverflow.ellipsis);
         }
       },
+    );
+  }
+}
+
+// Widget Lista Suggerimenti Stazioni
+class _StationListTile extends StatefulWidget {
+  final TrainStation station;
+  final TrainProvider provider;
+  final ThemeProvider theme;
+  final Function(BuildContext, String) onLoadStats;
+  final Function(String, String) onAddStation;
+
+  const _StationListTile({
+    required this.station,
+    required this.provider,
+    required this.theme,
+    required this.onLoadStats,
+    required this.onAddStation,
+  });
+
+  @override
+  State<_StationListTile> createState() => _StationListTileState();
+}
+
+class _StationListTileState extends State<_StationListTile> {
+  bool _isMonitored = false;
+  bool _checkingStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    try {
+      final response = await http.get(Uri.parse(
+          'https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/${widget.station.id}'));
+      if (response.statusCode == 200 && mounted) {
+        final data = json.decode(response.body);
+        setState(() {
+          _isMonitored = data['isMonitored'] ?? false;
+          _checkingStatus = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Errore controllo automatico stazione ${widget.station.id}: $e");
+      if (mounted) setState(() => _checkingStatus = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(Icons.location_on_outlined, color: widget.theme.primaryColor),
+      title: Text(widget.station.name,
+          style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold)),
+      subtitle: Text(widget.station.country,
+          style: TextStyle(color: widget.theme.secondaryTextColor, fontSize: 12)),
+      trailing: _checkingStatus
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : IconButton(
+              icon: Icon(
+                Icons.bar_chart_rounded,
+                color: _isMonitored ? widget.theme.primaryColor : widget.theme.secondaryTextColor,
+              ),
+              onPressed: () async {
+                if (_isMonitored) {
+                  await widget.onLoadStats(context, widget.station.id);
+                } else {
+                  _showManualAddDialog();
+                }
+              },
+            ),
+      onTap: () => widget.provider.selectStation(widget.station),
+    );
+  }
+
+  void _showManualAddDialog() {
+        showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: widget.theme.surfaceColor,
+        title: Text(
+          RuntimeLocalizations.t(context, 'activate_monitoring'), 
+          style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold)
+        ),
+        content: Text(
+          RuntimeLocalizations.t(context, 'station_not_monitored_msg'), 
+          style: TextStyle(color: widget.theme.secondaryTextColor)
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              RuntimeLocalizations.t(context, 'cancel'), 
+              style: TextStyle(color: widget.theme.secondaryTextColor)
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: widget.theme.primaryColor),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await widget.onAddStation(widget.station.id, widget.station.name);
+              _checkStatus();
+            },
+            child: Text(
+              RuntimeLocalizations.t(context, 'add_now'), 
+              style: const TextStyle(color: Colors.white)
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

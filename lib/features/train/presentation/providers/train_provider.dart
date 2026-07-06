@@ -33,13 +33,15 @@ class TrainProvider with ChangeNotifier {
     _isLoadingLogos = true;
     try {
       final logos = await _repository.fetchTrainLogos();
-      // Even if empty, we consider it loaded to prevent loop
-      _trainLogos = logos;
-      _hasLoadedLogos = true;
       if (logos.isNotEmpty) {
+        _trainLogos = logos;
+        _hasLoadedLogos = true; // Segna come caricato SOLO se ha davvero scaricato i loghi
         notifyListeners();
+      } else {
+        _hasLoadedLogos = false; // Permetti di riprovare al prossimo refresh
       }
     } catch (e) {
+      _hasLoadedLogos = false; // Permetti di riprovare in caso di errore di rete
       print("Error loading train logos: $e");
     } finally {
       _isLoadingLogos = false;

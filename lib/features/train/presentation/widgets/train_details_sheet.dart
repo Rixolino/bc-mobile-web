@@ -1477,65 +1477,52 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
   }
 
-  Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
+Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
     final settings = Provider.of<SettingsProvider>(context);
-    final trainProvider = Provider.of<TrainProvider>(context); // Access logo map
-    
     final category = (departure.category ?? 'TRN').trim();
     final number = (departure.trainNumber ?? '').trim();
 
     if (settings.vectorLogosEnabled) {
-      final key = category.toUpperCase();
-      if (trainProvider.trainLogos.containsKey(key)) {
-        return Row(
-          children: [
-            SizedBox(
-              height: 22,
-              child: SvgPicture.network(
-                trainProvider.trainLogos[key]!,
-                fit: BoxFit.contain,
-                // Adaptive color: White on dark/black bg, Black on light/white bg.
-                // Assuming theme.textColor handles this logic correctly (e.g. white text on dark bg).
-                colorFilter: ColorFilter.mode(theme.textColor, BlendMode.srcIn),
-                placeholderBuilder: (_) => SizedBox(
-                  width: 35, // Approximate width to minimize layout shift
-                  height: 22,
-                  child: Shimmer.fromColors(
-                    baseColor: theme.secondaryTextColor.withOpacity(0.1),
-                    highlightColor: theme.secondaryTextColor.withOpacity(0.05),
-                    child: Container(
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
+      final fileName = category.toLowerCase().replaceAll(' ', '_');
+      final logoUrl = "https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png";
+
+      return Row(
+        children: [
+          Container(
+            height: 24,
+            constraints: const BoxConstraints(maxWidth: 80),
+            child: Image.network(
+              logoUrl,
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              errorBuilder: (context, error, stackTrace) {
+                return _buildColorText(category, number, theme); // Fallback al testo colorato grande
+              },
             ),
-            const SizedBox(width: 8),
-            Text(
-              number,
-              style: TextStyle(
-                fontSize: 22, 
-                fontWeight: FontWeight.w900, 
-                color: theme.textColor,
-                letterSpacing: -0.5
-              ),
-            ),
-          ],
-        );
-      }
+          ),
+          const SizedBox(width: 10),
+          Text(
+            number, 
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.textColor)
+          ),
+        ],
+      );
     }
 
-    // Default text fallback
+    return _buildColorText(category, number, theme);
+  }
+
+  Widget _buildColorText(String category, String number, ThemeProvider theme) {
+    final isHighSpeed = category.toLowerCase().contains('fr') || category.toLowerCase().contains('freccia');
+    final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
+
     return Text(
       "$category $number",
       style: TextStyle(
-        fontSize: 24, 
+        fontSize: 22, 
         fontWeight: FontWeight.w900, 
-        color: theme.textColor,
-        letterSpacing: -1.0
+        color: color // Mantiene il colore di distinzione
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
     );
   }
 
