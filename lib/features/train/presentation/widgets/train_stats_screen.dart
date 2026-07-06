@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:bc_transporter/core/services/runtime_localizations.dart';
+
 // Enum per gestire i periodi di tempo
 enum TimeRange { today, week, month, year }
 
@@ -54,7 +55,9 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       }
       
       final url = Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/station/${widget.stationId}$queryString');
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      
+      // AUMENTATO IL TIMEOUT A 30 SECONDI
+      final response = await http.get(url).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
 
@@ -65,10 +68,17 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       } else {
         throw Exception("Errore del server: ${response.statusCode}");
       }
+    } on TimeoutException catch (_) {
+      // GESTIONE SPECIFICA DEL TIMEOUT ("Future not completed")
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Tempo scaduto: il server sta impiegando troppo tempo a rispondere.")),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Errore aggiornamento: ${e.toString().split(':').last}")),
+          SnackBar(content: Text("Errore aggiornamento: ${e.toString().split(':').last.trim()}")),
         );
       }
     } finally {
@@ -276,8 +286,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                          _selectedDate.month == DateTime.now().month && 
                          _selectedDate.day == DateTime.now().day;
 
-    // Se è "oggi", tagliamo all'ora attuale per non vedere grafici a zero nel futuro.
-    // Altrimenti (giorni passati o viste settimanali), calcoliamo il massimo in base ai dati.
     if (isTodayStrict) {
       maxXValue = DateTime.now().hour.toDouble();
     } else if (_selectedRange != TimeRange.today) {
@@ -289,13 +297,10 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
 
     for (int i = 0; i < data.length; i++) {
       final e = data[i];
-      // Leggiamo la "X" (può essere l'ora, il giorno o semplicemente l'indice della lista)
-      // Adattalo se il tuo backend invia una chiave diversa per settimana/mese (es. 'day')
       final double xValue = (_selectedRange == TimeRange.today) 
           ? (e['hour'] as num).toDouble() 
           : i.toDouble(); 
 
-      // Ignoriamo le ore future se stiamo guardando la giornata odierna in corso
       if (isTodayStrict && xValue > maxXValue) continue;
 
       final double delay = (e['averageDelay'] as num).toDouble();
@@ -304,7 +309,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       if (delay > maxY) maxY = delay;
     }
 
-    // Se non ci sono spot (es. a mezzanotte esatta), aggiungiamo un punto 0,0
     if (spots.isEmpty) {
        spots.add(const FlSpot(0, 0));
        maxXValue = 1;
@@ -329,7 +333,7 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
               isCurved: true, 
               color: Colors.blueAccent, 
               barWidth: 3, 
-              dotData: FlDotData(show: _selectedRange != TimeRange.today), // Mostriamo i puntini nei trend lunghi
+              dotData: FlDotData(show: _selectedRange != TimeRange.today),
               belowBarData: BarAreaData(show: true, color: Colors.blueAccent.withOpacity(0.15))
             )
           ],
@@ -353,12 +357,11 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                 interval: _getBottomInterval(maxXValue), 
                 reservedSize: 22, 
                 getTitlesWidget: (value, meta) {
-                  // Personalizzazione etichette Asse X in base al periodo
                   String label = "";
                   if (_selectedRange == TimeRange.today) {
                     label = "${value.toInt()}:00";
                   } else {
-                    label = "G ${value.toInt() + 1}"; // Esempio: G1, G2, etc. (dipende dai tuoi dati API)
+                    label = "G ${value.toInt() + 1}"; 
                   }
 
                   return Padding(
@@ -388,11 +391,10 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     if (_selectedRange == TimeRange.today) return maxVal > 12 ? 4 : 2;
     if (_selectedRange == TimeRange.week) return 1;
     if (_selectedRange == TimeRange.month) return 5;
-    return maxVal / 5; // Per l'anno
+    return maxVal / 5;
   }
 
   Widget _buildCategoryTile(dynamic cat) {
-    // Il resto rimane identico, assicurati di usare withOpacity invece del deprecato withValues se ti dà noie
     final onTime = cat['onTimePercentage'] ?? 0;
     Color progressColor = onTime < 50 ? Colors.red : (onTime < 75 ? Colors.orange : Colors.green);
     return Container(
