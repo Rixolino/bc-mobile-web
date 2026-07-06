@@ -50,13 +50,11 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       if (_selectedRange == TimeRange.today) {
         queryString = isToday ? '' : '?date=$dateString';
       } else {
-        // ASSUNZIONE: il backend accetta il parametro period (es. period=week)
         queryString = '?period=${_selectedRange.name}'; 
       }
       
       final url = Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/station/${widget.stationId}$queryString');
       
-      // AUMENTATO IL TIMEOUT A 30 SECONDI
       final response = await http.get(url).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
@@ -69,7 +67,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         throw Exception("Errore del server: ${response.statusCode}");
       }
     } on TimeoutException catch (_) {
-      // GESTIONE SPECIFICA DEL TIMEOUT ("Future not completed")
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Tempo scaduto: il server sta impiegando troppo tempo a rispondere.")),
@@ -91,7 +88,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
   }
 
   Future<void> _pickDate() async {
-    // Permettiamo di cambiare data solo se siamo nella visualizzazione "Oggi"
     if (_selectedRange != TimeRange.today) {
        setState(() => _selectedRange = TimeRange.today);
     }
@@ -125,9 +121,10 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     final topWorstTrains = List.from(general['topWorstTrains'] ?? []);
     final topWorstRoutes = List.from(general['topWorstRoutes'] ?? []);
     final categoryDistribution = List.from(general['categoryDistribution'] ?? []);
-    
-    // Usiamo una chiave generica se il backend cambia nome per i periodi lunghi
     final distributionData = List.from(general['distribution'] ?? general['hourlyDistribution'] ?? []);
+    
+    // --- NUOVO: Lettura dei dati predittivi ---
+    final hourlyPredictions = List.from(general['hourlyPredictions'] ?? []);
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -154,7 +151,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- NUOVO SELETTORE DEL PERIODO ---
             Center(
               child: SegmentedButton<TimeRange>(
                 segments: [
@@ -167,7 +163,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                 onSelectionChanged: (Set<TimeRange> newSelection) {
                   setState(() {
                     _selectedRange = newSelection.first;
-                    // Se torniamo a "Giorno", reimpostiamo la data a oggi per comodità
                     if (_selectedRange == TimeRange.today) {
                       _selectedDate = DateTime.now();
                     }
@@ -220,6 +215,14 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
               ],
             ),
 
+            // --- NUOVA SEZIONE: PREVISIONI ORARIE (Visibile solo se ci sono dati e siamo in vista "Giorno") ---
+            if (hourlyPredictions.isNotEmpty && _selectedRange == TimeRange.today) ...[
+              const SizedBox(height: 32),
+              _buildSectionTitle("Previsioni Orarie (Storico)"),
+              const SizedBox(height: 12),
+              _buildPredictionsList(hourlyPredictions),
+            ],
+
             const SizedBox(height: 32),
             _buildSectionTitle(_selectedRange == TimeRange.today ? RuntimeLocalizations.t(context, 'stats_hourly_trend') : RuntimeLocalizations.t(context, 'stats_historical_trend')),
             const SizedBox(height: 12),
@@ -269,6 +272,57 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     return Padding(padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)), Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12))]));
   }
 
+  // --- NUOVO WIDGET: LISTA ORIZZONTALE DELLE PREVISIONI ---
+  Widget _buildPredictionsList(List<dynamic> predictions) {
+    return SizedBox(
+      height: 140,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: predictions.length,
+        itemBuilder: (context, index) {
+          final pred = predictions[index];
+          final int hour = pred['hour'] ?? 0;
+          final int risk = pred['delayProbability'] ?? 0;
+          final String crowd = pred['crowdLevel'] ?? 'Basso';
+
+          Color riskColor = risk < 20 ? Colors.green : (risk < 50 ? Colors.orange : Colors.redAccent);
+          IconData crowdIcon = crowd == 'Alto' ? Icons.groups : (crowd == 'Medio' ? Icons.group : Icons.person);
+          Color crowdColor = crowd == 'Alto' ? Colors.redAccent : (crowd == 'Medio' ? Colors.orangeAccent : Colors.green);
+
+          return Container(
+            width: 120,
+            margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text("$hour:00", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(crowdIcon, color: crowdColor, size: 16),
+                    const SizedBox(width: 4),
+                    Text(crowd, style: TextStyle(color: crowdColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text("Rischio Ritardo", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                const SizedBox(height: 4),
+                Text("$risk%", style: TextStyle(color: riskColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildChart(List<dynamic> data) {
     if (data.isEmpty) {
       return Container(
@@ -279,7 +333,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       );
     }
 
-    // Risolviamo il bug dell'orario e gestiamo i diversi periodi
     double maxXValue = 23; 
     bool isTodayStrict = _selectedRange == TimeRange.today && 
                          _selectedDate.year == DateTime.now().year && 
