@@ -137,8 +137,8 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     final distributionData = List.from(general['distribution'] ?? general['hourlyDistribution'] ?? []);
     final hourlyPredictions = List.from(general['hourlyPredictions'] ?? []);
     
-    // Estrazione rating (Default a 0 se non presente)
-    final double stationRating = (general['stationRating'] ?? 0).toDouble();
+    // Estrazione rating dal livello radice (Default a 0 se non presente)
+    final double stationRating = (_currentStats['stationRating'] ?? 0).toDouble();
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
