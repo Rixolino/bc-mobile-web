@@ -345,8 +345,7 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       ),
     );
   }
-
-  Widget _buildChart(List<dynamic> data) {
+Widget _buildChart(List<dynamic> data) {
     if (data.isEmpty) {
       return Container(
         height: 220,
@@ -356,28 +355,74 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       );
     }
 
-    double maxXValue = 23; 
-    bool isTodayStrict = _selectedRange == TimeRange.today && 
-                         _selectedDate.year == DateTime.now().year && 
-                         _selectedDate.month == DateTime.now().month && 
-                         _selectedDate.day == DateTime.now().day;
+    int daysInCurrentMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+    DateTime now = DateTime.now();
 
-    if (isTodayStrict) {
-      maxXValue = DateTime.now().hour.toDouble();
-    } else if (_selectedRange != TimeRange.today) {
-      maxXValue = (data.length - 1).toDouble(); 
+    bool isCurrentPeriod = _selectedDate.year == now.year && 
+                           _selectedDate.month == now.month && 
+                           _selectedDate.day == now.day;
+
+    double maxXValue = 23; 
+
+    if (_selectedRange == TimeRange.today) {
+      maxXValue = isCurrentPeriod ? now.hour.toDouble() : 23;
+    } else if (_selectedRange == TimeRange.week) {
+      maxXValue = isCurrentPeriod ? (now.weekday - 1).toDouble() : 6;
+    } else if (_selectedRange == TimeRange.month) {
+      maxXValue = isCurrentPeriod ? (now.day - 1).toDouble() : (daysInCurrentMonth - 1).toDouble(); 
+    } else if (_selectedRange == TimeRange.year) {
+      maxXValue = isCurrentPeriod ? (now.month - 1).toDouble() : 11;
     }
+
+    if (maxXValue <= 0) maxXValue = 1;
 
     final List<FlSpot> spots = [];
     double maxY = 0;
 
+    DateTime? parseCustomDate(dynamic val) {
+      if (val == null) return null;
+      String s = val.toString();
+      try { return DateTime.parse(s); } catch (_) {}
+      try {
+        final p = s.split(RegExp(r'[/|-]'));
+        if (p.length >= 3) {
+          return p[0].length == 4 
+              ? DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]))
+              : DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+        }
+      } catch (_) {}
+      return null;
+    }
+
     for (int i = 0; i < data.length; i++) {
       final e = data[i];
-      final double xValue = (_selectedRange == TimeRange.today) 
-          ? (e['hour'] as num).toDouble() 
-          : i.toDouble(); 
+      double xValue = i.toDouble(); 
+      
+      DateTime? parsedDate = parseCustomDate(e['date'] ?? e['timestamp'] ?? e['time']);
 
-      if (isTodayStrict && xValue > maxXValue) continue;
+      if (_selectedRange == TimeRange.today) {
+        if (e['hour'] != null) xValue = (e['hour'] as num).toDouble();
+        else if (parsedDate != null) xValue = parsedDate.hour.toDouble();
+        else if (data.length == 1) xValue = _selectedDate.hour.toDouble();
+      } 
+      else if (_selectedRange == TimeRange.week) {
+        if (e['weekday'] != null) xValue = (e['weekday'] as num).toDouble() - 1; 
+        else if (parsedDate != null) xValue = (parsedDate.weekday - 1).toDouble();
+        else if (data.length == 1) xValue = (_selectedDate.weekday - 1).toDouble();
+      } 
+      else if (_selectedRange == TimeRange.month) {
+        if (e['day'] != null) xValue = (e['day'] as num).toDouble() - 1; 
+        else if (parsedDate != null) xValue = (parsedDate.day - 1).toDouble();
+        else if (data.length == 1) xValue = (_selectedDate.day - 1).toDouble();
+      } 
+      else if (_selectedRange == TimeRange.year) {
+        if (e['month'] != null) xValue = (e['month'] as num).toDouble() - 1; 
+        else if (parsedDate != null) xValue = (parsedDate.month - 1).toDouble();
+        else if (data.length == 1) xValue = (_selectedDate.month - 1).toDouble();
+      }
+
+      if (isCurrentPeriod && xValue > maxXValue) continue;
+      if (xValue > maxXValue || xValue < 0) continue; 
 
       final double delay = (e['averageDelay'] as num).toDouble();
       spots.add(FlSpot(xValue, delay));
@@ -390,8 +435,14 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
        maxXValue = 1;
     }
 
+    spots.sort((a, b) => a.x.compareTo(b.x));
+
     if (maxY < 10) maxY = 10;
     maxY = ((maxY / 5).ceil() * 5).toDouble();
+
+    double bottomInterval = _getBottomInterval(maxXValue);
+    double leftInterval = maxY > 20 ? (maxY / 4).roundToDouble() : 5;
+    if (leftInterval <= 0) leftInterval = 5;
 
     return Container(
       height: 220,
@@ -403,6 +454,51 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
           maxX: maxXValue,
           minY: 0,
           maxY: maxY,
+          // ---- CONFIGURAZIONE TOUCH / INTERAZIONE ----
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (touchedSpot) => Colors.blueGrey.withOpacity(0.9),
+              tooltipBorder: const BorderSide(color: Colors.white24, width: 1),
+              tooltipRoundedRadius: 8,
+              getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                return touchedSpots.map((barSpot) {
+                  final index = barSpot.x.toInt();
+                  String titleLabel = "";
+
+                  // Costruiamo il titolo del tooltip in base al range temporale
+                  switch (_selectedRange) {
+                    case TimeRange.today:
+                      titleLabel = "$index:00";
+                      break;
+                    case TimeRange.week:
+                      const giorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+                      titleLabel = (index >= 0 && index < giorni.length) ? giorni[index] : "";
+                      break;
+                    case TimeRange.month:
+                      titleLabel = "Giorno ${index + 1}";
+                      break;
+                    case TimeRange.year:
+                      const mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+                      titleLabel = (index >= 0 && index < mesi.length) ? mesi[index] : "";
+                      break;
+                  }
+
+                  return LineTooltipItem(
+                    "$titleLabel\n",
+                    const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.normal),
+                    children: [
+                      TextSpan(
+                        text: "+${barSpot.y.toStringAsFixed(1)} min",
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  );
+                }).toList();
+              },
+            ),
+            handleBuiltInTouches: true, // Abilita il comportamento predefinito di fl_chart
+          ),
+          // --------------------------------------------
           lineBarsData: [
             LineChartBarData(
               spots: spots, 
@@ -418,7 +514,7 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
               sideTitles: SideTitles(
                 showTitles: true, 
                 reservedSize: 40, 
-                interval: maxY > 20 ? (maxY / 4).roundToDouble() : 5, 
+                interval: leftInterval, 
                 getTitlesWidget: (value, meta) => Padding(
                   padding: const EdgeInsets.only(right: 6.0), 
                   child: Text("${value.toInt()}m", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.right)
@@ -430,19 +526,44 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true, 
-                interval: _getBottomInterval(maxXValue), 
-                reservedSize: 22, 
+                interval: bottomInterval, 
+                reservedSize: 28, 
                 getTitlesWidget: (value, meta) {
+                  int index = value.toInt();
                   String label = "";
-                  if (_selectedRange == TimeRange.today) {
-                    label = "${value.toInt()}:00";
-                  } else {
-                    label = "G ${value.toInt() + 1}"; 
+
+                  switch (_selectedRange) {
+                    case TimeRange.today:
+                      label = "$index:00";
+                      break;
+                    case TimeRange.week:
+                      const giorni = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+                      label = (index >= 0 && index < giorni.length) ? giorni[index] : "";
+                      break;
+                    case TimeRange.month:
+                      label = "G${index + 1}";
+                      break;
+                    case TimeRange.year:
+                      const mesi = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+                      label = (index >= 0 && index < mesi.length) ? mesi[index] : "";
+                      break;
                   }
 
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6.0), 
-                    child: Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.bold))
+                  if (value % meta.appliedInterval != 0 || label.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return SideTitleWidget(
+                    axisSide: meta.axisSide,
+                    space: 6,
+                    child: Text(
+                      label, 
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5), 
+                        fontSize: _selectedRange == TimeRange.year ? 9 : 10, 
+                        fontWeight: FontWeight.bold
+                      )
+                    ),
                   );
                 }
               )
@@ -451,23 +572,29 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
           gridData: FlGridData(
             show: true, 
             drawVerticalLine: true, 
-            getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.1), strokeWidth: 1, dashArray: [4, 4]), 
-            getDrawingVerticalLine: (value) => FlLine(color: Colors.white.withOpacity(0.1), strokeWidth: 1, dashArray: [4, 4])
+            getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.06), strokeWidth: 1), 
+            getDrawingVerticalLine: (value) => FlLine(color: Colors.white.withOpacity(0.06), strokeWidth: 1)
           ),
           borderData: FlBorderData(
             show: true, 
-            border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.3), width: 2), left: BorderSide(color: Colors.white.withOpacity(0.3), width: 2), right: BorderSide.none, top: BorderSide.none)
+            border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.2), width: 1.5), left: BorderSide(color: Colors.white.withOpacity(0.2), width: 1.5), right: BorderSide.none, top: BorderSide.none)
           ),
         ),
       ),
     );
   }
-
+  
   double _getBottomInterval(double maxVal) {
-    if (_selectedRange == TimeRange.today) return maxVal > 12 ? 4 : 2;
-    if (_selectedRange == TimeRange.week) return 1;
-    if (_selectedRange == TimeRange.month) return 5;
-    return maxVal / 5;
+    switch (_selectedRange) {
+      case TimeRange.today:
+        return maxVal > 12 ? 4 : 2;
+      case TimeRange.week:
+        return 1; 
+      case TimeRange.month:
+        return 5;
+      case TimeRange.year:
+        return 1; 
+    }
   }
 
   Widget _buildCategoryTile(dynamic cat) {
