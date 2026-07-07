@@ -139,9 +139,17 @@ class TrainDeparture {
       polylineData = actualData['polyline'];
     }
 
+    String? category = _getStringValue(actualData['category'] ?? actualData['type']);
+    if (category == null || category.isEmpty) {
+      if (rawLine != null) {
+        final letters = RegExp(r'[a-zA-Z]+').firstMatch(rawLine);
+        category = letters?.group(0);
+      }
+    }
+
     return TrainDeparture(
       trainNumber: num,
-      category: _getStringValue(actualData['category'] ?? actualData['type'] ?? actualData['operator']),
+      category: category,
       destination: dest,
       origin: orig,
       scheduledTime: _parseTime(actualData['scheduledTime'] ?? actualData['time'] ?? actualData['departureTime'] ?? actualData['arrivalTime']),
