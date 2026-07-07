@@ -1,4 +1,8 @@
-import 'dart:convert';
+import os
+
+file_path = 'lib/features/train/presentation/widgets/train_stats_screen.dart'
+
+new_code = """import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -582,3 +586,9 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     );
   }
 }
+"""
+
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(new_code)
+
+print("Redesign applied.")

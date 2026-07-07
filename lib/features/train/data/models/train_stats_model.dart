@@ -35,6 +35,8 @@ class TrainBehavioralReport {
   final RevolutionaryMetrics metrics;
   final OperationalInsights insights;
   final List<DailyBreakdown> dailyBreakdown;
+  final CommonRoute? commonRoute;
+  final List<StopAnalytics> stopsAnalytics;
 
   TrainBehavioralReport({
     required this.category,
@@ -42,6 +44,8 @@ class TrainBehavioralReport {
     required this.metrics,
     required this.insights,
     required this.dailyBreakdown,
+    this.commonRoute,
+    this.stopsAnalytics = const [],
   });
 
   factory TrainBehavioralReport.fromJson(Map<String, dynamic> json) {
@@ -55,6 +59,8 @@ class TrainBehavioralReport {
               ?.map((e) => DailyBreakdown.fromJson(e))
               .toList() ??
           [],
+      commonRoute: json['commonRoute'] != null ? CommonRoute.fromJson(json['commonRoute']) : null,
+      stopsAnalytics: (json['stopsAnalytics'] as List?)?.map((e) => StopAnalytics.fromJson(e)).toList() ?? [],
     );
   }
 }
@@ -207,6 +213,46 @@ class TrainEvent {
       platform: json['platform'] ?? '',
       platformChanged: json['platformChanged'] ?? false,
       status: json['status'] ?? '',
+    );
+  }
+}
+class CommonRoute {
+  final Map<String, dynamic>? polyline;
+  final List<dynamic>? stops;
+
+  CommonRoute({this.polyline, this.stops});
+
+  factory CommonRoute.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return CommonRoute();
+    return CommonRoute(
+      polyline: json['polyline'],
+      stops: json['stops'],
+    );
+  }
+}
+
+class StopAnalytics {
+  final String stationName;
+  final String stationId;
+  final int totalLogs;
+  final int cancellationRate;
+  final int averageDelay;
+
+  StopAnalytics({
+    required this.stationName,
+    required this.stationId,
+    required this.totalLogs,
+    required this.cancellationRate,
+    required this.averageDelay,
+  });
+
+  factory StopAnalytics.fromJson(Map<String, dynamic> json) {
+    return StopAnalytics(
+      stationName: json['stationName'] ?? '',
+      stationId: json['stationId'] ?? '',
+      totalLogs: json['totalLogs'] ?? 0,
+      cancellationRate: json['cancellationRate'] ?? 0,
+      averageDelay: json['averageDelay'] ?? 0,
     );
   }
 }

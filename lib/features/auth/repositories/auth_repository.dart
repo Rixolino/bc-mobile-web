@@ -2,8 +2,6 @@ import '../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) '
 import 'package:bcrypt/bcrypt.dart';
 import '../models/user.dart';
 import '../../../core/services/session_service.dart';
-import '../../../core/services/session_service.dart';
-import '../../../core/services/session_service.dart';
 
 class AuthRepository {
   // Turso database configuration
