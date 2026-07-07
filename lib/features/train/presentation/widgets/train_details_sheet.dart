@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:bc_transporter/features/train/presentation/widgets/train_stats_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -1403,6 +1404,36 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               children: [
+
+                _buildInfoChip(
+                  Icons.analytics_rounded,
+                  RuntimeLocalizations.t(context, 'statistic') ?? 'Statistiche',
+                  theme,
+                  () {
+                    // Estrazione dati dal treno corrente
+                    final category = (departure.category ?? '').trim();
+                    final tripNumber = (departure.trainNumber ?? '').trim();
+                    
+                    if (category.isNotEmpty && tripNumber.isNotEmpty) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (ctx) => TrainStatsScreen(
+                            category: category,
+                            tripNumber: tripNumber,
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(RuntimeLocalizations.t(context, 'insufficient_data') ?? 'Dati treno mancanti'),
+                          backgroundColor: theme.errorColor,
+                        ),
+                      );
+                    }
+                  },
+                ),
+
                 // Map
                 _buildInfoChip(
                   Icons.map_rounded,

@@ -9,7 +9,7 @@ import '../../core/notification_channels.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 import 'dart:ui';
-import '../../features/train/presentation/widgets/train_stats_screen.dart';
+import '../../features/train/presentation/widgets/railway_station_stats_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});

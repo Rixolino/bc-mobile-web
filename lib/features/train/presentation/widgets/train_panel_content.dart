@@ -22,7 +22,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
-import 'train_stats_screen.dart';
+import 'railway_station_stats_screen.dart';
 import 'package:bc_transporter/features/train/data/models/train_stats_model.dart';
 
 class TrainPanelContent extends StatefulWidget {
