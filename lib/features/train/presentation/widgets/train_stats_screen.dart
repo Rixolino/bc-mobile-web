@@ -144,15 +144,28 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
       physics: const BouncingScrollPhysics(),
       children: [
         _buildHeroScore(report.metrics),
-        const SizedBox(height: 32),
+        const SizedBox(height: 16),
+        
+        // NUOVA SEZIONE: Metriche Globali (Tasso cancellazioni e Variazione ritardo)
+        _buildGlobalMetrics(report.metrics),
+        const SizedBox(height: 16),
+        
+        // NUOVA SEZIONE: Record Storico Negativo
+        if (report.metrics.maxAbsoluteDelayMinutes > 0) ...[
+          _buildHistoricalRecord(report.metrics),
+          const SizedBox(height: 32),
+        ],
+
         _sectionTitle(RuntimeLocalizations.t(context, 'train_stats_insights')),
         const SizedBox(height: 16),
         _buildInsightsGrid(report.insights),
         const SizedBox(height: 32),
+        
         _sectionTitle(RuntimeLocalizations.t(context, 'train_stats_stops_analysis')),
         const SizedBox(height: 16),
         _buildStopsAnalyticsList(report.stopsAnalytics),
         const SizedBox(height: 32),
+        
         _sectionTitle(RuntimeLocalizations.t(context, 'train_stats_timeline')),
         const SizedBox(height: 16),
         _buildDailyBreakdownList(report.dailyBreakdown),
@@ -203,6 +216,7 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     );
   }
 
+  // Modifica al _buildHeroScore per includere "Viaggi Analizzati"
   Widget _buildHeroScore(RevolutionaryMetrics metrics) {
     final color = _getScoreColor(metrics.reliabilityScore);
     
@@ -223,9 +237,21 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                 Text(
                   metrics.behaviorTrend,
                   style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7), 
+                    color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8), 
                     fontSize: 14,
                     height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    RuntimeLocalizations.t(context, 'train_stats_total_trips', params: {'count': metrics.totalTripsAnalyzed.toString()}),
+                    style: const TextStyle(fontSize: 12, color: Colors.blueAccent, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -267,6 +293,120 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                       ]
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // NUOVO WIDGET: Metriche Globali (Tasso cancellazioni e Recupero/Accumulo)
+  Widget _buildGlobalMetrics(RevolutionaryMetrics metrics) {
+    final bool tendsToRecover = metrics.averageNetDelayChangeMinutes < 0;
+    final bool isStable = metrics.averageNetDelayChangeMinutes == 0;
+    final Color netDelayColor = tendsToRecover ? Colors.greenAccent : (isStable ? Colors.blueAccent : Colors.redAccent);
+    final String netDelayText = tendsToRecover 
+        ? RuntimeLocalizations.t(context, 'train_stats_net_delay_recovers', params: {'min': metrics.averageNetDelayChangeMinutes.abs().toString()})
+        : (isStable 
+            ? RuntimeLocalizations.t(context, 'train_stats_net_delay_stable') 
+            : RuntimeLocalizations.t(context, 'train_stats_net_delay_adds', params: {'min': metrics.averageNetDelayChangeMinutes.toString()}));
+
+    final Color cancelColor = metrics.cancellationRatePercentage > 10 ? Colors.redAccent : (metrics.cancellationRatePercentage > 0 ? Colors.orangeAccent : Colors.greenAccent);
+
+    return Row(
+      children: [
+        Expanded(
+          child: _glassmorphicCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.cancel_outlined, size: 16, color: cancelColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      RuntimeLocalizations.t(context, 'train_stats_cancellation_rate'),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '${metrics.cancellationRatePercentage}%',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: cancelColor),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _glassmorphicCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(tendsToRecover ? Icons.trending_down : (isStable ? Icons.trending_flat : Icons.trending_up), size: 16, color: netDelayColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      RuntimeLocalizations.t(context, 'train_stats_net_delay'),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  netDelayText,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: netDelayColor),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // NUOVO WIDGET: Banner Record Storico Negativo
+  Widget _buildHistoricalRecord(RevolutionaryMetrics metrics) {
+    return _glassmorphicCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.history_toggle_off, color: Colors.redAccent, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  RuntimeLocalizations.t(context, 'train_stats_historical_worst'),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.redAccent),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  RuntimeLocalizations.t(context, 'train_stats_historical_delay', params: {
+                    'min': metrics.maxAbsoluteDelayMinutes.toString(),
+                    'station': metrics.criticalStation
+                  }),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  RuntimeLocalizations.t(context, 'train_stats_historical_date', params: {'date': metrics.criticalDate}),
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color),
                 ),
               ],
             ),
