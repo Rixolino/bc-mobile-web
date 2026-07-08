@@ -1,0 +1,41 @@
+﻿{
+    "ok":  true,
+    "totaleSoluzioni":  2,
+    "catalogo":  {
+                     "piuVeloce":  {
+                                       "type":  "CON CAMBIO",
+                                       "tripId1":  "8814-S11145-1783461600000",
+                                       "tripId2":  "20260708_14:43_ch-opentransportdataswiss26_.ojp-91-80.1.TA.1437.j26",
+                                       "stazioneCambio":  "Milano Centrale",
+                                       "orarioPartenza":  330,
+                                       "orarioArrivo":  809,
+                                       "durataMinuti":  479,
+                                       "attesaCambio":  18
+                                   },
+                     "diretti":  [
+
+                                 ],
+                     "conCambio":  [
+                                       {
+                                           "type":  "CON CAMBIO",
+                                           "tripId1":  "8814-S11145-1783461600000",
+                                           "tripId2":  "20260707_15:10_it-trenitalia_IT::VehicleJourney:railTRENITALIA:60083_0_6-20-507E-0083_6-20-507E-0083",
+                                           "stazioneCambio":  "MILANO CENTRALE",
+                                           "orarioPartenza":  330,
+                                           "orarioArrivo":  838,
+                                           "durataMinuti":  508,
+                                           "attesaCambio":  45
+                                       },
+                                       {
+                                           "type":  "CON CAMBIO",
+                                           "tripId1":  "8814-S11145-1783461600000",
+                                           "tripId2":  "20260708_14:43_ch-opentransportdataswiss26_.ojp-91-80.1.TA.1437.j26",
+                                           "stazioneCambio":  "Milano Centrale",
+                                           "orarioPartenza":  330,
+                                           "orarioArrivo":  809,
+                                           "durataMinuti":  479,
+                                           "attesaCambio":  18
+                                       }
+                                   ]
+                 }
+}

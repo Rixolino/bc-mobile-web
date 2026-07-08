@@ -34,20 +34,19 @@ class TrainPanelContent extends StatefulWidget {
 
 class _TrainPanelContentState extends State<TrainPanelContent> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _trainSearchController = TextEditingController();
+  final TextEditingController _originController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
 
-  // Stato per i filtri Stazioni
   String _selectedCountry = '';
   String _selectedCity = '';
   String? _selectedPlatformFilter;
 
-  // Variabili per la ricerca del DB (Storico Treni)
   List<Map<String, dynamic>> _dbTrainResults = [];
   bool _isSearchingDbTrain = false;
   Timer? _debounceTrainSearch;
-
-  // Stato per la modalità di ricerca: 'station' (0) o 'train' (1)
-  int _selectedIndex = 0; 
-  final TextEditingController _trainSearchController = TextEditingController();
+  Timer? _refreshTimer;
+  int _selectedIndex = 0;
 
   List<Map<String, String>> _countries = [];
   final Map<String, List<Map<String, String>>> _citiesByCountry = {};
@@ -82,21 +81,51 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     'EU': 'Realtime EU',
   };
 
-  // Variabili per il monitoraggio delle stazioni nel tabellone risultati
   bool _isMonitored = false;
   bool _checkingStatus = false;
-  String? _lastCheckedStationId; // Tiene traccia della stazione attualmente aperta
+  String? _lastCheckedStationId;
+
+  List<dynamic> _cachedLiveTrains = [];
+  bool _isLoadingLiveTrains = false;
+  Timer? _liveTrainsRefreshTimer;
+  bool _isFirstLiveLoad = true;
+
+  bool _isSearchingRouting = false;
+  Map<String, dynamic>? _routingData;
+  TimeOfDay _selectedRoutingTime = TimeOfDay.now();
 
   @override
   void initState() {
     super.initState();
     _loadCountries();
     _startConnectivityMonitor();
+    _startLiveTrainsRefresh();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _trainSearchController.dispose();
+    _originController.dispose();
+    _destinationController.dispose();
+    _connectivityTimer?.cancel();
+    _debounceTrainSearch?.cancel();
+    _liveTrainsRefreshTimer?.cancel();
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  // ---- Helper per setState sicuro ----
+  void _safeSetState(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    }
+  }
+
+  // ---- Connectivity ----
   void _startConnectivityMonitor() {
-    _connectivityTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) => _checkConnectivity());
+    _connectivityTimer?.cancel();
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 5), (_) => _checkConnectivity());
     _checkConnectivity();
   }
 
@@ -105,8 +134,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     if (!kIsWeb) {
       Socket? socket;
       try {
-        socket = await Socket.connect('1.1.1.1', 53,
-            timeout: const Duration(seconds: 2));
+        socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 2));
         hasInternet = true;
       } catch (_) {
         hasInternet = false;
@@ -114,148 +142,166 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         socket?.destroy();
       }
     }
-
     if (mounted && _isOffline != !hasInternet) {
       final wasOffline = _isOffline;
-      setState(() {
-        _isOffline = !hasInternet;
-      });
-
-      // Se siamo tornati online, rifacciamo la ricerca se c'è testo
+      _safeSetState(() => _isOffline = !hasInternet);
       if (wasOffline && hasInternet) {
         final provider = Provider.of<TrainProvider>(context, listen: false);
-        List<Map<String, String>> displayedCountries =
-            provider.selectedService == 'direct'
-                ? _countries
-                    .where((c) => ['IT', 'FAL', 'EU'].contains(c['code']))
-                    .toList()
-                : _countries;
+        final displayedCountries = provider.selectedService == 'direct'
+            ? _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList()
+            : _countries;
         _onSearchChanged(_searchController.text, provider, displayedCountries);
+        _loadLiveTrains(silent: true);
       }
     }
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _trainSearchController.dispose();
-    _connectivityTimer?.cancel();
-    _debounceTrainSearch?.cancel();
-    super.dispose();
-  }
-
-  // --- LOGICA SERVER STATISTICHE ---
-
-  Future<void> _checkStationStatus(String stationId) async {
-    if (!mounted) return;
-    setState(() => _checkingStatus = true);
+  // ---- Live Trains ----
+  Future<List<dynamic>> _loadLiveTrains({bool silent = false}) async {
+    if (_isOffline) return [];
+    if (!mounted) return [];
+    
+    if (!silent && _isFirstLiveLoad) {
+      _safeSetState(() => _isLoadingLiveTrains = true);
+    }
     
     try {
-      final response = await http.get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/$stationId'));
+      final response = await http
+          .get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/live'))
+          .timeout(const Duration(seconds: 10));
+      if (!mounted) return [];
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (mounted) {
-          setState(() => _isMonitored = data['isMonitored'] ?? false);
-        }
+        final data = json.decode(response.body)['data'] ?? [];
+        _safeSetState(() {
+          _cachedLiveTrains = data;
+          _isLoadingLiveTrains = false;
+          _isFirstLiveLoad = false;
+        });
+        return data;
+      } else {
+        _safeSetState(() => _isLoadingLiveTrains = false);
+        return _cachedLiveTrains;
       }
     } catch (e) {
-      debugPrint("Errore controllo monitoraggio: $e");
-    } finally {
-      if (mounted) {
-        setState(() => _checkingStatus = false);
+      debugPrint('Errore caricamento treni live: $e');
+      _safeSetState(() => _isLoadingLiveTrains = false);
+      return _cachedLiveTrains;
+    }
+  }
+
+  void _startLiveTrainsRefresh() {
+    Future.microtask(() => _loadLiveTrains(silent: false));
+    _liveTrainsRefreshTimer?.cancel();
+    _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
+        _loadLiveTrains(silent: true);
       }
+    });
+  }
+
+  // ---- Statistiche e monitoraggio ----
+  Future<void> _checkStationStatus(String stationId) async {
+    if (!mounted) return;
+    _safeSetState(() => _checkingStatus = true);
+    try {
+      final response = await http
+          .get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/$stationId'))
+          .timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _safeSetState(() => _isMonitored = data['isMonitored'] ?? false);
+      }
+    } catch (e) {
+      debugPrint('Errore controllo monitoraggio: $e');
+    } finally {
+      _safeSetState(() => _checkingStatus = false);
     }
   }
 
   Future<void> _addStationToDb(String stationId, String name) async {
     try {
-      final addResponse = await http.post(
-        Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/add'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'stationId': stationId,
-          'name': name,
-          'country': _selectedCountry.isEmpty ? 'GLOBAL' : _selectedCountry
-        }),
-      );
-
-      if (addResponse.statusCode == 200) {
+      final response = await http
+          .post(
+            Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/add'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'stationId': stationId,
+              'name': name,
+              'country': _selectedCountry.isEmpty ? 'GLOBAL' : _selectedCountry,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
         await _checkStationStatus(stationId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Stazione aggiunta al monitoraggio"), backgroundColor: Colors.green),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stazione aggiunta al monitoraggio'), backgroundColor: Colors.green),
+        );
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Errore nell'aggiunta della stazione: ${addResponse.statusCode}"), backgroundColor: Colors.red),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Errore aggiunta: ${response.statusCode}"), backgroundColor: Colors.red),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Errore di connessione: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Errore: $e"), backgroundColor: Colors.red),
         );
       }
     }
   }
 
   Future<void> _loadStatsAndNavigate(BuildContext context, String stationId) async {
-    setState(() => _checkingStatus = true);
+    _safeSetState(() => _checkingStatus = true);
     try {
-      final response = await http.get(
-        Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/station/$stationId')
-      );
-
+      final response = await http
+          .get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/station/$stationId'))
+          .timeout(const Duration(seconds: 10));
       if (!context.mounted) return;
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => station_stats.TrainStatsScreen(
-              rawStats: data, 
-              stationId: stationId,
-            ),
+            builder: (context) => station_stats.TrainStatsScreen(rawStats: data, stationId: stationId),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Nessun dato statistico disponibile al momento.")),
+          const SnackBar(content: Text('Nessun dato statistico disponibile.')),
         );
       }
     } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore di connessione: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Errore: $e")),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _checkingStatus = false);
+      _safeSetState(() => _checkingStatus = false);
     }
   }
 
-  // --- LOGICA DATI (Country & City) ---
-
+  // ---- Caricamento paesi ----
   Future<void> _loadCountries() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedCountries = prefs.getString('countries_cache');
       final freshData = await _fetchProvidersFromAPI();
-
+      if (!mounted) return;
       if (freshData.isNotEmpty) {
         await prefs.setString('countries_cache', jsonEncode(freshData));
-        if (mounted) setState(() => _countries = freshData);
+        _safeSetState(() => _countries = freshData);
         await _loadCountryOrder();
       } else if (cachedCountries != null) {
         final cached = List<Map<String, String>>.from(
-            (jsonDecode(cachedCountries) as List)
-                .map((i) => Map<String, String>.from(i)));
-        if (mounted) setState(() => _countries = cached);
+            (jsonDecode(cachedCountries) as List).map((i) => Map<String, String>.from(i)));
+        _safeSetState(() => _countries = cached);
         await _loadCountryOrder();
       }
     } catch (e) {
-      if (mounted) setState(() => _countries = []);
+      if (mounted) _safeSetState(() => _countries = []);
     }
   }
 
@@ -269,7 +315,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         if (data is Map && data['success'] == true) {
           final providers = data['data']['providers'] as List;
           final Map<String, Map<String, String>> countriesMap = {};
-
           for (final p in providers) {
             final code = (p['countryCode'] as String).toUpperCase();
             if (!countriesMap.containsKey(code)) {
@@ -288,22 +333,21 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   Future<void> _loadCountryOrder() async {
+    if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
     final order = prefs.getStringList('country_order') ?? [];
-    if (mounted) {
-      setState(() {
-        _countryOrder = order;
-        if (_countryOrder.isNotEmpty && _countries.isNotEmpty) {
-          _countries.sort((a, b) {
-            final ia = _countryOrder.indexOf(a['code']!);
-            final ib = _countryOrder.indexOf(b['code']!);
-            if (ia == -1) return 1;
-            if (ib == -1) return -1;
-            return ia.compareTo(ib);
-          });
-        }
-      });
-    }
+    _safeSetState(() {
+      _countryOrder = order;
+      if (_countryOrder.isNotEmpty && _countries.isNotEmpty) {
+        _countries.sort((a, b) {
+          final ia = _countryOrder.indexOf(a['code']!);
+          final ib = _countryOrder.indexOf(b['code']!);
+          if (ia == -1) return 1;
+          if (ib == -1) return -1;
+          return ia.compareTo(ib);
+        });
+      }
+    });
   }
 
   void _saveCountryOrder() async {
@@ -318,7 +362,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     final movedCode = moved['code']!;
     final globalOld = _countries.indexWhere((c) => c['code'] == movedCode);
     if (globalOld != -1) _countries.removeAt(globalOld);
-    
     int insertIndex;
     if (currentList.isEmpty) {
       insertIndex = _countries.length;
@@ -329,20 +372,380 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     } else {
       final prevCode = currentList[newIndex - 1]['code']!;
       insertIndex = _countries.indexWhere((c) => c['code'] == prevCode);
-      if (insertIndex == -1) {
-        insertIndex = _countries.length;
-      } else {
-        insertIndex++;
-      }
+      if (insertIndex == -1) insertIndex = _countries.length;
+      else insertIndex++;
     }
     if (insertIndex > _countries.length) insertIndex = _countries.length;
     _countries.insert(insertIndex, moved);
-    setState(() {});
+    _safeSetState(() {});
     _saveCountryOrder();
   }
 
-  // --- UI BUILDER ---
+  // ---- Ricerca stazioni multiple ----
+  Future<void> _searchStationsMultipleCountries(
+      String query, List<Map<String, String>> countries, TrainProvider provider) async {
+    final codes = countries.map((c) => c['code']!).toList();
+    try {
+      final results = await Future.wait(codes.map((code) async {
+        try {
+          await provider.searchStations(query, country: code);
+          return provider.stationSuggestions.toList();
+        } catch (e) {
+          debugPrint('Errore per $code: $e');
+          return <TrainStation>[];
+        }
+      })).timeout(const Duration(seconds: 15), onTimeout: () => List.generate(codes.length, (_) => <TrainStation>[]));
+      final all = results.expand((x) => x).toList();
+      final seen = <String>{};
+      if (mounted) {
+        provider.setStationSuggestions(all.where((s) => seen.add('${s.id}-${s.country}')).toList());
+      }
+    } catch (e) {
+      debugPrint('Errore ricerca stazioni multiple: $e');
+    }
+  }
 
+  void _onSearchChanged(String query, TrainProvider provider, List<Map<String, String>> countries) {
+    if (query.length < 2 && _selectedCountry.isEmpty) {
+      provider.clearStationSuggestions();
+      return;
+    }
+    if (_selectedCountry.isNotEmpty) {
+      if (_selectedCountry == 'EU') {
+        provider.searchTrainByNumber(query);
+      } else if (_selectedCountry == 'GLOBAL') {
+        provider.searchStations(query, country: 'GLOBAL');
+      } else {
+        String? cityProvider;
+        if (_selectedCity.isNotEmpty && _selectedCity != 'Tutte le città') {
+          cityProvider = _citiesByCountry[_selectedCountry]!
+              .firstWhere((c) => c['name'] == _selectedCity)['provider'];
+        }
+        provider.searchStations(query, country: _selectedCountry, city: cityProvider);
+      }
+    } else {
+      _searchStationsMultipleCountries(query, countries, provider);
+    }
+  }
+
+  // ---- Ricerca treni storici ----
+  Future<void> _performTrainSearch(String query) async {
+    if (query.length < 2) {
+      _safeSetState(() {
+        _dbTrainResults.clear();
+        _isSearchingDbTrain = false;
+      });
+      return;
+    }
+    _debounceTrainSearch?.cancel();
+    _debounceTrainSearch = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      _safeSetState(() => _isSearchingDbTrain = true);
+      try {
+        final response = await http
+            .get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/search/train?q=$query'))
+            .timeout(const Duration(seconds: 10));
+        if (!mounted) return;
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          _safeSetState(() => _dbTrainResults = List<Map<String, dynamic>>.from(data['data']));
+        }
+      } catch (e) {
+        debugPrint('Errore ricerca storico: $e');
+      } finally {
+        if (mounted) _safeSetState(() => _isSearchingDbTrain = false);
+      }
+    });
+  }
+
+  // ---- Routing Search ----
+  Future<void> _performRoutingSearch() async {
+    final origin = _originController.text.trim();
+    final dest = _destinationController.text.trim();
+    
+    if (origin.length < 2 || dest.length < 2) return;
+    
+    _safeSetState(() {
+      _isSearchingRouting = true;
+      _routingData = null;
+    });
+
+    try {
+      final timeStr = "${_selectedRoutingTime.hour.toString().padLeft(2, '0')}:${_selectedRoutingTime.minute.toString().padLeft(2, '0')}";
+      
+      final response = await http.post(
+        Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/routing'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'origin': origin,
+          'destination': dest,
+          'time': timeStr,
+        }),
+      ).timeout(const Duration(seconds: 40));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _safeSetState(() => _routingData = data);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Errore: ${response.statusCode}"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Errore ricerca soluzioni: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Errore: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) _safeSetState(() => _isSearchingRouting = false);
+    }
+  }
+
+  Future<void> _selectRoutingTime(BuildContext context, ThemeProvider theme) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedRoutingTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: theme.primaryColor,
+              onPrimary: Colors.white,
+              surface: theme.surfaceColor,
+              onSurface: theme.textColor,
+            ),
+            timePickerTheme: TimePickerThemeData(
+              backgroundColor: theme.surfaceColor,
+              hourMinuteTextColor: theme.textColor,
+              dayPeriodTextColor: theme.textColor,
+              dialHandColor: theme.primaryColor,
+              dialBackgroundColor: theme.primaryColor.withValues(alpha: 0.1),
+              hourMinuteColor: theme.primaryColor.withValues(alpha: 0.05),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              child!,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _safeSetState(() {
+                      _selectedRoutingTime = TimeOfDay.now();
+                    });
+                  },
+                  child: Text(
+                    RuntimeLocalizations.t(context, 'routing_time_now'),
+                    style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked != null && picked != _selectedRoutingTime) {
+      _safeSetState(() {
+        _selectedRoutingTime = picked;
+      });
+    }
+  }
+
+  // ---- Metodi per mostrare i dettagli ----
+  void _showTrainDetails(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
+    if (dep.stops == null || dep.stops.isEmpty) {
+      Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(index);
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.98,
+        minChildSize: 0.5,
+        builder: (_, sc) => TrainDetailsSheet(
+          departure: dep,
+          isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
+          selectedCountry: _selectedCountry,
+          scrollController: sc,
+        ),
+      ),
+    );
+  }
+
+  void _showSavedStationsSheet(TrainProvider provider, ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        builder: (ctx, sc) => Container(
+          decoration: BoxDecoration(
+            color: theme.backgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.secondaryTextColor.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                AppLocalizations.of(context)?.savedTrainsOffline ?? 'Treni Salvati (Offline)',
+                style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: provider.getDownloadedTrains().timeout(
+                    const Duration(seconds: 10),
+                    onTimeout: () => [],
+                  ),
+                  builder: (ctx, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Errore: ${snapshot.error}',
+                          style: TextStyle(color: theme.secondaryTextColor),
+                        ),
+                      );
+                    }
+                    final items = snapshot.data ?? [];
+                    if (items.isEmpty) {
+                      return Center(
+                        child: Text(
+                          AppLocalizations.of(context)?.noOfflineData ?? 'Nessun dato salvato offline',
+                          style: TextStyle(color: theme.secondaryTextColor),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      controller: sc,
+                      itemCount: items.length,
+                      itemBuilder: (ctx, i) {
+                        final item = items[i];
+                        final station = TrainStation.fromJson(item['station']);
+                        final train = TrainDeparture.fromJson(item['train']);
+                        return ListTile(
+                          leading: Icon(Icons.train_rounded, color: theme.primaryColor),
+                          title: Text(
+                            '${train.category ?? ''} ${train.trainNumber ?? ''}',
+                            style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            '${train.origin ?? 'N/A'} → ${train.destination ?? 'N/A'}\n${station.name} (${item['mode'] == 'arrivals' ? (AppLocalizations.of(context)?.arrivals ?? 'Arrivi') : (AppLocalizations.of(context)?.departures ?? 'Partenze')})',
+                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                          ),
+                          trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+                          isThreeLine: true,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            provider.selectSavedTrain(station, train, item['service'], item['mode']);
+                            _showTrainDetails(context, train, -1, theme);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openReorderSheet(TrainProvider provider, ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          height: MediaQuery.of(ctx).size.height * 0.6,
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: theme.secondaryTextColor.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    AppLocalizations.of(context)?.reorderCountries ?? 'Riordina nazioni',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.textColor),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      _saveCountryOrder();
+                      Navigator.of(ctx).pop();
+                    },
+                    child: Text(
+                      AppLocalizations.of(context)?.save ?? 'Salva',
+                      style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ReorderableListView(
+                  onReorder: (oldIndex, newIndex) => _onReorderCountries(_countries, oldIndex, newIndex),
+                  children: [
+                    for (var i = 0; i < _countries.length; i++)
+                      ListTile(
+                        key: ValueKey(_countries[i]['code']),
+                        title: Text(_countries[i]['name']!, style: TextStyle(color: theme.textColor)),
+                        trailing: Icon(Icons.drag_handle, color: theme.secondaryTextColor),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ---- UI Build ----
   @override
   Widget build(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context);
@@ -351,12 +754,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
     if (settings.vectorLogosEnabled && trainProvider.trainLogos.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        trainProvider.loadTrainLogos();
+        if (mounted) trainProvider.loadTrainLogos();
       });
     }
 
     final station = trainProvider.selectedStation;
-
     if (station != null && station.id != _lastCheckedStationId) {
       _lastCheckedStationId = station.id;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -374,8 +776,1142 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // 1. TABELLONE RISULTATI STAZIONE
-  Widget _buildTimetableResults(BuildContext context, TrainProvider provider, ThemeProvider theme, TrainStation station) {
+  Widget _buildSearchHome(BuildContext context, TrainProvider provider, ThemeProvider theme) {
+    final displayedCountries = provider.selectedService == 'direct'
+        ? _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList()
+        : _countries;
+
+    return Column(
+      key: const ValueKey('search'),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<int>(
+              segments: [
+                ButtonSegment(
+                  value: 0,
+                  label: Text(
+                    RuntimeLocalizations.t(context, 'stations') ?? 'Stazioni',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  icon: const Icon(Icons.location_city_rounded),
+                ),
+                ButtonSegment(
+                  value: 1,
+                  label: Text(
+                    RuntimeLocalizations.t(context, 'trains') ?? 'Treni (Live)',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  icon: const Icon(Icons.train_rounded),
+                ),
+                ButtonSegment(
+                  value: 2,
+                  label: Text(
+                    RuntimeLocalizations.t(context, 'solutions') ?? 'Soluzioni',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  icon: const Icon(Icons.route_rounded),
+                ),
+              ],
+              selected: {_selectedIndex},
+              onSelectionChanged: (newSelection) {
+                final newIndex = newSelection.first;
+                _safeSetState(() => _selectedIndex = newIndex);
+                if (newIndex == 1 && _trainSearchController.text.isEmpty) {
+                  Future.microtask(() => _loadLiveTrains(silent: false));
+                }
+                if (newIndex == 2) {
+                  _safeSetState(() {
+                    _routingData = null;
+                    _isSearchingRouting = false;
+                  });
+                }
+              },
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                  if (states.contains(WidgetState.selected)) return theme.primaryColor;
+                  return theme.surfaceColor;
+                }),
+                foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+                  if (states.contains(WidgetState.selected)) return Colors.white;
+                  return theme.secondaryTextColor;
+                }),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _selectedIndex == 0
+              ? Column(
+                  children: [
+                    _buildSearchHeader(provider, theme, displayedCountries),
+                    _buildFavoriteSection(provider, theme),
+                    _buildSavedTrainsButton(provider, theme),
+                    Expanded(
+                      child: _isOffline
+                          ? _buildOfflineError(theme)
+                          : provider.isLoadingSuggestions
+                              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
+                              : _buildStationSuggestionsList(provider, theme),
+                    ),
+                  ],
+                )
+              : _selectedIndex == 1
+                  ? _buildTrainSearchContent(theme)
+                  : _buildSolutionsContent(theme),
+        ),
+      ],
+    );
+  }
+
+  // ---- Build Solutions Content ----
+  Widget _buildSolutionsContent(ThemeProvider theme) {
+    return Column(
+      children: [
+        // Form di ricerca
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              children: [
+                // Campo Origine
+                TextField(
+                  controller: _originController,
+                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    hintText: RuntimeLocalizations.t(context, 'routing_origin_hint'),
+                    hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+                    prefixIcon: Icon(Icons.trip_origin_rounded, color: theme.primaryColor),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+                Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                
+                // Campo Destinazione
+                TextField(
+                  controller: _destinationController,
+                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    hintText: RuntimeLocalizations.t(context, 'routing_destination_hint'),
+                    hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+                    prefixIcon: Icon(Icons.location_on_rounded, color: Colors.redAccent),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+                Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                
+                // Selettore Orario
+                InkWell(
+                  onTap: () => _selectRoutingTime(context, theme),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        Icon(Icons.access_time_rounded, color: theme.primaryColor),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                RuntimeLocalizations.t(context, 'routing_time_label'),
+                                style: TextStyle(
+                                  color: theme.secondaryTextColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                _selectedRoutingTime.format(context),
+                                style: TextStyle(
+                                  color: theme.textColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // Pulsante Cerca
+                InkWell(
+                  onTap: _performRoutingSearch,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withValues(alpha: 0.15),
+                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+                    ),
+                    child: Center(
+                      child: _isSearchingRouting
+                          ? SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.primaryColor,
+                              ),
+                            )
+                          : Text(
+                              RuntimeLocalizations.t(context, 'routing_search_btn'),
+                              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Risultati
+        Expanded(
+          child: _isSearchingRouting              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
+              : _routingData == null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.alt_route_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+                            const SizedBox(height: 16),
+                            Text(
+                              RuntimeLocalizations.t(context, 'routing_empty'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _buildRoutingResultsList(theme),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoutingResultsList(ThemeProvider theme) {
+    final totaleSoluzioni = _routingData?['totaleSoluzioni'] ?? 0;
+    if (totaleSoluzioni == 0) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withValues(alpha: 0.4)),
+              const SizedBox(height: 16),
+              Text(
+                RuntimeLocalizations.t(context, 'routing_no_results'),
+                style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final diretti = _routingData?['catalogo']?['diretti'] as List? ?? [];
+    final conCambio = _routingData?['catalogo']?['conCambio'] as List? ?? [];
+    final allSolutions = [...diretti, ...conCambio]
+      ..sort((a, b) => (a['durataMinuti'] as int).compareTo(b['durataMinuti'] as int));
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100, top: 4),
+      itemCount: allSolutions.length,
+      itemBuilder: (ctx, i) {
+        final sol = allSolutions[i];
+        final isDirect = sol['type'] == 'DIRETTO';
+        final numeroTratte = sol['numeroTratte'] as int? ?? 1;
+        final cambi = numeroTratte - 1;
+        
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.08)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (isDirect ? theme.successColor : Colors.orange).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      isDirect 
+                        ? RuntimeLocalizations.t(context, 'routing_direct') 
+                        : RuntimeLocalizations.t(context, 'routing_changes', params: {'count': cambi.toString()}),
+                      style: TextStyle(
+                        fontSize: 11, 
+                        fontWeight: FontWeight.bold, 
+                        color: isDirect ? theme.successColor : Colors.orange
+                      ),
+                    ),
+                  ),
+                  Text(
+                    RuntimeLocalizations.t(context, 'routing_duration', params: {'duration': sol['durataLeggibile'] ?? '--:--'}),
+                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    sol['orarioPartenza'] ?? '--:--',
+                    style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 20),
+                  Text(
+                    sol['orarioArrivo'] ?? '--:--',
+                    style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+              if (isDirect) ...[
+                const SizedBox(height: 8),
+                _buildColorBadge(
+                  sol['category'] ?? 'TRN', 
+                  sol['tripNumber'] ?? sol['tripId'] ?? '', 
+                  theme
+                )
+              ] else if (sol['percorso'] != null) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                ...((sol['percorso'] as List).map((leg) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      _buildColorBadge(
+                        leg['category'] ?? 'TRN', 
+                        leg['tripNumber'] ?? leg['tripId'] ?? '', 
+                        theme
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "${leg['da'] ?? ''} ➔ ${leg['a'] ?? ''}",
+                          style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        leg['orarioPartenza'] ?? '',
+                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 11, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ))),
+              ]
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ---- Build Search Header ----
+  Widget _buildSearchHeader(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
+    final hasCities = _selectedCountry.isNotEmpty && _citiesByCountry.containsKey(_selectedCountry);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: GlassmorphicContainer(
+        width: double.infinity,
+        height: hasCities ? 180 : 135,
+        borderRadius: 24,
+        blur: 20,
+        alignment: Alignment.center,
+        border: 1,
+        linearGradient: LinearGradient(
+          colors: [theme.surfaceColor.withValues(alpha: 0.9), theme.surfaceColor.withValues(alpha: 0.5)],
+        ),
+        borderGradient: LinearGradient(
+          colors: [theme.primaryColor.withValues(alpha: 0.3), Colors.transparent],
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => _onSearchChanged(val, provider, countries),
+                      style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: AppLocalizations.of(context)?.searchStationOrTrain ?? 'Cerca stazione...',
+                        hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+                        prefixIcon: Icon(Icons.search_rounded, color: theme.primaryColor),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.reorder, color: theme.primaryColor),
+                    onPressed: () => _openReorderSheet(provider, theme),
+                    tooltip: AppLocalizations.of(context)?.reorderCountries ?? 'Riordina nazioni',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            SizedBox(
+              height: 50,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _buildGlobalChip(provider, theme, countries),
+                  ),
+                  ...countries.map((c) => Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: _buildCountryChip(c, provider, theme, countries),
+                      )),
+                ],
+              ),
+            ),
+            if (hasCities) ...[
+              const Divider(height: 1),
+              SizedBox(
+                height: 45,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    _buildCityChip(
+                      {'name': AppLocalizations.of(context)?.allCities ?? 'Tutte le città', 'provider': ''},
+                      provider,
+                      theme,
+                      countries,
+                    ),
+                    ..._citiesByCountry[_selectedCountry]!.map((city) => _buildCityChip(city, provider, theme, countries)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountryChip(Map<String, String> c, TrainProvider provider, ThemeProvider theme,
+      List<Map<String, String>> countries) {
+    final isSelected = _selectedCountry == c['code'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ChoiceChip(
+        label: Text(
+          c['name']!,
+          style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : theme.secondaryTextColor),
+        ),
+        selected: isSelected,
+        onSelected: (val) {
+          _safeSetState(() {
+            _selectedCountry = val ? c['code']! : '';
+            _selectedCity = '';
+          });
+          _onSearchChanged(_searchController.text, provider, countries);
+        },
+        selectedColor: theme.primaryColor,
+        backgroundColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        showCheckmark: false,
+      ),
+    );
+  }
+
+  Widget _buildGlobalChip(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
+    final isSelected = _selectedCountry == 'GLOBAL';
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            RuntimeLocalizations.t(context, 'global_label'),
+            style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : theme.secondaryTextColor),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white.withValues(alpha: 0.2) : theme.primaryColor.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              RuntimeLocalizations.t(context, 'beta'),
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : theme.primaryColor),
+            ),
+          ),
+        ],
+      ),
+      selected: isSelected,
+      onSelected: (val) {
+        _safeSetState(() {
+          _selectedCountry = val ? 'GLOBAL' : '';
+          _selectedCity = '';
+        });
+        _onSearchChanged(_searchController.text, provider, countries);
+      },
+      selectedColor: theme.primaryColor,
+      backgroundColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      showCheckmark: false,
+    );
+  }
+
+  Widget _buildCityChip(Map<String, String> city, TrainProvider provider, ThemeProvider theme,
+      List<Map<String, String>> countries) {
+    final isSelected = _selectedCity == city['name'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ChoiceChip(
+        label: Text(
+          city['name']!,
+          style: TextStyle(fontSize: 10, color: isSelected ? theme.primaryColor : theme.secondaryTextColor),
+        ),
+        selected: isSelected,
+        onSelected: (val) {
+          _safeSetState(() => _selectedCity = val ? city['name']! : '');
+          _onSearchChanged(_searchController.text, provider, countries);
+        },
+        selectedColor: theme.primaryColor.withValues(alpha: 0.15),
+        backgroundColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: isSelected ? theme.primaryColor : Colors.transparent),
+        ),
+        showCheckmark: false,
+      ),
+    );
+  }
+
+  Widget _buildFavoriteSection(TrainProvider provider, ThemeProvider theme) {
+    return Consumer2<FavoritesProvider, AuthProvider>(
+      builder: (ctx, favs, auth, _) {
+        if (!auth.isAuthenticated) return const SizedBox.shrink();
+        final list = favs.favoriteStops.where((s) => s.stopType == StopType.trainStation).toList();
+        if (list.isEmpty) return const SizedBox.shrink();
+        return SizedBox(
+          height: 90,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: list.length,
+            itemBuilder: (ctx, i) => _buildFavoriteCard(list[i], provider, theme),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFavoriteCard(FavoriteStop stop, TrainProvider provider, ThemeProvider theme) {
+    return GestureDetector(
+      onTap: () => provider.selectStation(
+        TrainStation(id: stop.code, name: stop.name, country: stop.country ?? '', type: 'train'),
+      ),
+      child: Container(
+        width: 110,
+        margin: const EdgeInsets.only(right: 12, bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: theme.surfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.primaryColor.withValues(alpha: 0.15)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.star_rounded, color: theme.primaryColor, size: 18),
+            const SizedBox(height: 4),
+            Text(
+              stop.name,
+              style: TextStyle(color: theme.textColor, fontSize: 10, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSavedTrainsButton(TrainProvider provider, ThemeProvider theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: () => _showSavedStationsSheet(provider, theme),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withValues(alpha: _isOffline ? 0.2 : 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.download_done_rounded, color: theme.primaryColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context)?.savedTrains ?? 'Treni Salvati',
+                      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      AppLocalizations.of(context)?.accessOfflineData ?? 'Accedi ai dati scaricati offline',
+                      style: TextStyle(color: theme.secondaryTextColor, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 16, color: theme.secondaryTextColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOfflineError(ThemeProvider theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+          const SizedBox(height: 16),
+          Text(
+            AppLocalizations.of(context)?.youAreOffline ?? 'Sei offline',
+            style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            AppLocalizations.of(context)?.connectToSearchStations ?? 'Connettiti per cercare nuove stazioni',
+            style: TextStyle(color: theme.secondaryTextColor, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStationSuggestionsList(TrainProvider provider, ThemeProvider theme) {
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100),
+      itemCount: provider.stationSuggestions.length,
+      itemBuilder: (ctx, i) {
+        final s = provider.stationSuggestions[i];
+        return _StationListTile(
+          station: s,
+          provider: provider,
+          theme: theme,
+          onLoadStats: _loadStatsAndNavigate,
+          onAddStation: _addStationToDb,
+        );
+      },
+    );
+  }
+
+  // ---- Train Search Content ----
+  Widget _buildTrainSearchContent(ThemeProvider theme) {
+    final query = _trainSearchController.text;
+    final showLiveTrains = query.isEmpty && !_isSearchingDbTrain;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
+            ),
+            child: TextField(
+              controller: _trainSearchController,
+              keyboardType: TextInputType.text,
+              style: TextStyle(color: theme.textColor, fontSize: 17, fontWeight: FontWeight.bold),
+              onChanged: (val) {
+                _performTrainSearch(val);
+                if (val.isEmpty) {
+                  Future.microtask(() => _loadLiveTrains(silent: true));
+                }
+              },
+              decoration: InputDecoration(
+                hintText: 'Cerca treno (es. 9600)',
+                hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+                prefixIcon: Icon(Icons.search_rounded, color: theme.primaryColor),
+                suffixIcon: _trainSearchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear_rounded, color: theme.secondaryTextColor),
+                        onPressed: () {
+                          _trainSearchController.clear();
+                          _safeSetState(() {
+                            _dbTrainResults.clear();
+                            _isSearchingDbTrain = false;
+                          });
+                          Future.microtask(() => _loadLiveTrains(silent: true));
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _isSearchingDbTrain
+              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
+              : showLiveTrains
+                  ? _buildLiveTrainsList(theme)
+                  : _buildTrainSearchResults(theme),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLiveTrainsList(ThemeProvider theme) {
+    if (_isLoadingLiveTrains && _isFirstLiveLoad) {
+      return ShimmerLoading(baseColor: theme.secondaryTextColor);
+    }
+    
+    if (_cachedLiveTrains.isEmpty) {
+      if (_isLoadingLiveTrains) {
+        return ShimmerLoading(baseColor: theme.secondaryTextColor);
+      }
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.train_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Nessun treno live in transito',
+              style: TextStyle(color: theme.secondaryTextColor, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'I dati vengono aggiornati automaticamente',
+              style: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.6), fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadLiveTrains(silent: false);
+      },
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 100, top: 4),
+        itemCount: _cachedLiveTrains.length,
+        itemBuilder: (ctx, i) {
+          final train = _cachedLiveTrains[i];
+          final category = (train['category'] ?? '').toString().trim();
+          final number = (train['trip_number'] ?? '').toString().trim();
+          final delay = train['delay'] ?? 0;
+          final stops = train['stops'] as List? ?? [];
+          final operator = train['operator'] ?? 'N/A';
+
+          String origin = 'N/A';
+          if (stops.isNotEmpty && stops[0]['stationName'] != null) {
+            origin = stops[0]['stationName'].toString();
+          }
+          String destination = 'N/A';
+          if (stops.isNotEmpty && stops[stops.length - 1]['stationName'] != null) {
+            destination = stops[stops.length - 1]['stationName'].toString();
+          }
+
+          String departureTime = '--:--';
+          if (stops.isNotEmpty) {
+            final firstStop = stops[0];
+            String timeStr = firstStop['scheduledDeparture'] ??
+                firstStop['estimatedDeparture'] ??
+                firstStop['departureTime'] ??
+                '';
+            if (timeStr.isNotEmpty) {
+              try {
+                final date = DateTime.parse(timeStr);
+                departureTime =
+                    '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+              } catch (_) {
+                departureTime = timeStr;
+              }
+            }
+          }
+
+          final isDelayed = delay > 0;
+
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.05)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 4))],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => train_stats.TrainStatsScreen(
+                        category: category,
+                        tripNumber: number,
+                      ),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Column(
+                        children: [
+                          Text(
+                            departureTime,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: theme.textColor,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          isDelayed
+                              ? _buildBadge('+$delay\'', Colors.orange)
+                              : Text(
+                                  '🟢 Live',
+                                  style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
+                                ),
+                        ],
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLiveTrainTypeBadge(category, number, operator, theme),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.radio_button_unchecked, size: 12, color: theme.secondaryTextColor),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    origin,
+                                    style: TextStyle(fontSize: 14, color: theme.secondaryTextColor),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Icon(Icons.location_on_rounded, size: 14, color: theme.primaryColor),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    destination,
+                                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.textColor),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      _buildLivePlatformBox(stops, theme),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLiveTrainTypeBadge(String category, String number, String operator, ThemeProvider theme) {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final cat = category.isNotEmpty ? category : 'TRN';
+    final num = number.isNotEmpty ? number : '---';
+
+    if (settings.vectorLogosEnabled) {
+      final fileName = cat.toLowerCase().replaceAll(' ', '_');
+      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 20,
+            constraints: const BoxConstraints(maxWidth: 60),
+            child: Image.network(
+              logoUrl,
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              errorBuilder: (_, __, ___) => _buildLiveColorBadge(cat, num, theme),
+              loadingBuilder: (_, child, progress) {
+                if (progress == null) return child;
+                return SizedBox(
+                  width: 20,
+                  child: Center(
+                    child: SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(num, style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)),
+        ],
+      );
+    }
+    return _buildLiveColorBadge(cat, num, theme);
+  }
+
+  Widget _buildLiveColorBadge(String category, String number, ThemeProvider theme) {
+    final isHighSpeed = category.toLowerCase().contains('fr') ||
+        category.toLowerCase().contains('freccia') ||
+        category.toLowerCase().contains('ec') ||
+        category.toLowerCase().contains('ic');
+    final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '$category $number',
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
+      ),
+    );
+  }
+
+  Widget _buildLivePlatformBox(List<dynamic> stops, ThemeProvider theme) {
+    String platform = '-';
+    if (stops.isNotEmpty) {
+      final firstStop = stops[0];
+      platform = firstStop['platform']?.toString() ??
+          firstStop['scheduledPlatform']?.toString() ??
+          firstStop['actualPlatform']?.toString() ??
+          '-';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            RuntimeLocalizations.t(context, 'platform_abbr'),
+            style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: theme.primaryColor),
+          ),
+          Text(
+            platform,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrainSearchResults(ThemeProvider theme) {
+    final query = _trainSearchController.text;
+    if (query.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Ricerca nello storico',
+              style: TextStyle(color: theme.secondaryTextColor, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Inserisci il numero del treno per vederne le statistiche',
+              style: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.6), fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+    if (_dbTrainResults.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withValues(alpha: 0.4)),
+              const SizedBox(height: 16),
+              Text(
+                RuntimeLocalizations.t(context, 'search_train_no_results', params: {'query': query}),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100, top: 4),
+      itemCount: _dbTrainResults.length,
+      itemBuilder: (ctx, i) {
+        final train = _dbTrainResults[i];
+        final category = (train['category'] ?? '').toString().trim();
+        final number = (train['trainNumber'] ?? '').toString().trim();
+        final destination = (train['destination'] ?? 'N/A').toString();
+        final origin = (train['origin'] ?? '').toString();
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.08)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => train_stats.TrainStatsScreen(
+                    category: category,
+                    tripNumber: number,
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          category,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.primaryColor),
+                        ),
+                        Text(
+                          number,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: theme.textColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (origin.isNotEmpty)
+                          Row(
+                            children: [
+                              Icon(Icons.radio_button_unchecked, size: 12, color: theme.secondaryTextColor),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  origin,
+                                  style: TextStyle(fontSize: 12, color: theme.secondaryTextColor),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on_rounded, size: 14, color: theme.primaryColor),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                destination,
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: theme.textColor),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---- Timetable Results ----
+  Widget _buildTimetableResults(
+      BuildContext context, TrainProvider provider, ThemeProvider theme, TrainStation station) {
     final List<String> availablePlatforms = provider.departures
         .map((e) => e.platform?.toString().trim() ?? '-')
         .where((e) => e != '-')
@@ -402,15 +1938,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 _buildFilterChip(
-                    AppLocalizations.of(context)?.allPlatforms ?? "Tutti i Binari",
-                    _selectedPlatformFilter == null,
-                    theme,
-                    () => setState(() => _selectedPlatformFilter = null)),
+                  AppLocalizations.of(context)?.allPlatforms ?? 'Tutti i Binari',
+                  _selectedPlatformFilter == null,
+                  theme,
+                  () => _safeSetState(() => _selectedPlatformFilter = null),
+                ),
                 ...availablePlatforms.map((p) => _buildFilterChip(
-                    "${AppLocalizations.of(context)?.platform ?? 'Binario'} $p",
-                    _selectedPlatformFilter == p,
-                    theme,
-                    () => setState(() => _selectedPlatformFilter = p))),
+                      '${AppLocalizations.of(context)?.platform ?? 'Binario'} $p',
+                      _selectedPlatformFilter == p,
+                      theme,
+                      () => _safeSetState(() => _selectedPlatformFilter = p),
+                    )),
               ],
             ),
           ),
@@ -420,8 +1958,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               : ListView.builder(
                   padding: const EdgeInsets.only(top: 8, bottom: 100),
                   itemCount: filteredDepartures.length,
-                  itemBuilder: (ctx, i) =>
-                      _buildTrainCard(ctx, filteredDepartures[i], i, theme),
+                  itemBuilder: (ctx, i) => _buildTrainCard(ctx, filteredDepartures[i], i, theme),
                 ),
         ),
       ],
@@ -441,18 +1978,23 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           Row(
             children: [
               IconButton(
-                  icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.textColor, size: 20),
-                  onPressed: () => provider.clearSelection()),
+                icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.textColor, size: 20),
+                onPressed: () => provider.clearSelection(),
+              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(station.name,
-                        style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.w900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    Text(station.country,
-                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w500)),
+                    Text(
+                      station.name,
+                      style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.w900),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      station.country,
+                      style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
                   ],
                 ),
               ),
@@ -462,7 +2004,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : IconButton(
-                      icon: Icon(Icons.bar_chart_rounded, color: _isMonitored ? theme.primaryColor : theme.secondaryTextColor),
+                      icon: Icon(Icons.bar_chart_rounded,
+                          color: _isMonitored ? theme.primaryColor : theme.secondaryTextColor),
                       onPressed: () async {
                         if (_isMonitored) {
                           await _loadStatsAndNavigate(context, station.id);
@@ -472,14 +2015,21 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                             builder: (ctx) => AlertDialog(
                               backgroundColor: theme.surfaceColor,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              title: Text(RuntimeLocalizations.t(context, 'stats_monitoring_title'),
-                                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-                              content: Text(RuntimeLocalizations.t(context, 'stats_monitoring_msg'),
-                                  style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, height: 1.4)),
+                              title: Text(
+                                RuntimeLocalizations.t(context, 'stats_monitoring_title'),
+                                style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+                              ),
+                              content: Text(
+                                RuntimeLocalizations.t(context, 'stats_monitoring_msg'),
+                                style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, height: 1.4),
+                              ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx),
-                                  child: Text(RuntimeLocalizations.t(context, 'cancel'), style: TextStyle(color: theme.secondaryTextColor)),
+                                  child: Text(
+                                    RuntimeLocalizations.t(context, 'cancel'),
+                                    style: TextStyle(color: theme.secondaryTextColor),
+                                  ),
                                 ),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
@@ -490,8 +2040,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                     Navigator.pop(ctx);
                                     await _addStationToDb(station.id, station.name);
                                   },
-                                  child: Text(RuntimeLocalizations.t(context, 'add_now'),
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  child: Text(
+                                    RuntimeLocalizations.t(context, 'add_now'),
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ],
                             ),
@@ -541,14 +2093,18 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               children: [
                 Column(
                   children: [
-                    Text(timeStr,
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: theme.textColor, letterSpacing: -1)),
+                    Text(
+                      timeStr,
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: theme.textColor, letterSpacing: -1),
+                    ),
                     isCancelled
-                        ? _buildBadge("CANC", Colors.red)
+                        ? _buildBadge('CANC', Colors.red)
                         : (delay > 0
-                            ? _buildBadge("+$delay'", Colors.orange)
-                            : Text(AppLocalizations.of(context)?.onTime ?? "In orario",
-                                style: TextStyle(fontSize: 10, color: theme.successColor, fontWeight: FontWeight.bold))),
+                            ? _buildBadge('+$delay\'', Colors.orange)
+                            : Text(
+                                AppLocalizations.of(context)?.onTime ?? 'In orario',
+                                style: TextStyle(fontSize: 10, color: theme.successColor, fontWeight: FontWeight.bold),
+                              )),
                   ],
                 ),
                 const SizedBox(width: 16),
@@ -559,10 +2115,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       _buildTrainTypeBadge(dep, theme),
                       const SizedBox(height: 4),
                       _SmartTrainRouteText(
-                          departure: dep,
-                          index: index,
-                          theme: theme,
-                          isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode),
+                        departure: dep,
+                        index: index,
+                        theme: theme,
+                        isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
+                      ),
                     ],
                   ),
                 ),
@@ -575,650 +2132,41 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // 2. HOME RICERCA CON SEGMENTED BUTTON
-  Widget _buildSearchHome(BuildContext context, TrainProvider provider, ThemeProvider theme) {
-    List<Map<String, String>> displayedCountries =
-        provider.selectedService == 'direct'
-            ? _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList()
-            : _countries;
-
-    return Column(
-      key: const ValueKey('search'),
-      children: [
-        // Tab Switcher per separare le ricerche (Stazioni = 0, Treni Storici = 1)
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<int>(
-              segments: [
-                ButtonSegment(
-                  value: 0, 
-                  label: Text(RuntimeLocalizations.t(context, 'stations') ?? 'Stazioni', style: const TextStyle(fontWeight: FontWeight.bold)), 
-                  icon: const Icon(Icons.location_city_rounded)
-                ),
-                ButtonSegment(
-                  value: 1, 
-                  label: Text(RuntimeLocalizations.t(context, 'trains') ?? 'Treni (Storico)', style: const TextStyle(fontWeight: FontWeight.bold)), 
-                  icon: const Icon(Icons.train_rounded)
-                ),
-              ],
-              selected: {_selectedIndex},
-              onSelectionChanged: (newSelection) => setState(() => _selectedIndex = newSelection.first),
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
-                  if (states.contains(WidgetState.selected)) return theme.primaryColor;
-                  return theme.surfaceColor;
-                }),
-                foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
-                  if (states.contains(WidgetState.selected)) return Colors.white;
-                  return theme.secondaryTextColor;
-                }),
-              ),
-            ),
-          ),
-        ),
-
-        // Contenuto dipendente dalla tab selezionata
-        Expanded(
-          child: _selectedIndex == 0
-              ? Column(
-                  children: [
-                    _buildSearchHeader(provider, theme, displayedCountries),
-                    _buildFavoriteSection(provider, theme),
-                    _buildSavedTrainsButton(provider, theme),
-                    Expanded(
-                      child: _isOffline
-                          ? _buildOfflineError(theme)
-                          : (provider.isLoadingSuggestions
-                              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
-                              : _buildStationSuggestionsList(provider, theme)),
-                    ),
-                  ],
-                )
-              : _buildTrainSearchContent(theme),
-        ),
-      ],
-    );
-  }
-
-  // 3. RICERCA TRENI STORICA (API)
-  Widget _buildTrainSearchContent(ThemeProvider theme) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
-            ),
-            child: TextField(
-              controller: _trainSearchController,
-              keyboardType: TextInputType.text,
-              style: TextStyle(color: theme.textColor, fontSize: 17, fontWeight: FontWeight.bold),
-              onChanged: (val) => _performTrainSearch(val),
-              decoration: InputDecoration(
-                hintText: "Cerca treno (es. 9600)",
-                hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
-                prefixIcon: Icon(Icons.search_rounded, color: theme.primaryColor),
-                suffixIcon: _trainSearchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear_rounded, color: theme.secondaryTextColor),
-                        onPressed: () {
-                          _trainSearchController.clear();
-                          setState(() {
-                            _dbTrainResults.clear();
-                            _isSearchingDbTrain = false;
-                          });
-                        },
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: _isSearchingDbTrain
-              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
-              : _buildTrainSearchResults(theme),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _performTrainSearch(String query) async {
-    if (query.length < 2) {
-      setState(() {
-        _dbTrainResults.clear();
-        _isSearchingDbTrain = false;
-      });
-      return;
-    }
-
-    if (_debounceTrainSearch?.isActive ?? false) _debounceTrainSearch!.cancel();
-    _debounceTrainSearch = Timer(const Duration(milliseconds: 600), () async {
-      if (!mounted) return;
-      setState(() => _isSearchingDbTrain = true);
-      
-      try {
-        final response = await http.get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/search/train?q=$query'));
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          if (mounted) {
-            setState(() {
-              _dbTrainResults = List<Map<String, dynamic>>.from(data['data']);
-            });
-          }
-        }
-      } catch (e) {
-        debugPrint("Errore ricerca treno storico: $e");
-      } finally {
-        if (mounted) {
-          setState(() => _isSearchingDbTrain = false);
-        }
-      }
-    });
-  }
-
-  Widget _buildTrainSearchResults(ThemeProvider theme) {
-    final query = _trainSearchController.text;
-
-    if (query.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.history_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
-            const SizedBox(height: 16),
-            Text("Ricerca nello storico", style: TextStyle(color: theme.secondaryTextColor, fontSize: 16, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            Text("Inserisci il numero del treno per vederne le statistiche", style: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.6), fontSize: 13), textAlign: TextAlign.center),
-          ],
-        ),
-      );
-    }
-
-    if (_dbTrainResults.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withValues(alpha: 0.4)),
-              const SizedBox(height: 16),
-              Text(RuntimeLocalizations.t(context, 'search_train_no_results', params: {'query': query}),
-                textAlign: TextAlign.center, style: TextStyle(color: theme.secondaryTextColor, fontSize: 15)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100, top: 4),
-      itemCount: _dbTrainResults.length,
-      itemBuilder: (ctx, i) {
-        final train = _dbTrainResults[i];
-        final category = (train['category'] ?? '').toString().trim();
-        final number = (train['trainNumber'] ?? '').toString().trim();
-        final destination = (train['destination'] ?? 'N/A').toString();
-        final origin = (train['origin'] ?? '').toString();
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: BoxDecoration(
-            color: theme.surfaceColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.08)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => train_stats.TrainStatsScreen(
-                    category: category,
-                    tripNumber: number,
-                  ),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(category, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.primaryColor)),
-                        Text(number, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: theme.textColor)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (origin.isNotEmpty)
-                          Row(
-                            children: [
-                              Icon(Icons.radio_button_unchecked, size: 12, color: theme.secondaryTextColor),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(origin, style: TextStyle(fontSize: 12, color: theme.secondaryTextColor), overflow: TextOverflow.ellipsis)),
-                            ],
-                          ),
-                        Row(
-                          children: [
-                            Icon(Icons.location_on_rounded, size: 14, color: theme.primaryColor),
-                            const SizedBox(width: 4),
-                            Expanded(child: Text(destination, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: theme.textColor), overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // --- COMPONENTI UI SECONDARI ---
-
-  Widget _buildOfflineError(ThemeProvider theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.5)),
-          const SizedBox(height: 16),
-          Text(AppLocalizations.of(context)?.youAreOffline ?? "Sei offline",
-              style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(AppLocalizations.of(context)?.connectToSearchStations ?? "Connettiti per cercare nuove stazioni",
-              style: TextStyle(color: theme.secondaryTextColor, fontSize: 14)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSavedTrainsButton(TrainProvider provider, ThemeProvider theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: InkWell(
-        onTap: () => _showSavedStationsSheet(provider, theme),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: theme.primaryColor.withValues(alpha: _isOffline ? 0.2 : 0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.download_done_rounded, color: theme.primaryColor),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(AppLocalizations.of(context)?.savedTrains ?? "Treni Salvati",
-                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-                    Text(AppLocalizations.of(context)?.accessOfflineData ?? "Accedi ai dati scaricati offline",
-                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 11)),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded, size: 16, color: theme.secondaryTextColor),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSavedStationsSheet(TrainProvider provider, ThemeProvider theme) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7, maxChildSize: 0.9, minChildSize: 0.5,
-        builder: (ctx, sc) => Container(
-          decoration: BoxDecoration(
-            color: theme.backgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: theme.secondaryTextColor.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 20),
-              Text(AppLocalizations.of(context)?.savedTrainsOffline ?? "Treni Salvati (Offline)",
-                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              Expanded(
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: provider.getDownloadedTrains(),
-                  builder: (ctx, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    final items = snapshot.data!;
-                    if (items.isEmpty) return Center(child: Text(AppLocalizations.of(context)?.noOfflineData ?? "Nessun dato salvato offline", style: TextStyle(color: theme.secondaryTextColor)));
-                    return ListView.builder(
-                      controller: sc,
-                      itemCount: items.length,
-                      itemBuilder: (ctx, i) {
-                        final item = items[i];
-                        final station = TrainStation.fromJson(item['station']);
-                        final train = TrainDeparture.fromJson(item['train']);
-                        return ListTile(
-                          leading: Icon(Icons.train_rounded, color: theme.primaryColor),
-                          title: Text("${train.category ?? ''} ${train.trainNumber ?? ''}", style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-                          subtitle: Text("${train.origin ?? 'N/A'} \u2192 ${train.destination ?? 'N/A'}\n${station.name} (${item['mode'] == 'arrivals' ? (AppLocalizations.of(context)?.arrivals ?? 'Arrivi') : (AppLocalizations.of(context)?.departures ?? 'Partenze')})", style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-                          trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
-                          isThreeLine: true,
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            provider.selectSavedTrain(station, train, item['service'], item['mode']);
-                            _showTrainDetails(context, train, -1, theme);
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchHeader(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
-    final hasCities = _selectedCountry.isNotEmpty && _citiesByCountry.containsKey(_selectedCountry);
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: GlassmorphicContainer(
-        width: double.infinity, height: hasCities ? 180 : 135,
-        borderRadius: 24, blur: 20, alignment: Alignment.center, border: 1,
-        linearGradient: LinearGradient(colors: [theme.surfaceColor.withValues(alpha: 0.9), theme.surfaceColor.withValues(alpha: 0.5)]),
-        borderGradient: LinearGradient(colors: [theme.primaryColor.withValues(alpha: 0.3), Colors.transparent]),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) => _onSearchChanged(val, provider, countries),
-                      style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
-                      decoration: InputDecoration(
-                        hintText: AppLocalizations.of(context)?.searchStationOrTrain ?? "Cerca stazione...",
-                        hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
-                        prefixIcon: Icon(Icons.search_rounded, color: theme.primaryColor),
-                        border: InputBorder.none,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.reorder, color: theme.primaryColor),
-                    onPressed: () => _openReorderSheet(provider, theme),
-                    tooltip: AppLocalizations.of(context)?.reorderCountries ?? 'Riordina nazioni',
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            SizedBox(
-              height: 50,
-              child: ListView(
-                scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  Padding(padding: const EdgeInsets.only(right: 4), child: _buildGlobalChip(provider, theme, countries)),
-                  ...countries.map((c) => Padding(padding: const EdgeInsets.only(right: 4), child: _buildCountryChip(c, provider, theme, countries))).toList(),
-                ],
-              ),
-            ),
-            if (hasCities) ...[
-              const Divider(height: 1),
-              SizedBox(
-                height: 45,
-                child: ListView(
-                  scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12),
-                  children: [
-                    _buildCityChip({'name': AppLocalizations.of(context)?.allCities ?? 'Tutte le città', 'provider': ''}, provider, theme, countries),
-                    ..._citiesByCountry[_selectedCountry]!.map((city) => _buildCityChip(city, provider, theme, countries)).toList(),
-                  ],
-                ),
-              ),
-            ]
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCountryChip(Map<String, String> c, TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
-    final isSelected = _selectedCountry == c['code'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: ChoiceChip(
-        label: Text(c['name']!, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : theme.secondaryTextColor)),
-        selected: isSelected,
-        onSelected: (val) {
-          setState(() {
-            _selectedCountry = val ? c['code']! : '';
-            _selectedCity = '';
-          });
-          _onSearchChanged(_searchController.text, provider, countries);
-        },
-        selectedColor: theme.primaryColor, backgroundColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), showCheckmark: false,
-      ),
-    );
-  }
-
-  Widget _buildGlobalChip(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
-    final isSelected = _selectedCountry == 'GLOBAL';
-    return ChoiceChip(
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-            Text(RuntimeLocalizations.t(context, 'global_label'), style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : theme.secondaryTextColor)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: isSelected ? Colors.white.withValues(alpha: 0.2) : theme.primaryColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
-            child: Text(RuntimeLocalizations.t(context, 'beta'), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : theme.primaryColor)),
-          ),
-        ],
-      ),
-      selected: isSelected,
-      onSelected: (val) {
-        setState(() {
-          _selectedCountry = val ? 'GLOBAL' : '';
-          _selectedCity = '';
-        });
-        _onSearchChanged(_searchController.text, provider, countries);
-      },
-      selectedColor: theme.primaryColor, backgroundColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), showCheckmark: false,
-    );
-  }
-
-  Widget _buildCityChip(Map<String, String> city, TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
-    final isSelected = _selectedCity == city['name'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: ChoiceChip(
-        label: Text(city['name']!, style: TextStyle(fontSize: 10, color: isSelected ? theme.primaryColor : theme.secondaryTextColor)),
-        selected: isSelected,
-        onSelected: (val) {
-          setState(() => _selectedCity = val ? city['name']! : '');
-          _onSearchChanged(_searchController.text, provider, countries);
-        },
-        selectedColor: theme.primaryColor.withValues(alpha: 0.15), backgroundColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isSelected ? theme.primaryColor : Colors.transparent)),
-        showCheckmark: false,
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, bool isSelected, ThemeProvider theme, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label, style: TextStyle(color: isSelected ? Colors.white : theme.textColor, fontWeight: FontWeight.bold, fontSize: 12)),
-        selected: isSelected, onSelected: (_) => onTap(),
-        selectedColor: theme.primaryColor, backgroundColor: theme.surfaceColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), showCheckmark: false,
-      ),
-    );
-  }
-
-  Widget _buildPlatformBox(String bin, ThemeProvider theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2))),
-      child: Column(
-        children: [
-            Text(RuntimeLocalizations.t(context, 'platform_abbr'), style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: theme.primaryColor)),
-          Text(bin, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor)),
-        ],
-      ),
-    );
-  }
-
-  void _onSearchChanged(String query, TrainProvider provider, List<Map<String, String>> countries) {
-    if (query.length < 2 && _selectedCountry.isEmpty) {
-      provider.clearStationSuggestions();
-      return;
-    }
-
-    if (_selectedCountry.isNotEmpty) {
-      if (_selectedCountry == 'EU') {
-        provider.searchTrainByNumber(query); // Mantiene compatibilità col live se rimasto in EU
-      } else if (_selectedCountry == 'GLOBAL') {
-        provider.searchStations(query, country: 'GLOBAL');
-      } else {
-        String? cityProvider;
-        if (_selectedCity.isNotEmpty && _selectedCity != 'Tutte le città') {
-          cityProvider = _citiesByCountry[_selectedCountry]!.firstWhere((c) => c['name'] == _selectedCity)['provider'];
-        }
-        provider.searchStations(query, country: _selectedCountry, city: cityProvider);
-      }
-    } else {
-      _searchStationsMultipleCountries(query, countries, provider);
-    }
-  }
-
-  void _openReorderSheet(TrainProvider provider, ThemeProvider theme) {
-    showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          height: MediaQuery.of(ctx).size.height * 0.6,
-          decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: theme.secondaryTextColor.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2)))),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(AppLocalizations.of(context)?.reorderCountries ?? 'Riordina nazioni', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.textColor)),
-                  TextButton(
-                    onPressed: () { _saveCountryOrder(); Navigator.of(ctx).pop(); },
-                    child: Text(AppLocalizations.of(context)?.save ?? 'Salva', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ReorderableListView(
-                  onReorder: (oldIndex, newIndex) => _onReorderCountries(_countries, oldIndex, newIndex),
-                  children: [
-                    for (var i = 0; i < _countries.length; i++)
-                      ListTile(key: ValueKey(_countries[i]['code']), title: Text(_countries[i]['name']!, style: TextStyle(color: theme.textColor)), trailing: Icon(Icons.drag_handle, color: theme.secondaryTextColor)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _searchStationsMultipleCountries(String query, List<Map<String, String>> countries, TrainProvider provider) async {
-    final codes = countries.map((c) => c['code']!).toList();
-    final results = await Future.wait(codes.map((code) => provider.searchStations(query, country: code).then((_) => provider.stationSuggestions.toList()).catchError((_) => <TrainStation>[])));
-    final all = results.expand((x) => x).toList();
-    final seen = <String>{};
-    provider.setStationSuggestions(all.where((s) => seen.add('${s.id}-${s.country}')).toList());
-  }
-
-  void _showTrainDetails(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
-    if (dep.stops == null || dep.stops.isEmpty) {
-      Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(index);
-    }
-    showModalBottomSheet(
-        context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-        builder: (ctx) => DraggableScrollableSheet(
-            initialChildSize: 0.85, maxChildSize: 0.98, minChildSize: 0.5,
-            builder: (_, sc) => TrainDetailsSheet(
-                departure: dep,
-                isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
-                selectedCountry: _selectedCountry,
-                scrollController: sc)));
-  }
-
- Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
+  Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
     if (dep == null) return const SizedBox.shrink();
-
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final category = (dep.category?.toString() ?? 'TRN').trim();
     final number = (dep.trainNumber?.toString() ?? '').trim();
 
     if (settings.vectorLogosEnabled) {
       final fileName = category.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = "https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png";
-
+      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            height: 20, constraints: const BoxConstraints(maxWidth: 60),
+            height: 20,
+            constraints: const BoxConstraints(maxWidth: 60),
             child: Image.network(
-              logoUrl, fit: BoxFit.contain, alignment: Alignment.centerLeft,
-              errorBuilder: (context, error, stackTrace) => _buildColorBadge(category, number, theme),
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return SizedBox(width: 20, child: Center(child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor)))));
+              logoUrl,
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              errorBuilder: (_, __, ___) => _buildColorBadge(category, number, theme),
+              loadingBuilder: (_, child, progress) {
+                if (progress == null) return child;
+                return SizedBox(
+                  width: 20,
+                  child: Center(
+                    child: SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                      ),
+                    ),
+                  ),
+                );
               },
             ),
           ),
@@ -1233,94 +2181,177 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Widget _buildColorBadge(String category, String number, ThemeProvider theme) {
     final isHighSpeed = category.toLowerCase().contains('fr') || category.toLowerCase().contains('freccia');
     final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
-    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: color.withValues(alpha: 0.3))),
-      child: Text("$category $number", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '$category $number',
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
+      ),
     );
   }
 
   Widget _buildBadge(String label, Color color) {
     return Container(
-        margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: color)));
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: color),
+      ),
+    );
   }
 
-  Widget _buildFavoriteToggle(TrainStation station, ThemeProvider theme) {
-    return Consumer2<FavoritesProvider, AuthProvider>(builder: (ctx, favs, auth, _) {
-      if (!auth.isAuthenticated) return const SizedBox.shrink();
-      final isFav = favs.isStopFavorite(station.id, StopType.trainStation, country: station.country);
-      return IconButton(
-          icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : theme.secondaryTextColor),
-          onPressed: () => isFav
-              ? favs.removeStopFavorite(station.id, StopType.trainStation, country: station.country)
-              : favs.addStopFavorite(favs.createFavoriteStop(userId: auth.currentUser?.id.toString() ?? '', name: station.name, code: station.id, stopType: StopType.trainStation, country: station.country)));
-    });
+  Widget _buildPlatformBox(String bin, ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            RuntimeLocalizations.t(context, 'platform_abbr'),
+            style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: theme.primaryColor),
+          ),
+          Text(
+            bin,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, bool isSelected, ThemeProvider theme, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : theme.textColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        selected: isSelected,
+        onSelected: (_) => onTap(),
+        selectedColor: theme.primaryColor,
+        backgroundColor: theme.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        showCheckmark: false,
+      ),
+    );
   }
 
   Widget _buildDepartureArrivalToggle(TrainProvider provider, ThemeProvider theme) {
     return Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: theme.secondaryTextColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(15)),
-        child: Row(children: [
-          Expanded(child: _buildToggleBtn(AppLocalizations.of(context)?.departures ?? "PARTENZE", !provider.isArrivalMode, theme, () => provider.setArrivalMode(false))),
-          Expanded(child: _buildToggleBtn(AppLocalizations.of(context)?.arrivals ?? "ARRIVI", provider.isArrivalMode, theme, () => provider.setArrivalMode(true)))
-        ]));
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.secondaryTextColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildToggleBtn(
+              AppLocalizations.of(context)?.departures ?? 'PARTENZE',
+              !provider.isArrivalMode,
+              theme,
+              () => provider.setArrivalMode(false),
+            ),
+          ),
+          Expanded(
+            child: _buildToggleBtn(
+              AppLocalizations.of(context)?.arrivals ?? 'ARRIVI',
+              provider.isArrivalMode,
+              theme,
+              () => provider.setArrivalMode(true),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildToggleBtn(String label, bool active, ThemeProvider theme, VoidCallback onTap) {
     return GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200), padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(color: active ? theme.primaryColor : Colors.transparent, borderRadius: BorderRadius.circular(12)),
-            child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: active ? Colors.white : theme.secondaryTextColor, fontWeight: FontWeight.w900, fontSize: 12))));
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? theme.primaryColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: active ? Colors.white : theme.secondaryTextColor,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
   }
 
-  Widget _buildFavoriteSection(TrainProvider provider, ThemeProvider theme) {
-    return Consumer2<FavoritesProvider, AuthProvider>(builder: (ctx, favs, auth, _) {
-      if (!auth.isAuthenticated) return const SizedBox.shrink();
-      final list = favs.favoriteStops.where((s) => s.stopType == StopType.trainStation).toList();
-      if (list.isEmpty) return const SizedBox.shrink();
-      return SizedBox(
-          height: 90,
-          child: ListView.builder(
-              scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: list.length, itemBuilder: (ctx, i) => _buildFavoriteCard(list[i], provider, theme)));
-    });
-  }
-
-  Widget _buildFavoriteCard(FavoriteStop stop, TrainProvider provider, ThemeProvider theme) {
-    return GestureDetector(
-        onTap: () => provider.selectStation(TrainStation(id: stop.code, name: stop.name, country: stop.country ?? '', type: 'train')),
-        child: Container(
-            width: 110, margin: const EdgeInsets.only(right: 12, bottom: 8), padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.primaryColor.withValues(alpha: 0.15))),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.star_rounded, color: theme.primaryColor, size: 18),
-              const SizedBox(height: 4),
-              Text(stop.name, style: TextStyle(color: theme.textColor, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis)
-            ])));
-  }
-
-  Widget _buildStationSuggestionsList(TrainProvider provider, ThemeProvider theme) {
-    return ListView.builder(
-        padding: const EdgeInsets.only(bottom: 100), itemCount: provider.stationSuggestions.length,
-        itemBuilder: (ctx, i) {
-          final s = provider.stationSuggestions[i];
-          return _StationListTile(station: s, provider: provider, theme: theme, onLoadStats: _loadStatsAndNavigate, onAddStation: _addStationToDb);
-        });
+  Widget _buildFavoriteToggle(TrainStation station, ThemeProvider theme) {
+    return Consumer2<FavoritesProvider, AuthProvider>(
+      builder: (ctx, favs, auth, _) {
+        if (!auth.isAuthenticated) return const SizedBox.shrink();
+        final isFav = favs.isStopFavorite(station.id, StopType.trainStation, country: station.country);
+        return IconButton(
+          icon: Icon(
+            isFav ? Icons.favorite : Icons.favorite_border,
+            color: isFav ? Colors.red : theme.secondaryTextColor,
+          ),
+          onPressed: () {
+            if (isFav) {
+              favs.removeStopFavorite(station.id, StopType.trainStation, country: station.country);
+            } else {
+              favs.addStopFavorite(
+                favs.createFavoriteStop(
+                  userId: auth.currentUser?.id.toString() ?? '',
+                  name: station.name,
+                  code: station.id,
+                  stopType: StopType.trainStation,
+                  country: station.country,
+                ),
+              );
+            }
+          },
+        );
+      },
+    );
   }
 }
 
+// ---- _SmartTrainRouteText ----
 class _SmartTrainRouteText extends StatefulWidget {
   final dynamic departure;
   final int index;
   final ThemeProvider theme;
   final bool isArrivalMode;
-  const _SmartTrainRouteText({required this.departure, required this.index, required this.theme, required this.isArrivalMode});
+  const _SmartTrainRouteText({
+    required this.departure,
+    required this.index,
+    required this.theme,
+    required this.isArrivalMode,
+  });
+
   @override
   State<_SmartTrainRouteText> createState() => _SmartTrainRouteTextState();
 }
@@ -1331,27 +2362,43 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
     super.initState();
     if (widget.isArrivalMode && (widget.departure.origin == null || widget.departure.origin.isEmpty)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(widget.index);
+        if (mounted) {
+          Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(widget.index);
+        }
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String text = widget.isArrivalMode ? (widget.departure.origin ?? AppLocalizations.of(context)?.loading ?? "Caricamento...") : (widget.departure.destination ?? "N/A");
+    final String text = widget.isArrivalMode
+        ? (widget.departure.origin ?? AppLocalizations.of(context)?.loading ?? 'Caricamento...')
+        : (widget.departure.destination ?? 'N/A');
     final style = TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: widget.theme.textColor);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final textPainter = TextPainter(text: TextSpan(text: text, style: style), maxLines: 1, textDirection: TextDirection.ltr)..layout();
+        final textPainter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout();
         if (textPainter.size.width > constraints.maxWidth) {
           return SizedBox(
             height: 25,
             child: Marquee(
-              text: text, style: style, scrollAxis: Axis.horizontal, crossAxisAlignment: CrossAxisAlignment.start,
-              blankSpace: 30.0, velocity: 30.0, pauseAfterRound: const Duration(seconds: 1),
-              startPadding: 0.0, accelerationDuration: const Duration(seconds: 1), accelerationCurve: Curves.linear,
-              decelerationDuration: const Duration(milliseconds: 500), decelerationCurve: Curves.easeOut,
+              text: text,
+              style: style,
+              scrollAxis: Axis.horizontal,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              blankSpace: 30.0,
+              velocity: 30.0,
+              pauseAfterRound: const Duration(seconds: 1),
+              startPadding: 0.0,
+              accelerationDuration: const Duration(seconds: 1),
+              accelerationCurve: Curves.linear,
+              decelerationDuration: const Duration(milliseconds: 500),
+              decelerationCurve: Curves.easeOut,
             ),
           );
         } else {
@@ -1362,13 +2409,22 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
   }
 }
 
+// ---- _StationListTile ----
 class _StationListTile extends StatefulWidget {
   final TrainStation station;
   final TrainProvider provider;
   final ThemeProvider theme;
-  final Function(BuildContext, String) onLoadStats;
-  final Function(String, String) onAddStation;
-  const _StationListTile({required this.station, required this.provider, required this.theme, required this.onLoadStats, required this.onAddStation});
+  final Future<void> Function(BuildContext, String) onLoadStats;
+  final Future<void> Function(String, String) onAddStation;
+
+  const _StationListTile({
+    required this.station,
+    required this.provider,
+    required this.theme,
+    required this.onLoadStats,
+    required this.onAddStation,
+  });
+
   @override
   State<_StationListTile> createState() => _StationListTileState();
 }
@@ -1376,22 +2432,49 @@ class _StationListTile extends StatefulWidget {
 class _StationListTileState extends State<_StationListTile> {
   bool _isMonitored = false;
   bool _checkingStatus = true;
+  bool _isMounted = false;
 
   @override
   void initState() {
     super.initState();
+    _isMounted = true;
     _checkStatus();
   }
 
+  @override
+  void dispose() {
+    _isMounted = false;
+    super.dispose();
+  }
+
+  void _safeSetState(VoidCallback fn) {
+    if (_isMounted) {
+      setState(fn);
+    }
+  }
+
   Future<void> _checkStatus() async {
+    if (!_isMounted) return;
     try {
-      final response = await http.get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/${widget.station.id}'));
-      if (response.statusCode == 200 && mounted) {
+      final response = await http
+          .get(
+            Uri.parse('https://betacloud-transporter.is-cool.dev/api/stats/monitor/check/${widget.station.id}'),
+          )
+          .timeout(const Duration(seconds: 5));
+      if (!_isMounted) return;
+      if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() { _isMonitored = data['isMonitored'] ?? false; _checkingStatus = false; });
+        _safeSetState(() {
+          _isMonitored = data['isMonitored'] ?? false;
+          _checkingStatus = false;
+        });
+      } else {
+        _safeSetState(() => _checkingStatus = false);
       }
     } catch (e) {
-      if (mounted) setState(() => _checkingStatus = false);
+      if (_isMounted) {
+        _safeSetState(() => _checkingStatus = false);
+      }
     }
   }
 
@@ -1399,12 +2482,21 @@ class _StationListTileState extends State<_StationListTile> {
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(Icons.location_on_outlined, color: widget.theme.primaryColor),
-      title: Text(widget.station.name, style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold)),
-      subtitle: Text(widget.station.country, style: TextStyle(color: widget.theme.secondaryTextColor, fontSize: 12)),
+      title: Text(
+        widget.station.name,
+        style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold),
+      ),
+      subtitle: Text(
+        widget.station.country,
+        style: TextStyle(color: widget.theme.secondaryTextColor, fontSize: 12),
+      ),
       trailing: _checkingStatus
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
           : IconButton(
-              icon: Icon(Icons.bar_chart_rounded, color: _isMonitored ? widget.theme.primaryColor : widget.theme.secondaryTextColor),
+              icon: Icon(
+                Icons.bar_chart_rounded,
+                color: _isMonitored ? widget.theme.primaryColor : widget.theme.secondaryTextColor,
+              ),
               onPressed: () async {
                 if (_isMonitored) {
                   await widget.onLoadStats(context, widget.station.id);
@@ -1422,10 +2514,22 @@ class _StationListTileState extends State<_StationListTile> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: widget.theme.surfaceColor,
-        title: Text(RuntimeLocalizations.t(context, 'activate_monitoring'), style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold)),
-        content: Text(RuntimeLocalizations.t(context, 'station_not_monitored_msg'), style: TextStyle(color: widget.theme.secondaryTextColor)),
+        title: Text(
+          RuntimeLocalizations.t(context, 'activate_monitoring'),
+          style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          RuntimeLocalizations.t(context, 'station_not_monitored_msg'),
+          style: TextStyle(color: widget.theme.secondaryTextColor),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(RuntimeLocalizations.t(context, 'cancel'), style: TextStyle(color: widget.theme.secondaryTextColor))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              RuntimeLocalizations.t(context, 'cancel'),
+              style: TextStyle(color: widget.theme.secondaryTextColor),
+            ),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: widget.theme.primaryColor),
             onPressed: () async {
@@ -1433,7 +2537,10 @@ class _StationListTileState extends State<_StationListTile> {
               await widget.onAddStation(widget.station.id, widget.station.name);
               _checkStatus();
             },
-            child: Text(RuntimeLocalizations.t(context, 'add_now'), style: const TextStyle(color: Colors.white)),
+            child: Text(
+              RuntimeLocalizations.t(context, 'add_now'),
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

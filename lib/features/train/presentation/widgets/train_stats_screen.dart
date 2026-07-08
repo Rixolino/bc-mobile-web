@@ -47,6 +47,13 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     }
   }
 
+  // Funzione per aggiornare i dati
+  void _refreshData() {
+    setState(() {
+      _reportFuture = fetchTrainStats();
+    });
+  }
+
   Color _getScoreColor(int score) {
     if (score >= 80) return Colors.greenAccent;
     if (score >= 50) return Colors.orangeAccent;
@@ -65,6 +72,13 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
+            tooltip: 'Aggiorna dati',
+          ),
+        ],
         flexibleSpace: ClipRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -146,11 +160,11 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         _buildHeroScore(report.metrics),
         const SizedBox(height: 16),
         
-        // NUOVA SEZIONE: Metriche Globali (Tasso cancellazioni e Variazione ritardo)
+        // SEZIONE: Metriche Globali (Tasso cancellazioni e Variazione ritardo)
         _buildGlobalMetrics(report.metrics),
         const SizedBox(height: 16),
         
-        // NUOVA SEZIONE: Record Storico Negativo
+        // SEZIONE: Record Storico Negativo
         if (report.metrics.maxAbsoluteDelayMinutes > 0) ...[
           _buildHistoricalRecord(report.metrics),
           const SizedBox(height: 32),
@@ -216,7 +230,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     );
   }
 
-  // Modifica al _buildHeroScore per includere "Viaggi Analizzati"
   Widget _buildHeroScore(RevolutionaryMetrics metrics) {
     final color = _getScoreColor(metrics.reliabilityScore);
     
@@ -302,7 +315,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     );
   }
 
-  // NUOVO WIDGET: Metriche Globali (Tasso cancellazioni e Recupero/Accumulo)
   Widget _buildGlobalMetrics(RevolutionaryMetrics metrics) {
     final bool tendsToRecover = metrics.averageNetDelayChangeMinutes < 0;
     final bool isStable = metrics.averageNetDelayChangeMinutes == 0;
@@ -372,7 +384,6 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     );
   }
 
-  // NUOVO WIDGET: Banner Record Storico Negativo
   Widget _buildHistoricalRecord(RevolutionaryMetrics metrics) {
     return _glassmorphicCard(
       padding: const EdgeInsets.all(16),
