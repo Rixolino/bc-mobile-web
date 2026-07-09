@@ -45,6 +45,7 @@ dependencies:
   flutter_svg: ^2.2.3
   marquee: ^2.3.0
   vector_graphics: ^1.1.19
+  sqflite: ^2.3.0
 
 dev_dependencies:
   flutter_test:

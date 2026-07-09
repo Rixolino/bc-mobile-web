@@ -23,6 +23,7 @@ import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import 'dart:convert';
 
 class _ActualTime {
   final DateTime time;
@@ -30,12 +31,10 @@ class _ActualTime {
   const _ActualTime(this.time, {this.isEstimated = false});
 }
 
-// Shared helper: estimate arrival and departure UTC times for a stop using train-level delay when schedules are used.
 Map<String, DateTime?> _estimateStopTimesGlobal(TrainStop s, int trainDelay) {
   DateTime? arr = s.estimatedArrival?.toUtc() ?? (s.arrival != null ? s.arrival!.toUtc().add(Duration(minutes: trainDelay)) : null);
   DateTime? dep = s.estimatedDeparture?.toUtc() ?? (s.departure != null ? s.departure!.toUtc().add(Duration(minutes: trainDelay)) : null);
 
-  // Ensure both exist when possible
   if (arr == null && dep != null) arr = dep.subtract(const Duration(minutes: 1));
   if (dep == null && arr != null) dep = arr.add(const Duration(minutes: 1));
 
@@ -54,16 +53,15 @@ class TrainDetailsSheet extends StatefulWidget {
   State<TrainDetailsSheet> createState() => _TrainDetailsSheetState();
 }
 
-// Small widget to manage notifications toggle for a specific train
 class _TrainNotificationsButton extends StatefulWidget {
   final TrainDeparture departure;
   final String? selectedCountry;
-  final bool isPrimary; // Add this
+  final bool isPrimary;
 
   const _TrainNotificationsButton({
     required this.departure, 
     this.selectedCountry,
-    this.isPrimary = false, // Default false
+    this.isPrimary = false,
   });
 
   @override
@@ -93,7 +91,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     }
   }
 
-  // Helper: build notification title
   String _buildTrainNotificationTitle(TrainDeparture d) {
     final parts = <String>[];
     if ((d.category ?? '').isNotEmpty) parts.add(d.category!);
@@ -117,12 +114,10 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     return "$nameWithSpace($origin → $dest)";
   }
 
-  // Helper: build notification body according to spec
   String _buildTrainNotificationBody(TrainDeparture d, {String? userDestination}) {
     final now = DateTime.now().toUtc();
     final stops = d.stops ?? [];
 
-    // Local helper to compute effective UTC times respecting train-level delay
     _ActualTime? _stopActual(DateTime? scheduled, DateTime? estimated, int? stopDelayMinutes) {
       if (estimated != null) return _ActualTime(estimated.toUtc(), isEstimated: true);
       if (scheduled != null) {
@@ -133,12 +128,9 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       return null;
     }
 
-    // Structured stop info with normalized UTC times
     final stopStates = <Map<String, dynamic>>[];
     for (int i = 0; i < stops.length; i++) {
       final s = stops[i];
-      // FIX: Notification delay should never use arrivalDelay (user request). 
-      // We pass 0 so _stopActual will rely on trainDelay or 0.
       final DateTime? arrUtc = _stopActual(s.arrival, s.estimatedArrival, 0)?.time;
       final DateTime? depUtc = _stopActual(s.departure, s.estimatedDeparture, s.departureDelay)?.time;
       stopStates.add({
@@ -157,7 +149,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     String lastPassed = '';
     bool isAtStation = false;
 
-    // 1) If metadata contains a lastDetection use it as authoritative when possible
     final meta = d.metadata;
     if (meta != null) {
       final Map? lastDet = meta['lastDetection'] as Map?;
@@ -172,7 +163,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
           final currentIdx = idxFromMeta;
           lastPassed = (stopStates[currentIdx]['stop'] as TrainStop).stationName;
 
-          // determine if we are at station using explicit flag or timestamp proximity
           final atStationFlag = lastDet['atStation'] ?? lastDet['isAtStation'] ?? false;
           if (atStationFlag == true) {
             isAtStation = true;
@@ -204,7 +194,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       }
     }
 
-    // 2) If metadata didn't resolve nextIndex, pick the nearest future arrival (skip cancelled stops)
     if (nextIndex == -1) {
       DateTime? bestArr;
       int bestIdx = -1;
@@ -228,14 +217,12 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       }
     }
 
-    // 3) Fallback: choose the first non-cancelled stop after last passed index; otherwise first non-cancelled
     if (nextIndex == -1 && stopStates.isNotEmpty) {
       int lastIdx = -1;
       for (var ss in stopStates) {
         final DateTime? depUtc = ss['depUtc'] as DateTime?;
         final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
         
-        // FIX: Consider passed ONLY if departure is past (if exists), or arrival is past (if terminus).
         bool isPassed = false;
         if (depUtc != null) {
           if (depUtc.isBefore(now)) isPassed = true;
@@ -243,16 +230,9 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
           isPassed = true;
         }
         
-        // Also detect "At Station" if we are here (arr < now < dep)
         if (arrUtc != null && depUtc != null && !arrUtc.isAfter(now) && !depUtc.isBefore(now)) {
            isAtStation = true;
-           lastPassed = (ss['stop'] as TrainStop).stationName; // Ensure 'lastPassed' reflects current station for display
-           // Do NOT mark as passed if we want "Next Stop" to be the NEXT one?
-           // Actually, if we are AT station X, Next Stop usually implies X+1.
-           // But if user complains about skipping, maybe they want Next Stop to be X while arriving?
-           // If 'isAtStation' is true, we usually display "Treno in stazione: X".
-           // In that case nextIndex SHOULD be X+1.
-           // But let's stick to standard logic: if At Station, lastIdx = X.
+           lastPassed = (ss['stop'] as TrainStop).stationName;
            lastIdx = ss['index'] as int;
         } else if (isPassed) {
            lastIdx = ss['index'] as int;
@@ -269,7 +249,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
         break;
       }
       if (!found) {
-        // first non-cancelled overall
         for (var ss in stopStates) {
           if (ss['cancelled'] == true) continue;
           nextIndex = ss['index'] as int;
@@ -281,14 +260,12 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       }
     }
 
-    // 4) Compute lastPassed if still empty
     if (lastPassed.isEmpty) {
       int lastIdx = -1;
       for (var ss in stopStates) {
         final DateTime? arrUtc = ss['arrUtc'] as DateTime?;
         final DateTime? depUtc = ss['depUtc'] as DateTime?;
         
-        // Same robust logic for lastPassed
         bool isPassed = false;
         if (depUtc != null) {
           if (depUtc.isBefore(now)) isPassed = true;
@@ -296,7 +273,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
            isPassed = true;
         }
         
-        // If at station, use that
         if (arrUtc != null && depUtc != null && !arrUtc.isAfter(now) && !depUtc.isBefore(now)) {
            lastIdx = ss['index'] as int;
            isAtStation = true;
@@ -307,7 +283,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       if (lastIdx >= 0) lastPassed = (stopStates[lastIdx]['stop'] as TrainStop).stationName;
     }
 
-    // Debug logs to help reproduce issues (only in debug builds)
     if (kDebugMode) {
       // ignore: avoid_print
       print('[notif-debug] now=$now nextIndex=$nextIndex nextStop=$nextStop lastPassed=$lastPassed isAtStation=$isAtStation');
@@ -315,12 +290,10 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
     final delay = d.delayMinutes ?? 0;
 
-    // Count remaining stops to destination (ignore cancelled stops)
     int remaining = 0;
     if (userDestination != null && userDestination.trim().isNotEmpty && stops.isNotEmpty) {
       final destIndex = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
       if (destIndex != -1 && nextIndex != -1) {
-        // count only non-cancelled stops between nextIndex and destIndex
         final int start = nextIndex < destIndex ? nextIndex : nextIndex;
         int count = 0;
         for (int i = start + 1; i <= destIndex; i++) if (!stops[i].cancelled) count++;
@@ -332,16 +305,13 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       remaining = count;
     }
 
-    // If user's destination is cancelled, return informative message
     if (userDestination != null && userDestination.trim().isNotEmpty) {
       final destIdx = stops.indexWhere((s) => s.stationName.trim().toLowerCase() == userDestination.trim().toLowerCase());
       if (destIdx != -1 && stops[destIdx].cancelled) return '\u26A0\uFE0F La tua fermata ($userDestination) \u00E8 stata annullata.';
       if (isAtStation && lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
-        // keep neutral informational message for main channel
         return '\u26A0\uFE0F Treno in stazione: $userDestination. Ricordati di scendere.';
       }
       if (nextStop.trim().toLowerCase() == userDestination.trim().toLowerCase()) {
-        // do not instruct to "prepare bags" here; proximity alerts will be sent on a dedicated channel
         return '\u26A0\uFE0F Sei in arrivo alla tua fermata: $userDestination. Prossima discesa.';
       }
       if (lastPassed.trim().toLowerCase() == userDestination.trim().toLowerCase() && nextIndex == -1) {
@@ -349,12 +319,10 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       }
     }
 
-    // Build standard body
     final buffer = StringBuffer();
     if (nextStop.isNotEmpty) {
       final arrStr = nextArrival != null ? '${nextArrival.toLocal().hour.toString().padLeft(2, '0')}:${nextArrival.toLocal().minute.toString().padLeft(2, '0')}' : '--:--';
       final depStr = nextDeparture != null ? '${nextDeparture.toLocal().hour.toString().padLeft(2, '0')}:${nextDeparture.toLocal().minute.toString().padLeft(2, '0')}' : '';
-      // try to find platform for next stop
       String platform = '';
       if (nextIndex >= 0 && nextIndex < stops.length) {
         platform = stops[nextIndex].platform ?? '';
@@ -371,14 +339,12 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       buffer.writeln('Prossima fermata: --');
     }
 
-    // If train is at station show that specially
     if (isAtStation && lastPassed.isNotEmpty) {
       buffer.writeln('Treno in stazione: $lastPassed');
     } else {
       buffer.writeln('Stato attuale: ${lastPassed.isNotEmpty ? lastPassed : 'In transito'}');
     }
 
-    // Show explicit delay/advance line without duplicating words
     if (delay > 0) {
       buffer.writeln(RuntimeLocalizations.t(context, 'delay_minutes', params: {'minutes': delay.toString()}));
     } else if (delay < 0) {
@@ -394,9 +360,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
   Future<void> _toggle() async {
     final tripId = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
-    // Prefer an explicit endpoint if present in train metadata to avoid guessing country
 
-    // Open bottom sheet with options: 1) Notify until chosen destination, 2) General notification
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -426,7 +390,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                         itemBuilder: (c, i) {
                           final s = stops[i];
                           final nowUtc = DateTime.now().toUtc();
-                          // Compute effective arrival/departure times using train-level delay when estimates are missing
                           final times = _estimateStopTimesGlobal(s, widget.departure.delayMinutes ?? 0);
                           final DateTime? arr = times['arr'] as DateTime?;
                           final DateTime? dep = times['dep'] as DateTime?;
@@ -439,7 +402,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                             isPassed = true;
                           }
                           if (arr != null && nowUtc.isAfter(arr) && (dep == null || nowUtc.isBefore(dep))) {
-                            isCurrent = true; // train currently at this station
+                            isCurrent = true;
                           }
                           final bool isCancelled = s.cancelled;
                           final titleStyle = isCancelled ? TextStyle(color: Colors.red, fontStyle: FontStyle.italic) : (isPassed ? TextStyle(color: Colors.grey) : (isCurrent ? TextStyle(fontWeight: FontWeight.w700) : null));
@@ -466,7 +429,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                     ),
                   const Divider(),
 
-                  // Preview
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: Column(
@@ -490,7 +452,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                             child: Text(RuntimeLocalizations.t(context, 'notify_to_selected_stop')),
                             onPressed: selectedStop == null && stops.isNotEmpty ? null : () async {
                               Navigator.pop(ctx);
-                              // schedule with destination
                               final settings = Provider.of<SettingsProvider>(context, listen: false);
                               await AndroidBackgroundService.requestPermission();
                               await _resolveAndSchedule(
@@ -562,9 +523,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
   Future<void> _resolveAndSchedule({String? tripId, required String? notifyMode, String? destinationStop, required int settingsInterval, required BuildContext ctx}) async {
     final prodBase = 'https://prod.cuzimmartin.dev/api';
-    // Try to refresh details in provider to let it populate metadata/endpoint if possible
     final trainProvider = Provider.of<TrainProvider>(ctx, listen: false);
-    // Always search for the train, whether by tripId or by trainNumber/destination combo
     final idx = trainProvider.departures.indexWhere((d) => 
       (tripId != null && (d.tripId == tripId || d.trainNumber == tripId)) || 
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
@@ -572,17 +531,14 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     if (idx != -1) {
       try {
         await trainProvider.expandTrainDetails(idx);
-        // small pause to allow provider to update UI/state
         await Future.delayed(const Duration(milliseconds: 400));
       } catch (e) {
         // ignore
       }
     }
 
-    // Re-check metadata from provider's up-to-date model (prefer that over local widget.departure)
     final TrainDeparture currentDep = (idx != -1) ? trainProvider.departures[idx] : widget.departure;
     final metaEndpoint = currentDep.metadata != null ? (currentDep.metadata!['endpoint'] as String?) : null;
-    // Determine country but avoid using the panel default 'IT' unless explicitly set by user
     dynamic countryCandidate = currentDep.metadata?['country'];
     if (countryCandidate == null || (countryCandidate is String && countryCandidate.toString().isEmpty)) {
       if (currentDep.country.isNotEmpty) {
@@ -600,13 +556,11 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
     if (metaEndpoint != null && metaEndpoint.isNotEmpty) {
       resolvedEndpoint = metaEndpoint;
-      // try to infer country from endpoint if possible
     } else if (tripId != null && tripId.isNotEmpty && countryFromMeta != null && countryFromMeta.isNotEmpty) {
       final candidate = '$prodBase/${countryFromMeta}/trip?tripId=${Uri.encodeComponent(tripId)}';
       try {
         final resp = await http.get(Uri.parse(candidate)).timeout(const Duration(seconds: 6));
             if (resp.statusCode == 200) {
-          // Basic heuristic: response must contain stops or data
           final body = resp.body;
           if (body.contains('stops') || body.contains('data') || body.contains('trip')) {
             resolvedEndpoint = candidate;
@@ -621,13 +575,9 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
         ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'network_error_endpoint_check'))));
       }
     } else if (tripId != null && tripId.isNotEmpty) {
-      // No country available: ask user to set it instead of guessing
       ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'cannot_determine_url_set_country'))));
     }
 
-    // Proceed to schedule even if resolvedEndpoint is null (service will skip fetch if no country/endpoint)
-    // include arrival pre-notice from settings
-    // also pass the current first stop as the "starting" reference point for consistent calculations
     final settings = Provider.of<SettingsProvider>(ctx, listen: false);
     String? startingStop = widget.departure.stops?.isNotEmpty == true ? widget.departure.stops!.first.stationName : null;
     await AndroidBackgroundService.scheduleTrainsWorker(
@@ -643,7 +593,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
 
     ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(ctx, 'notification_set'))));
 
-    // If user requested destination-specific notify, do an immediate proximity check (may trigger the pre-notice now)
     if (notifyMode == 'to_destination' && destinationStop != null && destinationStop.isNotEmpty) {
       final notifProv = Provider.of<NotificationManagerProvider>(ctx, listen: false);
       notifProv.triggerProximityCheckForTrip(tripId ?? '', destinationStop, settings.trainArrivalPreNoticeMinutes, startingStop);
@@ -666,7 +615,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
       );
     }
     
-    // Fallback if not primary (though currently unused)
     return _PrimaryActionChip(
       icon: _enabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
       label: "Notifiche",
@@ -691,6 +639,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   bool _isCachedOffline = false;
   bool _manualOfflineSaved = false;
 
+  // Full details fetched locally for trains opened from outside the current timetable
+  TrainDeparture? _externalDep;
+  bool _isLoadingExternalDetails = false;
+  bool _externalFetchAttempted = false;
+  Timer? _fetchTimeoutTimer;
+  
+  // Aggiunto per evitare il flicker dell'errore
+  bool _hasLoadedExternalData = false;
+
   @override
   void initState() {
     super.initState();
@@ -702,6 +659,138 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    
+    _maybeFetchExternalTripDetails();
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    _progressTimer?.cancel();
+    _connectivityTimer?.cancel();
+    _fetchTimeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  bool get _needsExternalFetch {
+    final hasStops = widget.departure.stops != null && widget.departure.stops!.isNotEmpty;
+    return !hasStops;
+  }
+
+  Future<void> _maybeFetchExternalTripDetails() async {
+    if (!_needsExternalFetch) {
+      if (mounted) setState(() {
+        _isLoadingExternalDetails = false;
+        _externalFetchAttempted = true;
+        _hasLoadedExternalData = true;
+      });
+      return;
+    }
+
+    if (_externalFetchAttempted || _isLoadingExternalDetails) return;
+    
+    final tripId = widget.departure.tripId;
+    if (tripId == null || tripId.isEmpty) {
+      if (mounted) setState(() {
+        _isLoadingExternalDetails = false;
+        _externalFetchAttempted = true;
+        _hasLoadedExternalData = true;
+        _externalDep = widget.departure.copyWith(error: 'ID treno mancante');
+      });
+      return;
+    }
+
+    if (mounted) setState(() {
+      _isLoadingExternalDetails = true;
+      _externalFetchAttempted = true;
+    });
+
+    _fetchTimeoutTimer?.cancel();
+    _fetchTimeoutTimer = Timer(const Duration(seconds: 15), () {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingExternalDetails = false;
+        _hasLoadedExternalData = true;
+        _externalDep = widget.departure.copyWith(error: 'Timeout durante il caricamento dei dettagli');
+      });
+    });
+
+    final country = widget.departure.country.isNotEmpty
+        ? widget.departure.country
+        : (widget.selectedCountry ?? 'IT');
+
+    debugPrint('📡 Fetching external trip: https://prod.cuzimmartin.dev/api/$country/trip?tripId=${Uri.encodeComponent(tripId)}');
+
+    try {
+      final uri = Uri.parse('https://prod.cuzimmartin.dev/api/$country/trip?tripId=${Uri.encodeComponent(tripId)}');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+
+      _fetchTimeoutTimer?.cancel();
+
+      if (!mounted) return;
+
+      if (resp.statusCode == 200) {
+        final decoded = json.decode(resp.body);
+        if (decoded is Map<String, dynamic>) {
+          final tripData = decoded['trip'] ?? decoded['data'] ?? decoded;
+          
+          List<TrainStop> stops = [];
+          final stopsData = tripData['stops'] ?? tripData['stopList'] ?? [];
+          if (stopsData is List) {
+            stops = stopsData.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList();
+          }
+
+          final enriched = TrainDeparture(
+            tripId: widget.departure.tripId,
+            trainNumber: tripData['trainNumber']?.toString() ?? widget.departure.trainNumber,
+            category: tripData['category']?.toString() ?? widget.departure.category,
+            origin: tripData['origin']?.toString() ?? widget.departure.origin,
+            destination: tripData['destination']?.toString() ?? widget.departure.destination,
+            country: tripData['country']?.toString() ?? country,
+            status: tripData['status']?.toString() ?? widget.departure.status,
+            delayMinutes: tripData['delay'] ?? widget.departure.delayMinutes ?? 0,
+            scheduledTime: tripData['scheduledTime'] != null 
+                ? DateTime.tryParse(tripData['scheduledTime'].toString()) 
+                : widget.departure.scheduledTime,
+            estimatedTime: tripData['estimatedTime'] != null 
+                ? DateTime.tryParse(tripData['estimatedTime'].toString()) 
+                : widget.departure.estimatedTime,
+            platform: tripData['platform']?.toString() ?? widget.departure.platform,
+            stops: stops,
+            messages: tripData['messages'] != null 
+                ? List<Map<String, dynamic>>.from(tripData['messages']) 
+                : null,
+            metadata: tripData['metadata'] as Map<String, dynamic>?,
+          );
+
+          setState(() {
+            _externalDep = enriched;
+            _isLoadingExternalDetails = false;
+            _hasLoadedExternalData = true;
+          });
+          return;
+        }
+      }
+
+      setState(() {
+        _externalDep = widget.departure.copyWith(
+          error: 'Impossibile caricare i dettagli del treno (HTTP ${resp.statusCode})'
+        );
+        _isLoadingExternalDetails = false;
+        _hasLoadedExternalData = true;
+      });
+    } catch (e) {
+      _fetchTimeoutTimer?.cancel();
+      debugPrint('❌ Error fetching external trip: $e');
+      if (!mounted) return;
+      setState(() {
+        _externalDep = widget.departure.copyWith(
+          error: 'Errore di rete: $e'
+        );
+        _isLoadingExternalDetails = false;
+        _hasLoadedExternalData = true;
+      });
+    }
   }
 
   Future<void> _checkCacheStatus() async {
@@ -717,14 +806,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         }
       });
     }
-  }
-
-  @override
-  void dispose() {
-    _autoRefreshTimer?.cancel();
-    _progressTimer?.cancel();
-    _connectivityTimer?.cancel();
-    super.dispose();
   }
 
   void _startConnectivityMonitor() {
@@ -825,16 +906,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
     );
     if (index != -1) {
-       // Force update via provider (which re-uses last know country or station country)
        _trainProvider.expandTrainDetails(index);
-       // Check if we need to locally update local widget state if not watching provider fully?
-       // Actually, the build method relies on `widget.departure`. 
-       // If standard MVP, we should be using `Consumer` or refetching a fresh object from the provider into the state.
-       // However, `ListView.builder` in `build` uses `widget.departure.stops`. 
-       // `widget.departure` is final. IT DOES NOT UPDATE when provider updates!
-       // START FIX: We need to pull the LATEST departure object from provider
-       final freshDep = _trainProvider.departures[index];
-       // We can't update `widget.departure`. We should probably wrap the body in a Consumer or check provider here.
      }
   }
 
@@ -890,211 +962,373 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     return formatCountryTime(date, countryCode);
   }
 
-
-
-
-
   @override
   Widget build(BuildContext context) {
-    // FIX: Listen to provider to get updates for THIS train
     return Consumer<TrainProvider>(
       builder: (context, provider, child) {
         _syncDetailsAutoRefresh(provider.isUsingOfflineCache);
 
-        // Find the most up-to-date version of this departure
         final currentDep = provider.departures.firstWhere(
            (d) => (d.tripId != null && d.tripId == widget.departure.tripId) || 
                   (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
-           orElse: () => widget.departure // fallback to initial
+           orElse: () => _externalDep ?? widget.departure
         );
 
-    // ERROR STATE HANDLING
-    if (currentDep.error != null && currentDep.error!.isNotEmpty) {
-      return Consumer<ThemeProvider>(
-        builder: (context, theme, child) {
-          return Container(
-            decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-            child: Column(
-              children: [
-                _buildHeader(context, "N/D", 0, theme, currentDep),
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
-                          const SizedBox(height: 24),
-                          Text(
-                            RuntimeLocalizations.t(context, 'something_went_wrong'),
-                            style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            currentDep.error!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
-                          ),
-                          const SizedBox(height: 32),
-                          SizedBox(
-                            width: 200,
-                            child: ElevatedButton.icon(
-                              onPressed: _refreshTrainDetails,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: Text(RuntimeLocalizations.t(context, 'retry')),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.primaryColor,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                elevation: 0,
-                              ),
-                            ),
-                          )
-                        ],
-                      ),
+        // ---- LOADING STATE - Solo shimmer nelle fermate ----
+        if (_isLoadingExternalDetails && (currentDep.stops == null || currentDep.stops!.isEmpty) && currentDep.error == null) {
+          return Consumer<ThemeProvider>(
+            builder: (context, theme, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor, 
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28))
+                ),
+                child: Column(
+                  children: [
+                    // Header visibile (non shimmer)
+                    _buildHeader(context, "N/D", 0, theme, currentDep, isLoading: false),
+                    // Solo timeline in shimmer
+                    Expanded(
+                      child: _buildTimelineShimmer(theme),
                     ),
-                  ),
-                )
-              ],
-            ),
+                    // Footer con messaggio caricamento
+                    _buildLoadingFooter(theme),
+                  ],
+                ),
+              );
+            },
           );
         }
-      );
-    }
 
-    final List<TrainStop> stops = currentDep.stops ?? [];
-    final trainName = "${currentDep.category ?? ''} ${currentDep.trainNumber ?? ''}".trim();
-    
-    final DateTime nowUtc = DateTime.now().toUtc();
-
-    int currentSegmentIndex = -1;
-    double segmentProgress = 0.0;
-    bool isAtStation = false;
-
-    if (stops.isNotEmpty) {
-      for (int i = 0; i < stops.length - 1; i++) {
-        final curTimes = _estimateStopTimesGlobal(stops[i], currentDep.delayMinutes ?? 0);
-        final nextTimes = _estimateStopTimesGlobal(stops[i+1], currentDep.delayMinutes ?? 0);
-
-        final _ActualTime? depCurrent = curTimes['dep'] != null ? _ActualTime(curTimes['dep']!, isEstimated: stops[i].estimatedDeparture != null) : null;
-        final _ActualTime? arrCurrent = curTimes['arr'] != null ? _ActualTime(curTimes['arr']!, isEstimated: stops[i].estimatedArrival != null) : null;
-        final _ActualTime? arrNext = nextTimes['arr'] != null ? _ActualTime(nextTimes['arr']!, isEstimated: stops[i+1].estimatedArrival != null) : null;
-
-        // If the train is currently traversing between depCurrent and arrNext
-        if (depCurrent != null && arrNext != null && nowUtc.isAfter(depCurrent.time) && nowUtc.isBefore(arrNext.time)) {
-          currentSegmentIndex = i;
-          isAtStation = false;
-          final total = arrNext.time.difference(depCurrent.time).inSeconds;
-          final elapsed = nowUtc.difference(depCurrent.time).inSeconds;
-          segmentProgress = total > 0 ? (elapsed / total).clamp(0.0, 1.0) : 1.0;
-          break;
-        }
-
-        // If the current stop window covers now, mark as at station
-        if (arrCurrent != null && depCurrent != null && !nowUtc.isBefore(arrCurrent.time) && !nowUtc.isAfter(depCurrent.time)) {
-          currentSegmentIndex = i;
-          isAtStation = true;
-          break;
-        }
-
-        // If we've already passed the next arrival, move the index forward
-        if (arrNext != null && nowUtc.isAfter(arrNext.time)) currentSegmentIndex = i + 1;
-      }
-    }
-
-    final int totalDelay = currentDep.delayMinutes ?? 0;
-    final String fullDisplayName = "$trainName";
-    final bool isLoading = stops.isEmpty;
-
-    return Consumer<ThemeProvider>(
-      builder: (context, theme, child) {
-        return Container(
-          decoration: BoxDecoration(color: theme.backgroundColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))),
-          child: Column(
-            children: [
-              _buildHeader(context, fullDisplayName, totalDelay, theme, currentDep, isLoading: isLoading),
-              Expanded(
-                child: isLoading 
-                  ? Shimmer.fromColors(
-                      baseColor: theme.secondaryTextColor.withOpacity(0.1),
-                      highlightColor: theme.secondaryTextColor.withOpacity(0.05),
-                      child: ListView.builder(
-                        itemCount: 8,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                        itemBuilder: (_, __) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+        // ---- ERROR STATE - Solo se _hasLoadedExternalData è true e c'è un errore ----
+        if (_hasLoadedExternalData && currentDep.error != null && currentDep.error!.isNotEmpty) {
+          return Consumer<ThemeProvider>(
+            builder: (context, theme, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor, 
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28))
+                ),
+                child: Column(
+                  children: [
+                    _buildHeader(context, "N/D", 0, theme, currentDep),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Column(
-                                children: [
-                                  Container(
-                                    width: 12, height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white, 
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 2),
-                                    ),
+                              Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.5)),
+                              const SizedBox(height: 24),
+                              Text(
+                                RuntimeLocalizations.t(context, 'something_went_wrong'),
+                                style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                currentDep.error!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+                              ),
+                              const SizedBox(height: 32),
+                              SizedBox(
+                                width: 200,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      _externalFetchAttempted = false;
+                                      _isLoadingExternalDetails = true;
+                                      _hasLoadedExternalData = false;
+                                      _externalDep = null;
+                                    });
+                                    _fetchTimeoutTimer?.cancel();
+                                    _maybeFetchExternalTripDetails();
+                                  },
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: Text(RuntimeLocalizations.t(context, 'retry')),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.primaryColor,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 0,
                                   ),
-                                  Container(width: 2, height: 40, color: Colors.white),
-                                ],
-                              ),
-                              const SizedBox(width: 24),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(height: 16, width: double.infinity, margin: const EdgeInsets.only(right: 80), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                                    const SizedBox(height: 8),
-                                    Container(height: 12, width: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                                  ],
                                 ),
-                              ),
-                              const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Container(height: 14, width: 40, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                                  const SizedBox(height: 8),
-                                  Container(height: 12, width: 60, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                                ],
                               )
                             ],
                           ),
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      controller: widget.scrollController, // Use sheet content controller
-                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                  itemCount: stops.length,
-                  itemBuilder: (context, index) {
-                    final isFuture = index > currentSegmentIndex;
-                    return _TimelineRow(
-                      stop: stops[index],
-                      index: index,
-                      isLast: index == stops.length - 1,
-                      isCompleted: index < currentSegmentIndex,
-                      isTraversing: (index == currentSegmentIndex) && !isAtStation && index < stops.length - 1,
-                      isActiveStop: (index == currentSegmentIndex) && isAtStation,
-                      progress: segmentProgress,
-                      timeFormatter: _formatStationTime,
-                      isFuture: isFuture,
-                      totalDelay: totalDelay,
-                      theme: theme,
-                    );
-                  },
+                  ],
                 ),
+              );
+            },
+          );
+        }
+
+        // ---- NO STOPS STATE - Solo se _hasLoadedExternalData è true ----
+        if (_hasLoadedExternalData && (currentDep.stops == null || currentDep.stops!.isEmpty) && currentDep.error == null) {
+          return Consumer<ThemeProvider>(
+            builder: (context, theme, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor, 
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28))
+                ),
+                child: Column(
+                  children: [
+                    _buildHeader(context, "N/D", 0, theme, currentDep),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.train_rounded, size: 64, color: theme.secondaryTextColor.withOpacity(0.3)),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Nessuna fermata disponibile',
+                                style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'I dettagli di questo treno non sono stati caricati.',
+                                style: TextStyle(color: theme.secondaryTextColor, fontSize: 14),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _externalFetchAttempted = false;
+                                    _isLoadingExternalDetails = true;
+                                    _hasLoadedExternalData = false;
+                                    _externalDep = null;
+                                  });
+                                  _fetchTimeoutTimer?.cancel();
+                                  _maybeFetchExternalTripDetails();
+                                },
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: Text('Ricarica'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        // ---- NORMAL STATE ----
+        final List<TrainStop> stops = currentDep.stops ?? [];
+        final trainName = "${currentDep.category ?? ''} ${currentDep.trainNumber ?? ''}".trim();
+        
+        final DateTime nowUtc = DateTime.now().toUtc();
+
+        int currentSegmentIndex = -1;
+        double segmentProgress = 0.0;
+        bool isAtStation = false;
+
+        if (stops.isNotEmpty) {
+          for (int i = 0; i < stops.length - 1; i++) {
+            final curTimes = _estimateStopTimesGlobal(stops[i], currentDep.delayMinutes ?? 0);
+            final nextTimes = _estimateStopTimesGlobal(stops[i+1], currentDep.delayMinutes ?? 0);
+
+            final _ActualTime? depCurrent = curTimes['dep'] != null ? _ActualTime(curTimes['dep']!, isEstimated: stops[i].estimatedDeparture != null) : null;
+            final _ActualTime? arrCurrent = curTimes['arr'] != null ? _ActualTime(curTimes['arr']!, isEstimated: stops[i].estimatedArrival != null) : null;
+            final _ActualTime? arrNext = nextTimes['arr'] != null ? _ActualTime(nextTimes['arr']!, isEstimated: stops[i+1].estimatedArrival != null) : null;
+
+            if (depCurrent != null && arrNext != null && nowUtc.isAfter(depCurrent.time) && nowUtc.isBefore(arrNext.time)) {
+              currentSegmentIndex = i;
+              isAtStation = false;
+              final total = arrNext.time.difference(depCurrent.time).inSeconds;
+              final elapsed = nowUtc.difference(depCurrent.time).inSeconds;
+              segmentProgress = total > 0 ? (elapsed / total).clamp(0.0, 1.0) : 1.0;
+              break;
+            }
+
+            if (arrCurrent != null && depCurrent != null && !nowUtc.isBefore(arrCurrent.time) && !nowUtc.isAfter(depCurrent.time)) {
+              currentSegmentIndex = i;
+              isAtStation = true;
+              break;
+            }
+
+            if (arrNext != null && nowUtc.isAfter(arrNext.time)) currentSegmentIndex = i + 1;
+          }
+        }
+
+        final int totalDelay = currentDep.delayMinutes ?? 0;
+        final String fullDisplayName = "$trainName";
+        final bool isLoading = stops.isEmpty;
+
+        return Consumer<ThemeProvider>(
+          builder: (context, theme, child) {
+            return Container(
+              decoration: BoxDecoration(
+                color: theme.backgroundColor, 
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), topRight: Radius.circular(28))
+              ),
+              child: Column(
+                children: [
+                  _buildHeader(context, fullDisplayName, totalDelay, theme, currentDep, isLoading: isLoading),
+                  Expanded(
+                    child: isLoading 
+                      ? _buildTimelineShimmer(theme)
+                      : ListView.builder(
+                          controller: widget.scrollController,
+                          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                          itemCount: stops.length,
+                          itemBuilder: (context, index) {
+                            final isFuture = index > currentSegmentIndex;
+                            return _TimelineRow(
+                              stop: stops[index],
+                              index: index,
+                              isLast: index == stops.length - 1,
+                              isCompleted: index < currentSegmentIndex,
+                              isTraversing: (index == currentSegmentIndex) && !isAtStation && index < stops.length - 1,
+                              isActiveStop: (index == currentSegmentIndex) && isAtStation,
+                              progress: segmentProgress,
+                              timeFormatter: _formatStationTime,
+                              isFuture: isFuture,
+                              totalDelay: totalDelay,
+                              theme: theme,
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ---- TIMELINE SHIMMER SOLO PER LE FERMATE ----
+  Widget _buildTimelineShimmer(ThemeProvider theme) {
+    return Shimmer.fromColors(
+      baseColor: theme.secondaryTextColor.withOpacity(0.1),
+      highlightColor: theme.secondaryTextColor.withOpacity(0.05),
+      child: ListView.builder(
+        itemCount: 8,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        itemBuilder: (_, __) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                children: [
+                  Container(
+                    width: 12, height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                  Container(width: 2, height: 40, color: Colors.white),
+                ],
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 16, 
+                      width: double.infinity, 
+                      margin: const EdgeInsets.only(right: 80), 
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4)
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 12, 
+                      width: 120, 
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4)
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    height: 14, 
+                    width: 40, 
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4)
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 12, 
+                    width: 60, 
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4)
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---- FOOTER DI CARICAMENTO ----
+  Widget _buildLoadingFooter(ThemeProvider theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withOpacity(0.05),
+        border: Border(top: BorderSide(color: theme.primaryColor.withOpacity(0.1))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: theme.primaryColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '⏳ Caricamento fermate...',
+            style: TextStyle(
+              color: theme.primaryColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
           ),
         ],
       ),
     );
-      },
-    );
-   }); // End Consumer
   }
 
   String _cleanStationName(String? name) {
@@ -1145,7 +1379,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag Handle
           Center(
             child: Container(
               width: 40,
@@ -1158,16 +1391,13 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           ),
           const SizedBox(height: 24),
 
-          // Main Header Row: Identity & Status
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Left: Train Identity
               Expanded(
                 child: _buildTrainIdentifier(context, theme, departure),
               ),
-              // Right: Status Badge
               const SizedBox(width: 16),
               _buildModernDelayBadge(delay, theme),
             ],
@@ -1175,11 +1405,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
           const SizedBox(height: 24),
 
-          // Route Indicator (Origin -> Dot -> Line -> Dot -> Destination)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Visual Line
               Column(
                 children: [
                   Container(
@@ -1192,7 +1420,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   ),
                   Container(
                     width: 2,
-                    height: 24, // Adjust height for spacing
+                    height: 24,
                     color: theme.secondaryTextColor.withOpacity(0.3),
                   ),
                   Container(
@@ -1206,7 +1434,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 ],
               ),
               const SizedBox(width: 16),
-              // Text Labels or Shimmer
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1229,7 +1456,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       Text(
                         effectiveOrigin,
                         style: TextStyle(
-                          color: theme.secondaryTextColor, // Origin slightly muted
+                          color: theme.secondaryTextColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1237,7 +1464,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     
-                    const SizedBox(height: 14), // Matches the visual line height visually
+                    const SizedBox(height: 14),
                     
                     if (isLoading)
                       Shimmer.fromColors(
@@ -1257,7 +1484,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       Text(
                         effectiveDest,
                         style: TextStyle(
-                          color: theme.textColor, // Destination bold
+                          color: theme.textColor,
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1272,13 +1499,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
           const SizedBox(height: 24),
 
-          // Primary Actions: Save & Notify & Offline Sync
           Row(
             children: [
-              // Favorite
               Consumer2<FavoritesProvider, AuthProvider>(
                 builder: (context, favoritesProvider, authProvider, child) {
-                  if (!authProvider.isAuthenticated) return const SizedBox.shrink(); // Or placeholder if guest
+                  if (!authProvider.isAuthenticated) return const SizedBox.shrink();
                   final userId = authProvider.currentUser?.id?.toString() ?? 'guest';
                   final isFavorite = favoritesProvider.isTrainFavorite(
                     departure.trainNumber ?? '',
@@ -1322,7 +1547,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 },
               ),
               const SizedBox(width: 12),
-              // Offline Sync
               Consumer<SettingsProvider>(
                 builder: (context, settings, child) {
                   return Expanded(
@@ -1357,7 +1581,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 },
               ),
               const SizedBox(width: 12),
-              // Notifications
               _TrainNotificationsButton(
                 departure: departure, 
                 selectedCountry: widget.selectedCountry, 
@@ -1397,20 +1620,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             },
           ),
 
-          // Secondary Actions Row (Horizontal Scroll) - Chip Style
           SizedBox(
             height: 38,
             child: ListView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               children: [
-
                 _buildInfoChip(
                   Icons.analytics_rounded,
-                  RuntimeLocalizations.t(context, 'statistic') ?? 'Statistiche',
+                  RuntimeLocalizations.t(context, 'statistics') ?? 'Statistiche',
                   theme,
                   () {
-                    // Estrazione dati dal treno corrente
                     final category = (departure.category ?? '').trim();
                     final tripNumber = (departure.trainNumber ?? '').trim();
                     
@@ -1434,7 +1654,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   },
                 ),
 
-                // Map
                 _buildInfoChip(
                   Icons.map_rounded,
                   RuntimeLocalizations.t(context, 'map'),
@@ -1444,7 +1663,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   ),
                 ),
 
-                // Refresh
                 _buildInfoChip(
                   Icons.refresh_rounded,
                   RuntimeLocalizations.t(context, 'update'),
@@ -1452,7 +1670,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   _refreshTrainDetails,
                 ),
 
-                // Auto Refresh
                 Consumer<TrainProvider>(
                   builder: (context, trainProvider, child) {
                     final isOffline = _preventOnlineAutoRefresh || trainProvider.isUsingOfflineCache || _isNetworkOffline;
@@ -1468,7 +1685,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   },
                 ),
 
-                // Messages
                 if (_hasMessages())
                   _buildInfoChip(
                     Icons.warning_amber_rounded,
@@ -1508,7 +1724,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
   }
 
-Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
+  Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
     final settings = Provider.of<SettingsProvider>(context);
     final category = (departure.category ?? 'TRN').trim();
     final number = (departure.trainNumber ?? '').trim();
@@ -1527,7 +1743,7 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
               fit: BoxFit.contain,
               alignment: Alignment.centerLeft,
               errorBuilder: (context, error, stackTrace) {
-                return _buildColorText(category, number, theme); // Fallback al testo colorato grande
+                return _buildColorText(category, number, theme);
               },
             ),
           ),
@@ -1552,7 +1768,7 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
       style: TextStyle(
         fontSize: 22, 
         fontWeight: FontWeight.w900, 
-        color: color // Mantiene il colore di distinzione
+        color: color
       ),
     );
   }
@@ -1571,7 +1787,7 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
       text = "In Orario";
       icon = Icons.check_circle_rounded;
     } else if (delay <= 5) {
-      color = const Color(0xFFFFA000); // Amber 700
+      color = const Color(0xFFFFA000);
       text = "+$delay min";
       icon = Icons.access_time_rounded;
     } else {
@@ -1598,24 +1814,14 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
     );
   }
 
-  // Old _buildDelayBadge removed or kept for compatibility? 
-  // I replaced calls to it with _buildModernDelayBadge inside _buildHeader.
-  // I should probably remove the old one or just let it be unused if I replace the whole block.
-  // The replace_string_in_file will effectively remove the old implementation if I target the right range.
-
-
-
-  // Messages helpers: extract and display train messages when present
   List<Map<String, dynamic>>? _messages() {
     final List<Map<String, dynamic>> out = [];
 
-    // Trip-level messages (preferred source: explicit parsed field)
     final tripMsgs = widget.departure.messages;
     if (tripMsgs != null && tripMsgs.isNotEmpty) {
       out.addAll(tripMsgs.map((m) => Map<String, dynamic>.from(m)));
     }
 
-    // Some providers may embed messages inside metadata as fallback
     final meta = widget.departure.metadata;
     if (meta != null) {
       final raw = meta['messages'] ?? meta['alerts'] ?? meta['notes'];
@@ -1624,7 +1830,6 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
       }
     }
 
-    // Stop-level messages: include station context
     final stops = widget.departure.stops ?? [];
     for (final s in stops) {
       if (s.messages != null && s.messages!.isNotEmpty) {
@@ -1712,7 +1917,6 @@ Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDep
                           )
                         : Text(text);
 
-                      // Priority colors
                       final Color priColor = priority == 'high'
                         ? Theme.of(context).colorScheme.error
                         : (priority == 'medium' ? Colors.amber : Theme.of(context).primaryColor);
@@ -1785,16 +1989,6 @@ class _TimelineRow extends StatelessWidget {
     String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int delay) {
       if (scheduled == null && estimated == null) return '';
       
-      // FIX: If we are at the current station (isActiveStop), we should likely force using the totalDelay 
-      // if specific stop delay is missing, to ensure we show the real-time status and not just Scheduled.
-      // However, usually 'delay' passed here is stop.arrivalDelay. If that's null/0 but totalDelay is high, we have a problem.
-      
-      // If we have an explicit estimate properly parsed, utilize it.
-      // If estimated is null, we fallback to scheduled + delay.
-      
-      // The issue reported is: "At station I see scheduled time...".
-      // This implies estimated is null AND delay is 0.
-      
       final int effectiveDelay = (estimated == null && delay == 0 && isActiveStop && totalDelay != 0) 
           ? totalDelay 
           : delay;
@@ -1822,7 +2016,6 @@ class _TimelineRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 12),
-                  // Station name with cancelled badge if applicable
                   Row(children: [
                     Expanded(
                       child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
@@ -1877,7 +2070,6 @@ class _TimelineRow extends StatelessWidget {
             if (isCompleted) Container(color: theme.primaryColor),
             if (isTraversing) LayoutBuilder(builder: (c, ct) => Container(height: ct.maxHeight * progress, decoration: BoxDecoration(gradient: theme.progressGradient))),
           ])),
-          // Circle for the stop: highlight in red when cancelled
           Positioned(top: 17, child: Container(
             width: 10,
             height: 10,
@@ -1910,7 +2102,6 @@ class _TrainIcon extends StatelessWidget {
   }
 }
 
-// Helper widget for offline sync button
 Widget _buildOfflineSyncButton({
   required BuildContext context,
   required ThemeProvider theme,

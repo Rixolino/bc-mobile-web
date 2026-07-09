@@ -94,6 +94,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Map<String, dynamic>? _routingData;
   TimeOfDay _selectedRoutingTime = TimeOfDay.now();
 
+  // Cache per i trip_id già cercati
+  final Map<String, Map<String, dynamic>> _tripCache = {};
+
   @override
   void initState() {
     super.initState();
@@ -115,14 +118,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     super.dispose();
   }
 
-  // ---- Helper per setState sicuro ----
   void _safeSetState(VoidCallback fn) {
     if (mounted) {
       setState(fn);
     }
   }
 
-  // ---- Connectivity ----
   void _startConnectivityMonitor() {
     _connectivityTimer?.cancel();
     _connectivityTimer = Timer.periodic(const Duration(seconds: 5), (_) => _checkConnectivity());
@@ -156,7 +157,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
   }
 
-  // ---- Live Trains ----
   Future<List<dynamic>> _loadLiveTrains({bool silent = false}) async {
     if (_isOffline) return [];
     if (!mounted) return [];
@@ -199,7 +199,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     });
   }
 
-  // ---- Statistiche e monitoraggio ----
   Future<void> _checkStationStatus(String stationId) async {
     if (!mounted) return;
     _safeSetState(() => _checkingStatus = true);
@@ -283,7 +282,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
   }
 
-  // ---- Caricamento paesi ----
   Future<void> _loadCountries() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -381,7 +379,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     _saveCountryOrder();
   }
 
-  // ---- Ricerca stazioni multiple ----
   Future<void> _searchStationsMultipleCountries(
       String query, List<Map<String, String>> countries, TrainProvider provider) async {
     final codes = countries.map((c) => c['code']!).toList();
@@ -428,7 +425,176 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
   }
 
-  // ---- Ricerca treni storici ----
+  String? _getMostRecentTripId(Map<String, dynamic> trainData) {
+    // Prima controlla specificamente trip_id (PK)
+    final directTripId = trainData['trip_id']?.toString();
+    if (directTripId != null && directTripId.isNotEmpty) {
+      final trainNumber = trainData['trainNumber']?.toString() ?? 
+                          trainData['number']?.toString() ?? 
+                          trainData['tripNumber']?.toString() ?? '';
+      final isNumeric = int.tryParse(directTripId) != null;
+      if (!(isNumeric && trainNumber.isNotEmpty && directTripId == trainNumber)) {
+        return directTripId;
+      }
+    }
+
+    // Poi controlla tripId
+    final tripId = trainData['tripId']?.toString();
+    if (tripId != null && tripId.isNotEmpty) {
+      final trainNumber = trainData['trainNumber']?.toString() ?? 
+                          trainData['number']?.toString() ?? '';
+      final isNumeric = int.tryParse(tripId) != null;
+      if (!(isNumeric && trainNumber.isNotEmpty && tripId == trainNumber)) {
+        return tripId;
+      }
+    }
+
+    // Poi controlla selectedTripId ma solo se non è numerico o è diverso dal trainNumber
+    final selectedTripId = trainData['selectedTripId']?.toString();
+    if (selectedTripId != null && selectedTripId.isNotEmpty) {
+      final trainNumber = trainData['trainNumber']?.toString() ?? 
+                          trainData['number']?.toString() ?? '';
+      final isNumeric = int.tryParse(selectedTripId) != null;
+      if (!(isNumeric && trainNumber.isNotEmpty && selectedTripId == trainNumber)) {
+        return selectedTripId;
+      }
+    }
+
+    // Poi controlla i runs
+    final runs = trainData['runs'] ?? trainData['trips'] ?? trainData['history'] ?? trainData['runsList'];
+    if (runs is List && runs.isNotEmpty) {
+      Map<String, dynamic>? mostRecentRun;
+      DateTime? mostRecentDate;
+
+      for (final run in runs) {
+        if (run is Map<String, dynamic>) {
+          final runTripId = run['trip_id']?.toString() ?? 
+                            run['tripId']?.toString() ?? 
+                            run['id']?.toString();
+          if (runTripId != null && runTripId.isNotEmpty) {
+            final dateVal = run['last_updated'] ?? 
+                           run['lastRun'] ?? 
+                           run['date'] ?? 
+                           run['departureTime'] ?? 
+                           run['time'] ?? 
+                           run['timestamp'] ?? 
+                           run['updatedAt'];
+            DateTime? parsedDate;
+            if (dateVal != null) {
+              parsedDate = DateTime.tryParse(dateVal.toString());
+              if (parsedDate == null) {
+                final epoch = int.tryParse(dateVal.toString());
+                if (epoch != null) {
+                  parsedDate = DateTime.fromMillisecondsSinceEpoch(epoch < 1e11 ? epoch * 1000 : epoch);
+                }
+              }
+            }
+
+            if (mostRecentDate == null || (parsedDate != null && parsedDate.isAfter(mostRecentDate))) {
+              mostRecentDate = parsedDate;
+              mostRecentRun = run;
+            }
+          }
+        }
+      }
+
+      if (mostRecentRun != null) {
+        final id = mostRecentRun['trip_id']?.toString() ?? 
+                   mostRecentRun['tripId']?.toString() ?? 
+                   mostRecentRun['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          return id;
+        }
+      }
+    }
+
+    // Prova a cercare in altri campi
+    final otherIds = [
+      'latestTripId',
+      'lastTripId', 
+      'id',
+      'tripNumber',
+      'number'
+    ];
+    
+    for (final key in otherIds) {
+      final val = trainData[key]?.toString();
+      if (val != null && val.isNotEmpty) {
+        final trainNumber = trainData['trainNumber']?.toString() ?? 
+                            trainData['number']?.toString() ?? '';
+        final isNumeric = int.tryParse(val) != null;
+        if (!(isNumeric && trainNumber.isNotEmpty && val == trainNumber)) {
+          return val;
+        }
+      }
+    }
+
+    // Fallback: trainNumber
+    final trainNumber = trainData['trainNumber']?.toString() ?? 
+                        trainData['number']?.toString() ?? 
+                        trainData['tripNumber']?.toString() ?? '';
+    if (trainNumber.isNotEmpty) {
+      return trainNumber;
+    }
+
+    return null;
+  }
+
+  /// Recupera trip_id e delay dal database Turso
+  Future<Map<String, dynamic>?> _fetchTripDataFromDb(String category, String number) async {
+    // Genera chiave per la cache
+    final cacheKey = '$category|$number';
+    
+    // Controlla la cache
+    if (_tripCache.containsKey(cacheKey)) {
+      final cached = _tripCache[cacheKey];
+      return cached;
+    }
+
+    if (category.isEmpty || number.isEmpty) {
+      debugPrint('  - ❌ Categoria o numero vuoti');
+      return null;
+    }
+
+    try {
+      final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+      final client = await trainProvider.getDatabase();
+      
+      debugPrint('  - 📡 Query Turso: SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1');
+      
+      // Query per recuperare trip_id e delay
+      final result = await client.query(
+        'SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
+        positional: [category, number],
+      );
+
+      if (result.isNotEmpty) {
+        final row = result.first;
+        final tripId = row['trip_id']?.toString();
+        final delay = row['delay'] as int? ?? 0;
+        
+        if (tripId != null && tripId.isNotEmpty) {
+          final data = {
+            'trip_id': tripId,
+            'delay': delay,
+          };
+          
+          // Salva in cache
+          _tripCache[cacheKey] = data;
+          
+          debugPrint('  - ✅ Trovato: trip_id="$tripId", delay=$delay');
+          return data;
+        }
+      }
+      
+      debugPrint('  - 📭 Nessun risultato per "$category $number"');
+    } catch (e) {
+      debugPrint('  - ❌ Errore query Turso: $e');
+    }
+
+    return null;
+  }
+
   Future<void> _performTrainSearch(String query) async {
     if (query.length < 2) {
       _safeSetState(() {
@@ -448,7 +614,17 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         if (!mounted) return;
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          _safeSetState(() => _dbTrainResults = List<Map<String, dynamic>>.from(data['data']));
+          final rawList = List<Map<String, dynamic>>.from(data['data']);
+
+          final processedList = rawList.map((item) {
+            final mostRecentTripId = _getMostRecentTripId(item);
+            if (mostRecentTripId != null) {
+              item['selectedTripId'] = mostRecentTripId;
+            }
+            return item;
+          }).toList();
+
+          _safeSetState(() => _dbTrainResults = processedList);
         }
       } catch (e) {
         debugPrint('Errore ricerca storico: $e');
@@ -458,7 +634,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     });
   }
 
-  // ---- Routing Search ----
   Future<void> _performRoutingSearch() async {
     final origin = _originController.text.trim();
     final dest = _destinationController.text.trim();
@@ -560,11 +735,15 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
   }
 
-  // ---- Metodi per mostrare i dettagli ----
   void _showTrainDetails(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
-    if (dep.stops == null || dep.stops.isEmpty) {
+    if (index >= 0 && (dep.stops == null || dep.stops.isEmpty)) {
       Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(index);
     }
+
+    final effectiveCountry = (dep is TrainDeparture && dep.country != null && dep.country!.isNotEmpty)
+        ? dep.country!
+        : (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT');
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -576,7 +755,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         builder: (_, sc) => TrainDetailsSheet(
           departure: dep,
           isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
-          selectedCountry: _selectedCountry,
+          selectedCountry: effectiveCountry,
           scrollController: sc,
         ),
       ),
@@ -745,7 +924,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // ---- UI Build ----
   @override
   Widget build(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context);
@@ -866,11 +1044,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // ---- Build Solutions Content ----
   Widget _buildSolutionsContent(ThemeProvider theme) {
     return Column(
       children: [
-        // Form di ricerca
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Container(
@@ -881,7 +1057,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             ),
             child: Column(
               children: [
-                // Campo Origine
                 TextField(
                   controller: _originController,
                   style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
@@ -894,8 +1069,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ),
                 ),
                 Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
-                
-                // Campo Destinazione
                 TextField(
                   controller: _destinationController,
                   style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
@@ -908,8 +1081,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ),
                 ),
                 Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
-                
-                // Selettore Orario
                 InkWell(
                   onTap: () => _selectRoutingTime(context, theme),
                   child: Padding(
@@ -946,8 +1117,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                     ),
                   ),
                 ),
-                
-                // Pulsante Cerca
                 InkWell(
                   onTap: _performRoutingSearch,
                   child: Container(
@@ -978,10 +1147,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             ),
           ),
         ),
-        
-        // Risultati
         Expanded(
-          child: _isSearchingRouting              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
+          child: _isSearchingRouting
+              ? ShimmerLoading(baseColor: theme.secondaryTextColor)
               : _routingData == null
                   ? Center(
                       child: Padding(
@@ -1137,7 +1305,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // ---- Build Search Header ----
   Widget _buildSearchHeader(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
     final hasCities = _selectedCountry.isNotEmpty && _citiesByCountry.containsKey(_selectedCountry);
 
@@ -1445,7 +1612,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // ---- Train Search Content ----
   Widget _buildTrainSearchContent(ThemeProvider theme) {
     final query = _trainSearchController.text;
     final showLiveTrains = query.isEmpty && !_isSearchingDbTrain;
@@ -1545,22 +1711,24 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           final train = _cachedLiveTrains[i];
           final category = (train['category'] ?? '').toString().trim();
           final number = (train['trip_number'] ?? '').toString().trim();
+          final tripId = train['trip_id']?.toString() ?? train['tripId']?.toString();
           final delay = train['delay'] ?? 0;
-          final stops = train['stops'] as List? ?? [];
+          final stopsList = train['stops'] as List? ?? [];
           final operator = train['operator'] ?? 'N/A';
+          final country = (train['country'] ?? train['countryCode'] ?? train['provider'] ?? 'EU').toString();
 
           String origin = 'N/A';
-          if (stops.isNotEmpty && stops[0]['stationName'] != null) {
-            origin = stops[0]['stationName'].toString();
+          if (stopsList.isNotEmpty && stopsList[0]['stationName'] != null) {
+            origin = stopsList[0]['stationName'].toString();
           }
           String destination = 'N/A';
-          if (stops.isNotEmpty && stops[stops.length - 1]['stationName'] != null) {
-            destination = stops[stops.length - 1]['stationName'].toString();
+          if (stopsList.isNotEmpty && stopsList[stopsList.length - 1]['stationName'] != null) {
+            destination = stopsList[stopsList.length - 1]['stationName'].toString();
           }
 
           String departureTime = '--:--';
-          if (stops.isNotEmpty) {
-            final firstStop = stops[0];
+          if (stopsList.isNotEmpty) {
+            final firstStop = stopsList[0];
             String timeStr = firstStop['scheduledDeparture'] ??
                 firstStop['estimatedDeparture'] ??
                 firstStop['departureTime'] ??
@@ -1578,6 +1746,18 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
           final isDelayed = delay > 0;
 
+          final dep = TrainDeparture(
+            tripId: tripId,
+            trainNumber: number,
+            category: category,
+            origin: origin,
+            destination: destination,
+            delayMinutes: delay,
+            status: isDelayed ? 'DELAYED' : 'ON_TIME',
+            country: country,
+            stops: stopsList.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList(),
+          );
+
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
@@ -1590,17 +1770,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => train_stats.TrainStatsScreen(
-                        category: category,
-                        tripNumber: number,
-                      ),
-                    ),
-                  );
-                },
+                onTap: () => _showTrainDetails(context, dep, -1, theme),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -1660,7 +1830,22 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                           ],
                         ),
                       ),
-                      _buildLivePlatformBox(stops, theme),
+                      IconButton(
+                        icon: Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => train_stats.TrainStatsScreen(
+                                category: category,
+                                tripNumber: number,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      _buildLivePlatformBox(stopsList, theme),
                     ],
                   ),
                 ),
@@ -1820,6 +2005,28 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         final destination = (train['destination'] ?? 'N/A').toString();
         final origin = (train['origin'] ?? '').toString();
 
+        debugPrint('📋 [ARCHIVIATO] Treno #$i:');
+        debugPrint('  - category: $category');
+        debugPrint('  - trainNumber: $number');
+        debugPrint('  - origin: $origin');
+        debugPrint('  - destination: $destination');
+        debugPrint('  - train keys: ${train.keys.join(', ')}');
+        debugPrint('  - tripId dal dato: ${train['tripId'] ?? 'null'}');
+        debugPrint('  - trip_id dal dato: ${train['trip_id'] ?? 'null'}');
+        debugPrint('  - selectedTripId: ${train['selectedTripId'] ?? 'null'}');
+        debugPrint('  - id: ${train['id'] ?? 'null'}');
+        debugPrint('  - trainNumber dal dato: ${train['trainNumber'] ?? 'null'}');
+        debugPrint('  - number dal dato: ${train['number'] ?? 'null'}');
+        debugPrint('  - tripNumber dal dato: ${train['tripNumber'] ?? 'null'}');
+
+        final country = (train['country'] ??
+                train['countryCode'] ??
+                train['provider'] ??
+                (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT'))
+            .toString();
+
+        debugPrint('  - country: $country');
+
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
@@ -1830,16 +2037,89 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => train_stats.TrainStatsScreen(
-                    category: category,
-                    tripNumber: number,
+            onTap: () async {
+              debugPrint('🔄 [ARCHIVIATO] Tap sul treno #$i: $category $number');
+
+              // 1. Prima prova a ottenere il tripId dai dati
+              String? recentTripId = _getMostRecentTripId(train);
+              debugPrint('  - recentTripId dopo getMostRecentTripId: $recentTripId');
+
+              // 2. Se il tripId è vuoto o è solo il numero del treno, cerca nel DB
+              final isNumeric = recentTripId != null ? int.tryParse(recentTripId) != null : false;
+              final isTrainNumberOnly = isNumeric && recentTripId == number;
+              
+              if (recentTripId == null || recentTripId.isEmpty || isTrainNumberOnly) {
+                debugPrint('  - ⚠️ tripId non valido (${recentTripId ?? 'null'}), avvio fetch dal DB...');
+                showDialog(
+                  context: context,
+                  barrierColor: Colors.black12,
+                  barrierDismissible: false,
+                  builder: (ctx) => Center(
+                    child: CircularProgressIndicator(
+                      color: theme.primaryColor,
+                    ),
                   ),
-                ),
+                );
+                
+                // Recupera trip_id e delay dal database
+                final tripData = await _fetchTripDataFromDb(category, number);
+                
+                if (tripData != null) {
+                  recentTripId = tripData['trip_id'] as String?;
+                  final delayFromDb = tripData['delay'] as int? ?? 0;
+                  debugPrint('  - recentTripId dopo fetch dal DB: $recentTripId, delay: $delayFromDb');
+                  
+                  // Aggiorna il delay nei dati del treno
+                  train['delay'] = delayFromDb;
+                }
+                
+                if (mounted) Navigator.pop(context);
+              }
+
+              // 3. Se ancora non abbiamo un tripId, mostra errore
+              if (recentTripId == null || recentTripId.isEmpty) {
+                debugPrint('  - ❌ ERRORE: nessun identificativo disponibile!');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Impossibile identificare il treno'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+
+              // 4. Determiniamo il paese finale
+              final finalCountry = (train['country'] ??
+                      train['countryCode'] ??
+                      train['provider'] ??
+                      country)
+                  .toString();
+
+              // 5. Prendi il delay dal database o dai dati del treno
+              final int delayFromDb = train['delay'] as int? ?? 0;
+
+              debugPrint('  - finalCountry: $finalCountry');
+              debugPrint('  - delay: $delayFromDb');
+              debugPrint('  - 🚀 Creazione TrainDeparture con tripId: $recentTripId');
+
+              // 6. Creiamo l'istanza "scheletro" del treno con il delay
+              final dep = TrainDeparture(
+                tripId: recentTripId,
+                trainNumber: number,
+                category: category,
+                origin: origin,
+                destination: destination,
+                country: finalCountry,
+                delayMinutes: delayFromDb,
               );
+
+              debugPrint('  - ✅ TrainDeparture creato, apertura details sheet con index: -1');
+
+              if (mounted) {
+                _showTrainDetails(context, dep, -1, theme);
+              }
             },
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -1899,7 +2179,21 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                       ],
                     ),
                   ),
-                  Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
+                  IconButton(
+                    icon: Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
+                    onPressed: () {
+                      debugPrint('📊 [ARCHIVIATO] Apertura statistiche per $category $number');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => train_stats.TrainStatsScreen(
+                            category: category,
+                            tripNumber: number,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1909,7 +2203,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  // ---- Timetable Results ----
+
   Widget _buildTimetableResults(
       BuildContext context, TrainProvider provider, ThemeProvider theme, TrainStation station) {
     final List<String> availablePlatforms = provider.departures
@@ -2339,7 +2633,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 }
 
-// ---- _SmartTrainRouteText ----
 class _SmartTrainRouteText extends StatefulWidget {
   final dynamic departure;
   final int index;
@@ -2409,7 +2702,6 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
   }
 }
 
-// ---- _StationListTile ----
 class _StationListTile extends StatefulWidget {
   final TrainStation station;
   final TrainProvider provider;

@@ -1,14 +1,361 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/train_model.dart';
 import '../../data/repositories/train_repository.dart';
 import '../../../../core/services/offline_sync_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:libsql_dart/libsql_dart.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 
 class TrainProvider with ChangeNotifier {
   final TrainRepository _repository = TrainRepository();
   
+  // Turso database configuration
+  static const String _tursoUrl = 'libsql://betacloud-transporter-rixolino.aws-eu-west-1.turso.io';
+  static const String _tursoToken = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg2NTc3NDEsImlkIjoiMjI1ZTU0OTgtMmUxYS00ZWM3LTg0ZWUtMDlkMGRmM2YxOWMwIiwicmlkIjoiYWNkMDBiOGYtNTMxYS00MWMxLTk5YjQtYjg5ODc2YTJkMzVhIn0.nUl4jePNi0wZvxhdGvLlwk24EI9BL4jUvBoHKEMdGpatHD_bkn5V8PpcWvMujn4gwfNhmFmqNRH7JYjcjd9zBw';
+
+  LibsqlClient? _client;
+
+  // ============================================================
+  // METODI PER TURSO (DATABASE REMOTO)
+  // ============================================================
+
+  /// Ottiene la connessione al database Turso
+  Future<LibsqlClient> getDatabase() async {
+    if (_client != null) return _client!;
+
+    try {
+      debugPrint('📡 Connecting to Turso database...');
+      _client = LibsqlClient.remote(_tursoUrl, authToken: _tursoToken);
+      await _client!.connect();
+      await _initializeDatabase();
+      debugPrint('✅ Turso database connected successfully');
+      return _client!;
+    } catch (e) {
+      debugPrint('❌ Turso connection error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _initializeDatabase() async {
+    final client = await getDatabase();
+    await client.execute('''
+      CREATE TABLE IF NOT EXISTS train_trips (
+        trip_id TEXT PRIMARY KEY,
+        country TEXT,
+        category TEXT,
+        trip_number TEXT,
+        operator TEXT,
+        polyline TEXT,
+        stops TEXT,
+        last_updated TEXT,
+        delay INTEGER,
+        tripNumber TEXT
+      )
+    ''');
+    
+    await client.execute('''
+      CREATE INDEX IF NOT EXISTS idx_train_trips_category ON train_trips(category)
+    ''');
+    
+    await client.execute('''
+      CREATE INDEX IF NOT EXISTS idx_train_trips_trip_number ON train_trips(trip_number)
+    ''');
+    
+    await client.execute('''
+      CREATE INDEX IF NOT EXISTS idx_train_trips_last_updated ON train_trips(last_updated DESC)
+    ''');
+    
+    debugPrint('✅ Train trips table created/verified in Turso');
+  }
+
+  Future<void> _closeDatabase() async {
+    try {
+      if (_client != null) {
+        _client = null;
+        debugPrint('📁 Turso database reference released');
+      }
+    } catch (e) {
+      debugPrint('❌ Error releasing Turso database: $e');
+    }
+  }
+
+  /// Recupera il trip_id più recente dal database Turso per categoria e numero treno
+  Future<String?> getMostRecentTripId(String category, String number) async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT trip_id, last_updated, country FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
+        positional: [category, number],
+      );
+
+      if (result.isNotEmpty) {
+        final first = result.first;
+        final tripId = first['trip_id']?.toString();
+        final lastUpdated = first['last_updated']?.toString() ?? 'N/A';
+        final country = first['country']?.toString();
+        
+        debugPrint('✅ [Turso] Trovato trip_id: "$tripId" (last_updated: $lastUpdated)');
+        
+        if (country != null && country.isNotEmpty) {
+          debugPrint('🌍 [Turso] Country: $country');
+        }
+        
+        return tripId;
+      } else {
+        debugPrint('📭 [Turso] Nessun risultato per categoria "$category" e numero "$number"');
+      }
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in getMostRecentTripId: $e');
+    }
+    
+    return null;
+  }
+
+  /// Salva un trip nel database Turso
+  Future<void> saveTrip(Map<String, dynamic> tripData) async {
+    try {
+      final client = await getDatabase();
+      
+      final tripId = tripData['trip_id']?.toString();
+      if (tripId == null || tripId.isEmpty) {
+        debugPrint('⚠️ [Turso] trip_id mancante, impossibile salvare');
+        return;
+      }
+      
+      final checkResult = await client.query(
+        'SELECT trip_id FROM train_trips WHERE trip_id = ?',
+        positional: [tripId],
+      );
+      
+      if (checkResult.isNotEmpty) {
+        await client.execute(
+          '''UPDATE train_trips 
+             SET country = ?, category = ?, trip_number = ?, operator = ?, 
+                 polyline = ?, stops = ?, last_updated = ?, delay = ?, tripNumber = ?
+             WHERE trip_id = ?''',
+          positional: [
+            tripData['country']?.toString() ?? '',
+            tripData['category']?.toString() ?? '',
+            tripData['trip_number']?.toString() ?? '',
+            tripData['operator']?.toString() ?? '',
+            tripData['polyline']?.toString() ?? '',
+            tripData['stops']?.toString() ?? '',
+            tripData['last_updated']?.toString() ?? DateTime.now().toIso8601String(),
+            tripData['delay'] ?? 0,
+            tripData['tripNumber']?.toString() ?? '',
+            tripId,
+          ],
+        );
+        debugPrint('✅ [Turso] Aggiornato trip: $tripId');
+      } else {
+        await client.execute(
+          '''INSERT INTO train_trips (
+            trip_id, country, category, trip_number, operator, 
+            polyline, stops, last_updated, delay, tripNumber
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          positional: [
+            tripId,
+            tripData['country']?.toString() ?? '',
+            tripData['category']?.toString() ?? '',
+            tripData['trip_number']?.toString() ?? '',
+            tripData['operator']?.toString() ?? '',
+            tripData['polyline']?.toString() ?? '',
+            tripData['stops']?.toString() ?? '',
+            tripData['last_updated']?.toString() ?? DateTime.now().toIso8601String(),
+            tripData['delay'] ?? 0,
+            tripData['tripNumber']?.toString() ?? '',
+          ],
+        );
+        debugPrint('✅ [Turso] Inserito nuovo trip: $tripId');
+      }
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore salvando trip: $e');
+    }
+  }
+
+  /// Recupera un trip completo per categoria e numero
+  Future<Map<String, dynamic>?> getTripByCategoryAndNumber(String category, String number) async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT * FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
+        positional: [category, number],
+      );
+      
+      if (result.isNotEmpty) {
+        final row = result.first;
+        return {
+          'trip_id': row['trip_id'],
+          'country': row['country'],
+          'category': row['category'],
+          'trip_number': row['trip_number'],
+          'operator': row['operator'],
+          'polyline': row['polyline'],
+          'stops': row['stops'],
+          'last_updated': row['last_updated'],
+          'delay': row['delay'],
+          'tripNumber': row['tripNumber'],
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in getTripByCategoryAndNumber: $e');
+    }
+    
+    return null;
+  }
+
+  /// Recupera un trip per trip_id
+  Future<Map<String, dynamic>?> getTripById(String tripId) async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT * FROM train_trips WHERE trip_id = ?',
+        positional: [tripId],
+      );
+      
+      if (result.isNotEmpty) {
+        final row = result.first;
+        return {
+          'trip_id': row['trip_id'],
+          'country': row['country'],
+          'category': row['category'],
+          'trip_number': row['trip_number'],
+          'operator': row['operator'],
+          'polyline': row['polyline'],
+          'stops': row['stops'],
+          'last_updated': row['last_updated'],
+          'delay': row['delay'],
+          'tripNumber': row['tripNumber'],
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in getTripById: $e');
+    }
+    
+    return null;
+  }
+
+  /// Cerca trip per numero treno
+  Future<List<Map<String, dynamic>>> searchTripsByNumber(String query) async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT * FROM train_trips WHERE trip_number LIKE ? OR tripNumber LIKE ? ORDER BY last_updated DESC LIMIT 20',
+        positional: ['%$query%', '%$query%'],
+      );
+      
+      final List<Map<String, dynamic>> results = [];
+      
+      for (final row in result) {
+        results.add({
+          'trip_id': row['trip_id'],
+          'country': row['country'],
+          'category': row['category'],
+          'trip_number': row['trip_number'],
+          'operator': row['operator'],
+          'polyline': row['polyline'],
+          'stops': row['stops'],
+          'last_updated': row['last_updated'],
+          'delay': row['delay'],
+          'tripNumber': row['tripNumber'],
+        });
+      }
+      
+      return results;
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in searchTripsByNumber: $e');
+    }
+    
+    return [];
+  }
+
+  /// Salva gli stops di un trip
+  Future<void> saveTripStops(String tripId, List<Map<String, dynamic>> stops) async {
+    try {
+      final client = await getDatabase();
+      
+      await client.execute(
+        'UPDATE train_trips SET stops = ? WHERE trip_id = ?',
+        positional: [
+          jsonEncode(stops),
+          tripId,
+        ],
+      );
+      
+      debugPrint('✅ [Turso] Salvate stops per trip: $tripId');
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore salvando stops: $e');
+    }
+  }
+
+  /// Recupera gli stops di un trip
+  Future<List<Map<String, dynamic>>?> getTripStops(String tripId) async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT stops FROM train_trips WHERE trip_id = ?',
+        positional: [tripId],
+      );
+      
+      if (result.isNotEmpty) {
+        final stopsJson = result.first['stops']?.toString();
+        if (stopsJson != null && stopsJson.isNotEmpty) {
+          final decoded = jsonDecode(stopsJson);
+          if (decoded is List) {
+            return List<Map<String, dynamic>>.from(decoded);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in getTripStops: $e');
+    }
+    
+    return null;
+  }
+
+  /// Ottiene tutti i trip (per debug)
+  Future<List<Map<String, dynamic>>> getAllTrips() async {
+    try {
+      final client = await getDatabase();
+      
+      final result = await client.query(
+        'SELECT * FROM train_trips ORDER BY last_updated DESC LIMIT 100',
+      );
+      
+      final List<Map<String, dynamic>> results = [];
+      
+      for (final row in result) {
+        results.add({
+          'trip_id': row['trip_id'],
+          'country': row['country'],
+          'category': row['category'],
+          'trip_number': row['trip_number'],
+          'operator': row['operator'],
+          'last_updated': row['last_updated'],
+          'delay': row['delay'],
+          'tripNumber': row['tripNumber'],
+        });
+      }
+      
+      return results;
+    } catch (e) {
+      debugPrint('❌ [Turso] Errore in getAllTrips: $e');
+    }
+    
+    return [];
+  }
+
+  // ============================================================
+  // METODI ESISTENTI
+  // ============================================================
+
   Timer? _refreshTimer;
   int _autoRefreshSeconds = 0;
   bool _offlineSyncEnabled = false;
@@ -16,7 +363,7 @@ class TrainProvider with ChangeNotifier {
   int _fetchRequestId = 0;
 
   // New States for Service and Mode
-  String _selectedService = 'trainboardeu'; // 'direct' or 'trainboardeu'
+  String _selectedService = 'trainboardeu';
   bool _isArrivalMode = false;
   
   String get selectedService => _selectedService;
@@ -28,6 +375,13 @@ class TrainProvider with ChangeNotifier {
   bool _isLoadingLogos = false;
   Map<String, String> get trainLogos => _trainLogos;
 
+  @override
+  void dispose() {
+    _stopTimer();
+    _closeDatabase();
+    super.dispose();
+  }
+
   Future<void> loadTrainLogos() async {
     if (_hasLoadedLogos || _isLoadingLogos) return;
     _isLoadingLogos = true;
@@ -35,23 +389,17 @@ class TrainProvider with ChangeNotifier {
       final logos = await _repository.fetchTrainLogos();
       if (logos.isNotEmpty) {
         _trainLogos = logos;
-        _hasLoadedLogos = true; // Segna come caricato SOLO se ha davvero scaricato i loghi
+        _hasLoadedLogos = true;
         notifyListeners();
       } else {
-        _hasLoadedLogos = false; // Permetti di riprovare al prossimo refresh
+        _hasLoadedLogos = false;
       }
     } catch (e) {
-      _hasLoadedLogos = false; // Permetti di riprovare in caso di errore di rete
-      print("Error loading train logos: $e");
+      _hasLoadedLogos = false;
+      debugPrint("Error loading train logos: $e");
     } finally {
       _isLoadingLogos = false;
     }
-  }
-
-  @override
-  void dispose() {
-    _stopTimer();
-    super.dispose();
   }
 
   void updateAutoRefresh(int seconds, {bool offlineSyncEnabled = false}) {
@@ -102,7 +450,7 @@ class TrainProvider with ChangeNotifier {
   void setService(String service) {
     if (_selectedService == service) return;
     _selectedService = service;
-    _selectedStation = null; // Clear selection because IDs differ between services
+    _selectedStation = null;
     _departures = [];
     notifyListeners();
   }
@@ -147,7 +495,7 @@ class TrainProvider with ChangeNotifier {
     try {
       _searchResults = await _repository.searchTrainByNumber(query);
     } catch (e) {
-      print("Provider Error: $e");
+      debugPrint("Provider Error: $e");
       _searchResults = [];
     } finally {
       _isSearchingByNumber = false;
@@ -157,7 +505,7 @@ class TrainProvider with ChangeNotifier {
 
   void selectStation(TrainStation station) {
     _selectedStation = station;
-    _stationSuggestions = []; // Clear suggestions
+    _stationSuggestions = [];
     notifyListeners();
     fetchDepartures(station.id, country: station.country);
   }
@@ -173,7 +521,6 @@ class TrainProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Helper to fetch with offline sync (called from UI with settings context)
   Future<void> fetchDeparturesWithOfflineSync(bool offlineSyncEnabled) async {
     _offlineSyncEnabled = offlineSyncEnabled;
     if (_selectedStation != null) {
@@ -215,7 +562,7 @@ class TrainProvider with ChangeNotifier {
         service: _selectedService
       );
     } catch (e) {
-      print("Provider Error: $e");
+      debugPrint("Provider Error: $e");
       _stationSuggestions = [];
     } finally {
       _isLoadingSuggestions = false;
@@ -255,12 +602,9 @@ class TrainProvider with ChangeNotifier {
       _isUsingOfflineCache = false;
       setOnlineAutoRefreshBlocked(false);
 
-      // Preserva le fermate (stops) se già caricate
       if (_departures.isNotEmpty && newDepartures.isNotEmpty) {
         for (int i = 0; i < newDepartures.length; i++) {
           final newDep = newDepartures[i];
-          
-          // Cerca lo stesso treno nella vecchia lista
           final oldDep = _departures.firstWhere(
             (d) => (d.tripId != null && d.tripId == newDep.tripId) || 
                    (d.trainNumber == newDep.trainNumber && d.destination == newDep.destination),
@@ -275,7 +619,6 @@ class TrainProvider with ChangeNotifier {
 
       _departures = newDepartures;
 
-      // Save to offline cache if enabled, after preserving already loaded details.
       if (shouldUseOfflineSync && _departures.isNotEmpty) {
         try {
           await OfflineSyncService.saveTransportData(
@@ -295,9 +638,8 @@ class TrainProvider with ChangeNotifier {
         }
       }
     } catch (e) {
-       print("Provider Error: $e");
+       debugPrint("Provider Error: $e");
        
-       // Try to load from cache if offline fetch failed and sync is enabled
        if (shouldUseOfflineSync) {
          try {
            final cachedData = await OfflineSyncService.getTransportData(
@@ -314,7 +656,7 @@ class TrainProvider with ChangeNotifier {
                setOnlineAutoRefreshBlocked(true);
                debugPrint('[TrainProvider] Loaded offline data for train station $stationId');
             } else if (cachedData != null && cachedData is List) {
-             _departures = (cachedData as List)
+             _departures = cachedData
                  .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
                  .toList();
               _isUsingOfflineCache = true;
@@ -365,7 +707,6 @@ class TrainProvider with ChangeNotifier {
         debugPrint('[TrainProvider] Switched immediately to offline cache for train station $stationId');
         notifyListeners();
       } else if (cachedData != null && cachedData is List) {
-        // Backward compatibility
         _departures = cachedData
             .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
             .toList();
@@ -383,13 +724,11 @@ class TrainProvider with ChangeNotifier {
     if (index < 0 || index >= _departures.length) return;
     
     final dep = _departures[index];
-    // If stops are loaded and there is no error, return, unless forced.
     if (!forceRefresh && (dep.stops != null && dep.stops!.isNotEmpty) && dep.error == null) return; 
 
-    // Clear error state before fetching
     if (dep.error != null) {
        _departures[index] = dep.copyWith(clearError: true);
-       notifyListeners(); // Update UI to show loading again
+       notifyListeners();
     }
 
     try {
@@ -410,16 +749,14 @@ class TrainProvider with ChangeNotifier {
       }
 
       if (details != null && details.stops != null) {
-        // Automatically determine Origin if missing (from first stop)
         String? newOrigin = details.origin;
         if ((newOrigin == null || newOrigin.isEmpty) && details.stops!.isNotEmpty) {
            newOrigin = details.stops!.first.stationName;
         }
 
-        // Preserve previous fields but include fetched stops, country and metadata to allow downstream features to use correct country
         _departures[index] = _departures[index].copyWith(
           stops: details.stops,
-          origin: newOrigin, // Update origin from details
+          origin: newOrigin,
           country: details.country,
           metadata: details.metadata,
           clearError: true,
@@ -430,7 +767,7 @@ class TrainProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print("Provider Error: $e");
+      debugPrint("Provider Error: $e");
       String friendlyError = "Impossibile caricare i dettagli.";
       final s = e.toString();
       if (s.contains("500")) {
