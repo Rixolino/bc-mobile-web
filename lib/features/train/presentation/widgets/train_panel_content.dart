@@ -15,6 +15,7 @@ import '../../../auth/providers/auth_provider.dart';
 import 'shimmer_and_toggle.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'routing_details_screen.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
@@ -23,6 +24,7 @@ import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import 'railway_station_stats_screen.dart' as station_stats;
 import 'train_stats_screen.dart' as train_stats;
+import 'package:intl/intl.dart';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -96,6 +98,184 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
+
+  // ==================== FUNZIONI HELPER PER FUSO ORARIO E DURATA ====================
+
+  static const Map<String, String> _timezoneMap = {
+    'IT': 'Europe/Rome',
+    'AT': 'Europe/Vienna',
+    'CH': 'Europe/Zurich',
+    'DE': 'Europe/Berlin',
+    'FR': 'Europe/Paris',
+    'ES': 'Europe/Madrid',
+    'GB': 'Europe/London',
+    'GR': 'Europe/Athens',
+    'NL': 'Europe/Amsterdam',
+    'BE': 'Europe/Brussels',
+    'DK': 'Europe/Copenhagen',
+    'NO': 'Europe/Oslo',
+    'SE': 'Europe/Stockholm',
+    'FI': 'Europe/Helsinki',
+    'PL': 'Europe/Warsaw',
+    'CZ': 'Europe/Prague',
+    'HU': 'Europe/Budapest',
+    'RO': 'Europe/Bucharest',
+    'SI': 'Europe/Ljubljana',
+    'LU': 'Europe/Luxembourg',
+    'IE': 'Europe/Dublin',
+    'EE': 'Europe/Tallinn',
+    'LV': 'Europe/Riga',
+    'LT': 'Europe/Vilnius',
+    'SK': 'Europe/Bratislava',
+    'HR': 'Europe/Zagreb',
+    'RS': 'Europe/Belgrade',
+    'BA': 'Europe/Sarajevo',
+    'MK': 'Europe/Skopje',
+    'AL': 'Europe/Tirane',
+    'ME': 'Europe/Podgorica',
+    'XK': 'Europe/Belgrade',
+    'MT': 'Europe/Malta',
+    'CY': 'Asia/Nicosia',
+    'FAL': 'Europe/Rome',
+    'EU': 'Europe/Rome',
+  };
+
+  String _getTimezoneForCountry(String countryCode) {
+    if (countryCode == null || countryCode.isEmpty) return 'Europe/Rome';
+    final upper = countryCode.toUpperCase();
+    return _timezoneMap[upper] ?? 'Europe/Rome';
+  }
+
+  String _formatTimeWithTimezone(String timeStr, String? dateStr, String countryCode) {
+    if (timeStr == null || timeStr.isEmpty || timeStr == '--:--') return '--:--';
+    
+    try {
+      String datePart = dateStr ?? DateTime.now().toIso8601String().split('T').first;
+      if (datePart.isEmpty) {
+        datePart = DateTime.now().toIso8601String().split('T').first;
+      }
+      
+      final fullDateStr = '$datePart $timeStr:00';
+      final format = DateFormat('yyyy-MM-dd HH:mm:ss');
+      
+      DateTime utcTime;
+      try {
+        utcTime = format.parse(fullDateStr, true);
+      } catch (e) {
+        final parts = timeStr.split(':');
+        if (parts.length >= 2) {
+          final hour = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+          final dateParts = datePart.split('-');
+          if (dateParts.length == 3) {
+            final year = int.tryParse(dateParts[0]) ?? DateTime.now().year;
+            final month = int.tryParse(dateParts[1]) ?? DateTime.now().month;
+            final day = int.tryParse(dateParts[2]) ?? DateTime.now().day;
+            utcTime = DateTime.utc(year, month, day, hour, minute);
+          } else {
+            utcTime = DateTime.utc(DateTime.now().year, DateTime.now().month, DateTime.now().day, hour, minute);
+          }
+        } else {
+          return timeStr;
+        }
+      }
+      
+      final targetTime = utcTime.toLocal();
+      return DateFormat('HH:mm').format(targetTime);
+    } catch (e) {
+      return timeStr;
+    }
+  }
+
+  int _calculateDurationMinutes(String departureTime, String arrivalTime, String? departureDate, String? arrivalDate, String countryCode) {
+    try {
+      final dep = _formatTimeWithTimezone(departureTime, departureDate, countryCode);
+      final arr = _formatTimeWithTimezone(arrivalTime, arrivalDate, countryCode);
+      
+      if (dep == '--:--' || arr == '--:--') return 0;
+      
+      final depParts = dep.split(':');
+      final arrParts = arr.split(':');
+      
+      if (depParts.length < 2 || arrParts.length < 2) return 0;
+      
+      int depHour = int.tryParse(depParts[0]) ?? 0;
+      int depMin = int.tryParse(depParts[1]) ?? 0;
+      int arrHour = int.tryParse(arrParts[0]) ?? 0;
+      int arrMin = int.tryParse(arrParts[1]) ?? 0;
+      
+      if (arrHour < depHour || (arrHour == depHour && arrMin < depMin)) {
+        arrHour += 24;
+      }
+      
+      int depTotalMin = depHour * 60 + depMin;
+      int arrTotalMin = arrHour * 60 + arrMin;
+      
+      return arrTotalMin - depTotalMin;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  String _formatDuration(int minutes) {
+    if (minutes <= 0) return '0m';
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    if (hours > 0 && mins > 0) return '${hours}h ${mins}m';
+    if (hours > 0) return '${hours}h';
+    return '${mins}m';
+  }
+
+  String _getCountryCodeForSolution(Map<String, dynamic> solution) {
+    final percorso = solution['percorso'] as List? ?? [];
+    if (percorso.isNotEmpty) {
+      final firstLeg = percorso.first;
+      final country = firstLeg['country'] ?? firstLeg['countryCode'] ?? firstLeg['provider'] ?? firstLeg['operator'];
+      if (country != null && country is String && country.isNotEmpty) {
+        if (country.length == 2) return country.toUpperCase();
+        final operatorMap = {
+          'Trenitalia': 'IT',
+          'Italo': 'IT',
+          'ÖBB': 'AT',
+          'DB': 'DE',
+          'SNCF': 'FR',
+          'Renfe': 'ES',
+          'SBB': 'CH',
+          'CFF': 'CH',
+          'NS': 'NL',
+          'SNCB': 'BE',
+          'NMBS': 'BE',
+          'DSB': 'DK',
+          'VR': 'FI',
+          'SJ': 'SE',
+          'PKP': 'PL',
+          'ČD': 'CZ',
+          'MAV': 'HU',
+          'CFR': 'RO',
+          'FS': 'IT',
+          'nationalExpress': 'DE',
+          'ICE': 'DE',
+          'IC': 'IT',
+          'EC': 'EU',
+          'RJ': 'AT',
+          'NJ': 'AT',
+          'WB': 'AT',
+          'EN': 'EU',
+          'TGV': 'FR',
+          'AVE': 'ES',
+          'Eurostar': 'GB',
+        };
+        for (final entry in operatorMap.entries) {
+          if (country.toLowerCase().contains(entry.key.toLowerCase())) {
+            return entry.value;
+          }
+        }
+      }
+    }
+    return 'IT';
+  }
+
+  // ==================== FUNZIONI ESISTENTI ====================
 
   @override
   void initState() {
@@ -426,7 +606,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   }
 
   String? _getMostRecentTripId(Map<String, dynamic> trainData) {
-    // Prima controlla specificamente trip_id (PK)
     final directTripId = trainData['trip_id']?.toString();
     if (directTripId != null && directTripId.isNotEmpty) {
       final trainNumber = trainData['trainNumber']?.toString() ?? 
@@ -438,7 +617,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       }
     }
 
-    // Poi controlla tripId
     final tripId = trainData['tripId']?.toString();
     if (tripId != null && tripId.isNotEmpty) {
       final trainNumber = trainData['trainNumber']?.toString() ?? 
@@ -449,7 +627,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       }
     }
 
-    // Poi controlla selectedTripId ma solo se non è numerico o è diverso dal trainNumber
     final selectedTripId = trainData['selectedTripId']?.toString();
     if (selectedTripId != null && selectedTripId.isNotEmpty) {
       final trainNumber = trainData['trainNumber']?.toString() ?? 
@@ -460,7 +637,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       }
     }
 
-    // Poi controlla i runs
     final runs = trainData['runs'] ?? trainData['trips'] ?? trainData['history'] ?? trainData['runsList'];
     if (runs is List && runs.isNotEmpty) {
       Map<String, dynamic>? mostRecentRun;
@@ -508,7 +684,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       }
     }
 
-    // Prova a cercare in altri campi
     final otherIds = [
       'latestTripId',
       'lastTripId', 
@@ -529,7 +704,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       }
     }
 
-    // Fallback: trainNumber
     final trainNumber = trainData['trainNumber']?.toString() ?? 
                         trainData['number']?.toString() ?? 
                         trainData['tripNumber']?.toString() ?? '';
@@ -540,12 +714,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     return null;
   }
 
-  /// Recupera trip_id e delay dal database Turso
   Future<Map<String, dynamic>?> _fetchTripDataFromDb(String category, String number) async {
-    // Genera chiave per la cache
     final cacheKey = '$category|$number';
     
-    // Controlla la cache
     if (_tripCache.containsKey(cacheKey)) {
       final cached = _tripCache[cacheKey];
       return cached;
@@ -562,7 +733,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       
       debugPrint('  - 📡 Query Turso: SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1');
       
-      // Query per recuperare trip_id e delay
       final result = await client.query(
         'SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
         positional: [category, number],
@@ -579,7 +749,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             'delay': delay,
           };
           
-          // Salva in cache
           _tripCache[cacheKey] = data;
           
           debugPrint('  - ✅ Trovato: trip_id="$tripId", delay=$delay');
@@ -652,9 +821,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/routing'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'origin': origin,
-          'destination': dest,
+          'from': origin,
+          'to': dest,
           'time': timeStr,
+          'date': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
         }),
       ).timeout(const Duration(seconds: 40));
 
@@ -663,10 +833,18 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         _safeSetState(() => _routingData = data);
+        
+        debugPrint('✅ Routing OK: ${data['totaleSoluzioni']} soluzioni trovate');
+        if (data['soluzioni'] != null) {
+          debugPrint('  - Prima soluzione: ${data['soluzioni'][0]['durataViaggioTotaleLeggibile']}');
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Errore: ${response.statusCode}"), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text("Errore: ${response.statusCode}"),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -674,7 +852,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       debugPrint('Errore ricerca soluzioni: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Errore: $e"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Errore: $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -1183,10 +1364,10 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withValues(alpha: 0.4)),
+              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withOpacity(0.4)),
               const SizedBox(height: 16),
               Text(
-                RuntimeLocalizations.t(context, 'routing_no_results'),
+                RuntimeLocalizations.t(context, 'routing_no_results') ?? 'Nessuna soluzione trovata',
                 style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
                 textAlign: TextAlign.center,
               ),
@@ -1196,109 +1377,228 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
       );
     }
 
-    final diretti = _routingData?['catalogo']?['diretti'] as List? ?? [];
-    final conCambio = _routingData?['catalogo']?['conCambio'] as List? ?? [];
-    final allSolutions = [...diretti, ...conCambio]
-      ..sort((a, b) => (a['durataMinuti'] as int).compareTo(b['durataMinuti'] as int));
+    final solutions = _routingData?['soluzioni'] as List? ?? [];
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100, top: 4),
-      itemCount: allSolutions.length,
+      itemCount: solutions.length,
       itemBuilder: (ctx, i) {
-        final sol = allSolutions[i];
-        final isDirect = sol['type'] == 'DIRETTO';
-        final numeroTratte = sol['numeroTratte'] as int? ?? 1;
-        final cambi = numeroTratte - 1;
-        
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.surfaceColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.08)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: (isDirect ? theme.successColor : Colors.orange).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
+        final sol = solutions[i];
+        final percorso = sol['percorso'] as List? ?? [];
+        final cambi = sol['cambi'] as int? ?? 0;
+        final firstLeg = percorso.isNotEmpty ? percorso.first : null;
+        final lastLeg = percorso.isNotEmpty ? percorso.last : null;
+        final isDirect = cambi == 0;
+
+        // CALCOLA LA DURATA TOTALE REALE
+        String durataLeggibile = '--:--';
+        if (firstLeg != null && lastLeg != null) {
+          final firstPartenza = firstLeg['partenza'] ?? '--:--';
+          final lastArrivo = lastLeg['arrivo'] ?? '--:--';
+          final firstData = firstLeg['dataPartenza'] ?? '';
+          final lastData = lastLeg['dataArrivo'] ?? '';
+          final countryCode = _getCountryCodeForSolution(sol);
+          
+          final durationMinutes = _calculateDurationMinutes(
+            firstPartenza,
+            lastArrivo,
+            firstData,
+            lastData,
+            countryCode
+          );
+          durataLeggibile = _formatDuration(durationMinutes);
+        }
+
+        final totalStops = percorso.fold<int>(
+          0,
+          (sum, leg) => sum + ((leg['stops'] as List?)?.length ?? 0),
+        );
+
+        // Formatta l'orario di arrivo con il fuso orario
+        String arrivoFormattato = sol['arrivoStimato'] ?? '--:--';
+        if (lastLeg != null) {
+          arrivoFormattato = _formatTimeWithTimezone(
+            lastLeg['arrivo'] ?? '--:--',
+            lastLeg['dataArrivo'],
+            _getCountryCodeForSolution(sol)
+          );
+        }
+
+        // Formatta l'orario di partenza con il fuso orario
+        String partenzaFormattata = '--:--';
+        String dataPartenzaFormattata = '';
+        if (firstLeg != null) {
+          partenzaFormattata = _formatTimeWithTimezone(
+            firstLeg['partenza'] ?? '--:--',
+            firstLeg['dataPartenza'],
+            _getCountryCodeForSolution(sol)
+          );
+          dataPartenzaFormattata = firstLeg['dataPartenza'] ?? '';
+        }
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RoutingDetailsScreen(
+                  routingData: _routingData!,
+                  selectedSolutionIndex: i,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Intestazione
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (isDirect ? theme.successColor : Colors.orange).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isDirect
+                                ? (RuntimeLocalizations.t(context, 'routing_direct') ?? 'Diretto')
+                                : (RuntimeLocalizations.t(context, 'routing_changes', params: {'count': cambi.toString()}) ?? '$cambi cambi'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isDirect ? theme.successColor : Colors.orange,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (firstLeg != null)
+                          _buildColorBadge(
+                            firstLeg['categoria'] ?? 'TRN',
+                            firstLeg['numeroTreno'] ?? '',
+                            theme,
+                          ),
+                      ],
                     ),
-                    child: Text(
-                      isDirect 
-                        ? RuntimeLocalizations.t(context, 'routing_direct') 
-                        : RuntimeLocalizations.t(context, 'routing_changes', params: {'count': cambi.toString()}),
+                    Text(
+                      durataLeggibile,
                       style: TextStyle(
-                        fontSize: 11, 
-                        fontWeight: FontWeight.bold, 
-                        color: isDirect ? theme.successColor : Colors.orange
+                        color: theme.secondaryTextColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  Text(
-                    RuntimeLocalizations.t(context, 'routing_duration', params: {'duration': sol['durataLeggibile'] ?? '--:--'}),
-                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    sol['orarioPartenza'] ?? '--:--',
-                    style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
-                  Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 20),
-                  Text(
-                    sol['orarioArrivo'] ?? '--:--',
-                    style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
-                ],
-              ),
-              if (isDirect) ...[
-                const SizedBox(height: 8),
-                _buildColorBadge(
-                  sol['category'] ?? 'TRN', 
-                  sol['tripNumber'] ?? sol['tripId'] ?? '', 
-                  theme
-                )
-              ] else if (sol['percorso'] != null) ...[
+                  ],
+                ),
                 const SizedBox(height: 12),
-                const Divider(height: 1),
-                ...((sol['percorso'] as List).map((leg) => Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      _buildColorBadge(
-                        leg['category'] ?? 'TRN', 
-                        leg['tripNumber'] ?? leg['tripId'] ?? '', 
-                        theme
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "${leg['da'] ?? ''} ➔ ${leg['a'] ?? ''}",
-                          style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
-                          overflow: TextOverflow.ellipsis,
+                // Orari
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          partenzaFormattata,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1,
+                          ),
+                        ),
+                        Text(
+                          dataPartenzaFormattata,
+                          style: TextStyle(
+                            color: theme.secondaryTextColor,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 20),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          arrivoFormattato,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1,
+                          ),
+                        ),
+                        Text(
+                          sol['dataArrivoStimata'] ?? '',
+                          style: TextStyle(
+                            color: theme.secondaryTextColor,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Info aggiuntive
+                Row(
+                  children: [
+                    if (totalStops > 0) ...[
+                      Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: theme.secondaryTextColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$totalStops fermate',
+                        style: TextStyle(
+                          color: theme.secondaryTextColor,
+                          fontSize: 11,
                         ),
                       ),
+                      const SizedBox(width: 12),
+                    ],
+                    if (percorso.length > 1) ...[
+                      Icon(Icons.train_rounded, size: 14, color: theme.secondaryTextColor),
+                      const SizedBox(width: 4),
                       Text(
-                        leg['orarioPartenza'] ?? '',
-                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 11, fontWeight: FontWeight.w500),
+                        '${percorso.length} treni',
+                        style: TextStyle(
+                          color: theme.secondaryTextColor,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
-                  ),
-                ))),
-              ]
-            ],
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Dettagli →',
+                        style: TextStyle(
+                          color: theme.primaryColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -2005,27 +2305,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         final destination = (train['destination'] ?? 'N/A').toString();
         final origin = (train['origin'] ?? '').toString();
 
-        debugPrint('📋 [ARCHIVIATO] Treno #$i:');
-        debugPrint('  - category: $category');
-        debugPrint('  - trainNumber: $number');
-        debugPrint('  - origin: $origin');
-        debugPrint('  - destination: $destination');
-        debugPrint('  - train keys: ${train.keys.join(', ')}');
-        debugPrint('  - tripId dal dato: ${train['tripId'] ?? 'null'}');
-        debugPrint('  - trip_id dal dato: ${train['trip_id'] ?? 'null'}');
-        debugPrint('  - selectedTripId: ${train['selectedTripId'] ?? 'null'}');
-        debugPrint('  - id: ${train['id'] ?? 'null'}');
-        debugPrint('  - trainNumber dal dato: ${train['trainNumber'] ?? 'null'}');
-        debugPrint('  - number dal dato: ${train['number'] ?? 'null'}');
-        debugPrint('  - tripNumber dal dato: ${train['tripNumber'] ?? 'null'}');
-
         final country = (train['country'] ??
                 train['countryCode'] ??
                 train['provider'] ??
                 (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT'))
             .toString();
-
-        debugPrint('  - country: $country');
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -2038,18 +2322,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
             onTap: () async {
-              debugPrint('🔄 [ARCHIVIATO] Tap sul treno #$i: $category $number');
-
-              // 1. Prima prova a ottenere il tripId dai dati
               String? recentTripId = _getMostRecentTripId(train);
-              debugPrint('  - recentTripId dopo getMostRecentTripId: $recentTripId');
 
-              // 2. Se il tripId è vuoto o è solo il numero del treno, cerca nel DB
               final isNumeric = recentTripId != null ? int.tryParse(recentTripId) != null : false;
               final isTrainNumberOnly = isNumeric && recentTripId == number;
               
               if (recentTripId == null || recentTripId.isEmpty || isTrainNumberOnly) {
-                debugPrint('  - ⚠️ tripId non valido (${recentTripId ?? 'null'}), avvio fetch dal DB...');
                 showDialog(
                   context: context,
                   barrierColor: Colors.black12,
@@ -2061,24 +2339,18 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ),
                 );
                 
-                // Recupera trip_id e delay dal database
                 final tripData = await _fetchTripDataFromDb(category, number);
                 
                 if (tripData != null) {
                   recentTripId = tripData['trip_id'] as String?;
                   final delayFromDb = tripData['delay'] as int? ?? 0;
-                  debugPrint('  - recentTripId dopo fetch dal DB: $recentTripId, delay: $delayFromDb');
-                  
-                  // Aggiorna il delay nei dati del treno
                   train['delay'] = delayFromDb;
                 }
                 
                 if (mounted) Navigator.pop(context);
               }
 
-              // 3. Se ancora non abbiamo un tripId, mostra errore
               if (recentTripId == null || recentTripId.isEmpty) {
-                debugPrint('  - ❌ ERRORE: nessun identificativo disponibile!');
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -2090,21 +2362,14 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 return;
               }
 
-              // 4. Determiniamo il paese finale
               final finalCountry = (train['country'] ??
                       train['countryCode'] ??
                       train['provider'] ??
                       country)
                   .toString();
 
-              // 5. Prendi il delay dal database o dai dati del treno
               final int delayFromDb = train['delay'] as int? ?? 0;
 
-              debugPrint('  - finalCountry: $finalCountry');
-              debugPrint('  - delay: $delayFromDb');
-              debugPrint('  - 🚀 Creazione TrainDeparture con tripId: $recentTripId');
-
-              // 6. Creiamo l'istanza "scheletro" del treno con il delay
               final dep = TrainDeparture(
                 tripId: recentTripId,
                 trainNumber: number,
@@ -2114,8 +2379,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 country: finalCountry,
                 delayMinutes: delayFromDb,
               );
-
-              debugPrint('  - ✅ TrainDeparture creato, apertura details sheet con index: -1');
 
               if (mounted) {
                 _showTrainDetails(context, dep, -1, theme);
@@ -2182,7 +2445,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   IconButton(
                     icon: Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
                     onPressed: () {
-                      debugPrint('📊 [ARCHIVIATO] Apertura statistiche per $category $number');
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -2674,7 +2936,7 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
         final textPainter = TextPainter(
           text: TextSpan(text: text, style: style),
           maxLines: 1,
-          textDirection: TextDirection.ltr,
+          textDirection: Directionality.of(context),  // <-- ltr minuscolo
         )..layout();
         if (textPainter.size.width > constraints.maxWidth) {
           return SizedBox(
