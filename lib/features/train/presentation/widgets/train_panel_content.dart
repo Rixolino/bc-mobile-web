@@ -95,6 +95,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   bool _isSearchingRouting = false;
   Map<String, dynamic>? _routingData;
   TimeOfDay _selectedRoutingTime = TimeOfDay.now();
+  DateTime _selectedRoutingDate = DateTime.now();
 
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
@@ -816,7 +817,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
     try {
       final timeStr = "${_selectedRoutingTime.hour.toString().padLeft(2, '0')}:${_selectedRoutingTime.minute.toString().padLeft(2, '0')}";
-      
+      final dateStr = "${_selectedRoutingDate.year}-${_selectedRoutingDate.month.toString().padLeft(2, '0')}-${_selectedRoutingDate.day.toString().padLeft(2, '0')}"; // <-- FORMATTAZIONE DATA
+
       final response = await http.post(
         Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/routing'),
         headers: {'Content-Type': 'application/json'},
@@ -824,7 +826,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           'from': origin,
           'to': dest,
           'time': timeStr,
-          'date': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
+          'date': dateStr,
         }),
       ).timeout(const Duration(seconds: 40));
 
@@ -941,6 +943,34 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         ),
       ),
     );
+  }
+
+  Future<void> _selectRoutingDate(BuildContext context, ThemeProvider theme) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedRoutingDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)), // Permette di cercare da ieri in poi
+      lastDate: DateTime.now().add(const Duration(days: 90)),      // Fino a 3 mesi nel futuro
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: theme.primaryColor,
+              onPrimary: Colors.white,
+              surface: theme.surfaceColor,
+              onSurface: theme.textColor,
+            ),
+            dialogBackgroundColor: theme.surfaceColor,
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedRoutingDate) {
+      _safeSetState(() {
+        _selectedRoutingDate = picked;
+      });
+    }
   }
 
   void _showSavedStationsSheet(TrainProvider provider, ThemeProvider theme) {
@@ -1262,40 +1292,87 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ),
                 ),
                 Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
-                InkWell(
-                  onTap: () => _selectRoutingTime(context, theme),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Row(
-                      children: [
-                        Icon(Icons.access_time_rounded, color: theme.primaryColor),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                RuntimeLocalizations.t(context, 'routing_time_label'),
-                                style: TextStyle(
-                                  color: theme.secondaryTextColor,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      // PULSANTE SELEZIONE DATA
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _selectRoutingDate(context, theme),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            child: Row(
+                              children: [
+                                Icon(Icons.calendar_today_rounded, color: theme.primaryColor),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        RuntimeLocalizations.t(context, 'routing_date_label') ?? 'Data',
+                                        style: TextStyle(
+                                          color: theme.secondaryTextColor,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        DateFormat('dd/MM/yyyy').format(_selectedRoutingDate),
+                                        style: TextStyle(
+                                          color: theme.textColor,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                _selectedRoutingTime.format(context),
-                                style: TextStyle(
-                                  color: theme.textColor,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                        Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
-                      ],
-                    ),
+                      ),
+                      VerticalDivider(width: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                      // PULSANTE SELEZIONE ORA
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _selectRoutingTime(context, theme),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            child: Row(
+                              children: [
+                                Icon(Icons.access_time_rounded, color: theme.primaryColor),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        RuntimeLocalizations.t(context, 'routing_time_label') ?? 'Ora',
+                                        style: TextStyle(
+                                          color: theme.secondaryTextColor,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        _selectedRoutingTime.format(context),
+                                        style: TextStyle(
+                                          color: theme.textColor,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 InkWell(
