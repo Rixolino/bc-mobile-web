@@ -5,6 +5,7 @@ import 'package:bc_transporter/presentation/providers/theme_provider.dart';
 import 'package:bc_transporter/presentation/providers/settings_provider.dart';
 import 'package:bc_transporter/core/services/runtime_localizations.dart';
 import 'package:intl/intl.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 
 class RoutingDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> routingData;
@@ -21,9 +22,11 @@ class RoutingDetailsScreen extends StatefulWidget {
 }
 
 class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late TabController _tabController;
   int _selectedSolutionIndex = 0;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   // Mappa dei fusi orari per paese
   static const Map<String, String> _timezoneMap = {
@@ -225,6 +228,28 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     return 'IT';
   }
 
+  // Funzione helper per estrarre le fermate in modo sicuro
+  List<String> _extractStops(dynamic stopsData) {
+    if (stopsData == null) return [];
+    
+    // Se è già una lista di stringhe (caso Eurail)
+    if (stopsData is List<String>) {
+      return stopsData;
+    }
+    
+    // Se è una lista di oggetti (caso RFI)
+    if (stopsData is List) {
+      return stopsData.map((s) {
+        if (s is Map<String, dynamic>) {
+          return s['station']?.toString() ?? s.toString();
+        }
+        return s.toString();
+      }).toList();
+    }
+    
+    return [];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -234,11 +259,21 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
       vsync: this,
       initialIndex: 0,
     );
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+    _animationController.forward();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -257,6 +292,10 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
           backgroundColor: theme.surfaceColor,
           foregroundColor: theme.textColor,
           elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.textColor),
+            onPressed: () => Navigator.pop(context),
+          ),
           title: Text(
             RuntimeLocalizations.t(context, 'routing_details') ?? 'Dettagli Percorso',
             style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
@@ -266,11 +305,27 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline_rounded, size: 64, color: theme.secondaryTextColor),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  size: 64,
+                  color: theme.primaryColor.withOpacity(0.5),
+                ),
+              ),
               const SizedBox(height: 16),
               Text(
                 'Nessuna soluzione disponibile',
-                style: TextStyle(color: theme.textColor, fontSize: 18),
+                style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Seleziona un\'altra soluzione e riprova',
+                style: TextStyle(color: theme.secondaryTextColor, fontSize: 14),
               ),
             ],
           ),
@@ -284,16 +339,20 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         backgroundColor: theme.surfaceColor,
         foregroundColor: theme.textColor,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.textColor),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               RuntimeLocalizations.t(context, 'routing_details') ?? 'Dettagli Percorso',
-              style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+              style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 16),
             ),
             Text(
               '${solutions.length} ${RuntimeLocalizations.t(context, 'routing_solutions') ?? 'soluzioni'}',
-              style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+              style: TextStyle(color: theme.secondaryTextColor, fontSize: 11),
             ),
           ],
         ),
@@ -304,8 +363,16 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                 setState(() {
                   _selectedSolutionIndex = index;
                   _tabController.animateTo(0);
+                  _animationController.reset();
+                  _animationController.forward();
                 });
               },
+              offset: const Offset(0, 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              color: theme.surfaceColor,
+              elevation: 4,
               itemBuilder: (context) {
                 return solutions.asMap().entries.map((entry) {
                   final idx = entry.key;
@@ -319,7 +386,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                   
                   return PopupMenuItem<int>(
                     value: idx,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
                         if (isSelected)
@@ -346,18 +413,24 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                   );
                 }).toList();
               },
-              child: TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: theme.primaryColor.withOpacity(0.1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.primaryColor.withOpacity(0.2),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
-                onPressed: null,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Icon(
+                      Icons.swap_horiz_rounded,
+                      color: theme.primaryColor,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
                     Text(
                       'Soluzione ${_selectedSolutionIndex + 1}',
                       style: TextStyle(
@@ -374,43 +447,60 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
             ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSolutionSummary(theme, currentSolution),
-          Container(
-            color: theme.surfaceColor,
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: theme.primaryColor,
-              labelColor: theme.primaryColor,
-              unselectedLabelColor: theme.secondaryTextColor,
-              tabs: const [
-                Tab(
-                  icon: Icon(Icons.route_rounded, size: 20),
-                  text: 'Panoramica',
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Column(
+          children: [
+            _buildSolutionSummary(theme, currentSolution),
+            Container(
+              color: theme.surfaceColor,
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: theme.primaryColor,
+                labelColor: theme.primaryColor,
+                unselectedLabelColor: theme.secondaryTextColor,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Tab(
-                  icon: Icon(Icons.train_rounded, size: 20),
-                  text: 'Tratte',
+                indicatorPadding: const EdgeInsets.symmetric(horizontal: 4),
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
-                Tab(
-                  icon: Icon(Icons.map_rounded, size: 20),
-                  text: 'Fermate',
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.normal,
+                  fontSize: 13,
                 ),
-              ],
+                tabs: const [
+                  Tab(
+                    icon: Icon(Icons.route_rounded, size: 18),
+                    text: 'Panoramica',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.train_rounded, size: 18),
+                    text: 'Tratte',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.map_rounded, size: 18),
+                    text: 'Fermate',
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildOverviewTab(theme, currentSolution),
-                _buildSegmentsTab(theme, settings, currentSolution),
-                _buildStopsTab(theme, currentSolution),
-              ],
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildOverviewTab(theme, currentSolution),
+                  _buildSegmentsTab(theme, settings, currentSolution),
+                  _buildStopsTab(theme, currentSolution),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -420,6 +510,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final durata = sol['durataViaggioTotaleLeggibile'] ?? '--:--';
     final arrivo = sol['arrivoStimato'] ?? '--:--';
     final dataArrivo = sol['dataArrivoStimata'] ?? '';
+    final prezzo = sol['prezzo'] ?? 0;
     final percorso = sol['percorso'] as List? ?? [];
     final firstLeg = percorso.isNotEmpty ? percorso.first : null;
     final lastLeg = percorso.isNotEmpty ? percorso.last : null;
@@ -440,15 +531,17 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
       countryCode
     );
 
+    final isDirect = cambi == 0;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -457,21 +550,34 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.1),
+              gradient: LinearGradient(
+                colors: isDirect 
+                    ? [Colors.green.shade400, Colors.green.shade700] 
+                    : [Colors.orange.shade400, Colors.orange.shade700],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: (isDirect ? Colors.green : Colors.orange).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               children: [
                 Text(
-                  cambi == 0 ? '🚄' : '🔄',
+                  isDirect ? '🚄' : '🔄',
                   style: const TextStyle(fontSize: 24),
                 ),
                 Text(
-                  cambi == 0
+                  isDirect
                       ? (RuntimeLocalizations.t(context, 'routing_direct') ?? 'Diretto')
                       : '$cambi ${RuntimeLocalizations.t(context, 'routing_changes') ?? 'cambi'}',
                   style: TextStyle(
-                    color: theme.primaryColor,
+                    color: Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -492,7 +598,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                         style: TextStyle(
                           color: theme.textColor,
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontSize: 15,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -504,47 +610,92 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                         style: TextStyle(
                           color: theme.textColor,
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontSize: 15,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.access_time_rounded, size: 14, color: theme.secondaryTextColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      durata,
-                      style: TextStyle(
-                        color: theme.secondaryTextColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.access_time_rounded, size: 12, color: theme.primaryColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            durata,
+                            style: TextStyle(
+                              color: theme.primaryColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Icon(Icons.flag_rounded, size: 14, color: theme.secondaryTextColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$formattedArrivo${dataArrivo.isNotEmpty ? ' ($dataArrivo)' : ''}',
-                      style: TextStyle(
-                        color: theme.secondaryTextColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: theme.successColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag_rounded, size: 12, color: theme.successColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            formattedArrivo,
+                            style: TextStyle(
+                              color: theme.successColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    if (prezzo > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.euro_rounded, size: 12, color: Colors.amber.shade700),
+                            const SizedBox(width: 4),
+                            Text(
+                              prezzo.toStringAsFixed(2),
+                              style: TextStyle(
+                                color: Colors.amber.shade700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-                // Mostra il fuso orario
                 Padding(
-                  padding: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     'Fuso orario: ${_getTimezoneForCountry(countryCode).split('/').last}',
                     style: TextStyle(
-                      color: theme.secondaryTextColor.withOpacity(0.6),
-                      fontSize: 10,
+                      color: theme.secondaryTextColor.withOpacity(0.5),
+                      fontSize: 9,
                     ),
                   ),
                 ),
@@ -561,11 +712,18 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final cambi = sol['cambi'] as int? ?? 0;
     final durataLeggibile = sol['durataViaggioTotaleLeggibile'] ?? '--:--';
     final countryCode = _getCountryCodeForSolution(sol);
+    final provider = widget.routingData['provider'] ?? 'eurail';
 
-    final totalStops = percorso.fold<int>(
-      0,
-      (sum, leg) => sum + ((leg['stops'] as List?)?.length ?? 0),
-    );
+    int totalStops = 0;
+    for (final leg in percorso) {
+      final stops = leg['stops'];
+      if (stops != null) {
+        if (stops is List) {
+          totalStops += stops.length;
+        }
+      }
+    }
+    
     final categories = percorso.map((leg) => leg['categoria'] as String).toSet().toList();
     final trains = percorso.map((leg) => '${leg['categoria']} ${leg['numeroTreno']}').toSet().toList();
 
@@ -583,28 +741,32 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                 label: 'Durata',
                 value: durataLeggibile,
                 theme: theme,
+                color: theme.primaryColor,
               ),
               _buildInfoChip(
                 icon: Icons.swap_horiz_rounded,
                 label: 'Cambi',
                 value: cambi == 0 ? 'Nessuno' : '$cambi',
                 theme: theme,
+                color: cambi == 0 ? Colors.green : Colors.orange,
               ),
               _buildInfoChip(
                 icon: Icons.location_on_rounded,
                 label: 'Fermate',
                 value: '$totalStops',
                 theme: theme,
+                color: Colors.blue,
               ),
               _buildInfoChip(
                 icon: Icons.train_rounded,
                 label: 'Treni',
                 value: '${percorso.length}',
                 theme: theme,
+                color: Colors.purple,
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           if (categories.isNotEmpty) ...[
             Text(
               RuntimeLocalizations.t(context, 'routing_trains_used') ?? 'Treni utilizzati',
@@ -614,7 +776,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -625,7 +787,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                 return _buildTrainBadge(cat, num, theme);
               }).toList(),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
           ],
           Text(
             RuntimeLocalizations.t(context, 'routing_summary') ?? 'Riepilogo percorso',
@@ -635,7 +797,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           ...percorso.asMap().entries.map((entry) {
             final idx = entry.key;
             final leg = entry.value;
@@ -659,109 +821,150 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
 
             return Column(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: theme.primaryColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${idx + 1}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (!isLast)
-                          Container(
-                            width: 2,
-                            height: 40,
-                            color: theme.secondaryTextColor.withOpacity(0.3),
-                          ),
-                      ],
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: theme.surfaceColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: theme.secondaryTextColor.withOpacity(0.06),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(
                         children: [
-                          Row(
-                            children: [
-                              _buildTrainBadge(legCat, legNum, theme),
-                              const SizedBox(width: 8),
-                              Text(
-                                '$legDa → $legA',
-                                style: TextStyle(
-                                  color: theme.textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [theme.primaryColor, theme.primaryColor.withOpacity(0.7)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(Icons.access_time_rounded, size: 14, color: theme.secondaryTextColor),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$legPartenza → $legArrivo',
-                                style: TextStyle(
-                                  color: theme.secondaryTextColor,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              if (legDurata.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: theme.primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    legDurata,
-                                    style: TextStyle(
-                                      color: theme.primaryColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          if (attesa > 0) ...[
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Icon(Icons.timer_rounded, size: 14, color: Colors.orange),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Attesa cambio: $attesa minuti',
-                                  style: TextStyle(
-                                    color: Colors.orange,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                              shape: BoxShape.circle,
                             ),
-                          ],
+                            child: Center(
+                              child: Text(
+                                '${idx + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (!isLast)
+                            Container(
+                              width: 2,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    theme.primaryColor.withOpacity(0.3),
+                                    Colors.transparent,
+                                  ],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _buildTrainBadge(legCat, legNum, theme),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '$legDa → $legA',
+                                    style: TextStyle(
+                                      color: theme.textColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(Icons.access_time_rounded, size: 14, color: theme.secondaryTextColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$legPartenza → $legArrivo',
+                                  style: TextStyle(
+                                    color: theme.secondaryTextColor,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (legDurata.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: theme.primaryColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      legDurata,
+                                      style: TextStyle(
+                                        color: theme.primaryColor,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (attesa > 0) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.timer_rounded, size: 12, color: Colors.orange),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Attesa cambio: $attesa minuti',
+                                      style: TextStyle(
+                                        color: Colors.orange,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 if (!isLast) const SizedBox(height: 8),
               ],
@@ -775,6 +978,15 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
   Widget _buildSegmentsTab(ThemeProvider theme, SettingsProvider settings, Map<String, dynamic> sol) {
     final percorso = sol['percorso'] as List? ?? [];
     final countryCode = _getCountryCodeForSolution(sol);
+
+    if (percorso.isEmpty) {
+      return Center(
+        child: Text(
+          'Nessuna tratta disponibile',
+          style: TextStyle(color: theme.secondaryTextColor),
+        ),
+      );
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -798,7 +1010,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         final legDataPartenza = leg['dataPartenza'] ?? '';
         final legDataArrivo = leg['dataArrivo'] ?? '';
         final legDurataText = leg['durataLeggibile'] ?? '';
-        final legStops = leg['stops'] as List? ?? [];
+        final legStops = _extractStops(leg['stops']);
         final attesa = leg['attesaCambioMinuti'] as int? ?? 0;
 
         return Container(
@@ -808,8 +1020,15 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
             color: theme.surfaceColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: theme.secondaryTextColor.withOpacity(0.1),
+              color: theme.secondaryTextColor.withOpacity(0.08),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,16 +1036,21 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
+                      gradient: LinearGradient(
+                        colors: [theme.primaryColor, theme.primaryColor.withOpacity(0.7)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '#${idx + 1}',
-                      style: TextStyle(
-                        color: theme.primaryColor,
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
+                        fontSize: 11,
                       ),
                     ),
                   ),
@@ -849,7 +1073,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            Icon(Icons.arrow_forward_rounded, size: 16, color: theme.primaryColor),
+                            Icon(Icons.arrow_forward_rounded, size: 14, color: theme.primaryColor),
                             Expanded(
                               child: Text(
                                 legA,
@@ -872,34 +1096,36 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Partenza',
-                        style: TextStyle(
-                          color: theme.secondaryTextColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        legPartenza,
-                        style: TextStyle(
-                          color: theme.textColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (legDataPartenza.isNotEmpty)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          legDataPartenza,
+                          'Partenza',
                           style: TextStyle(
                             color: theme.secondaryTextColor,
-                            fontSize: 11,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                    ],
+                        Text(
+                          legPartenza,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (legDataPartenza.isNotEmpty)
+                          Text(
+                            legDataPartenza,
+                            style: TextStyle(
+                              color: theme.secondaryTextColor,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   Column(
                     children: [
@@ -910,63 +1136,77 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                             color: theme.primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(
-                            legDurataText,
-                            style: TextStyle(
-                              color: theme.primaryColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.access_time_rounded, size: 12, color: theme.primaryColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                legDurataText,
+                                style: TextStyle(
+                                  color: theme.primaryColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       if (attesa > 0) ...[
                         const SizedBox(height: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            'Attesa $attesa min',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.timer_rounded, size: 12, color: Colors.orange),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Attesa $attesa min',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ],
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Arrivo',
-                        style: TextStyle(
-                          color: theme.secondaryTextColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        legArrivo,
-                        style: TextStyle(
-                          color: theme.textColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (legDataArrivo.isNotEmpty)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
                         Text(
-                          legDataArrivo,
+                          'Arrivo',
                           style: TextStyle(
                             color: theme.secondaryTextColor,
-                            fontSize: 11,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                    ],
+                        Text(
+                          legArrivo,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (legDataArrivo.isNotEmpty)
+                          Text(
+                            legDataArrivo,
+                            style: TextStyle(
+                              color: theme.secondaryTextColor,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1005,9 +1245,9 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                         runSpacing: 4,
                         children: legStops.map((stop) {
                           return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: theme.secondaryTextColor.withOpacity(0.05),
+                              color: theme.primaryColor.withOpacity(0.06),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -1032,266 +1272,323 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
   }
 
   Widget _buildStopsTab(ThemeProvider theme, Map<String, dynamic> sol) {
-  final percorso = sol['percorso'] as List? ?? [];
-  final countryCode = _getCountryCodeForSolution(sol);
+    final percorso = sol['percorso'] as List? ?? [];
+    final countryCode = _getCountryCodeForSolution(sol);
 
-  // Raccogli TUTTE le fermate in sequenza unendo i segmenti
-  final allStops = <Map<String, dynamic>>[];
-  
-  for (int legIndex = 0; legIndex < percorso.length; legIndex++) {
-    final leg = percorso[legIndex];
-    final stops = leg['stops'] as List? ?? [];
-    final legCat = leg['categoria'] ?? 'TRN';
-    final legNum = leg['numeroTreno'] ?? '';
-    final legPartenza = _formatTimeWithTimezone(
-      leg['partenza'] ?? '--:--',
-      leg['dataPartenza'],
-      countryCode
-    );
-    final legArrivo = _formatTimeWithTimezone(
-      leg['arrivo'] ?? '--:--',
-      leg['dataArrivo'],
-      countryCode
-    );
-    final isLastLeg = legIndex == percorso.length - 1;
+    final allStops = <Map<String, dynamic>>[];
+    
+    for (int legIndex = 0; legIndex < percorso.length; legIndex++) {
+      final leg = percorso[legIndex];
+      final stops = _extractStops(leg['stops']);
+      final legCat = leg['categoria'] ?? 'TRN';
+      final legNum = leg['numeroTreno'] ?? '';
+      final legPartenza = _formatTimeWithTimezone(
+        leg['partenza'] ?? '--:--',
+        leg['dataPartenza'],
+        countryCode
+      );
+      final legArrivo = _formatTimeWithTimezone(
+        leg['arrivo'] ?? '--:--',
+        leg['dataArrivo'],
+        countryCode
+      );
+      final isLastLeg = legIndex == percorso.length - 1;
 
-    for (int i = 0; i < stops.length; i++) {
-      final stop = stops[i];
-      final isFirstInSegment = i == 0;
-      final isLastInSegment = i == stops.length - 1;
-      
-      if (isFirstInSegment && legIndex > 0) {
-        final lastStopInPrevious = allStops.isNotEmpty ? allStops.last['name'] : null;
-        if (lastStopInPrevious == stop) {
-          continue;
+      for (int i = 0; i < stops.length; i++) {
+        final stop = stops[i];
+        final isFirstInSegment = i == 0;
+        final isLastInSegment = i == stops.length - 1;
+        
+        // Evita duplicati quando c'è un cambio
+        if (isFirstInSegment && legIndex > 0) {
+          final lastStopInPrevious = allStops.isNotEmpty ? allStops.last['name'] : null;
+          if (lastStopInPrevious == stop) {
+            continue;
+          }
         }
+
+        final isFirstOverall = isFirstInSegment && legIndex == 0;
+        final isLastOverall = isLastInSegment && isLastLeg;
+        final isChangePoint = isFirstInSegment && legIndex > 0;
+
+        allStops.add({
+          'name': stop,
+          'legIndex': legIndex,
+          'isFirst': isFirstOverall,
+          'isLast': isLastOverall,
+          'isChangePoint': isChangePoint,
+          'legCat': legCat,
+          'legNum': legNum,
+          'time': isFirstInSegment ? legPartenza : (isLastInSegment ? legArrivo : '--:--'),
+          'isLastInSegment': isLastInSegment,
+          'isFirstInSegment': isFirstInSegment,
+        });
       }
-
-      final isFirstOverall = isFirstInSegment && legIndex == 0;
-      final isLastOverall = isLastInSegment && isLastLeg;
-      final isChangePoint = isFirstInSegment && legIndex > 0;
-
-      allStops.add({
-        'name': stop,
-        'legIndex': legIndex,
-        'isFirst': isFirstOverall,
-        'isLast': isLastOverall,
-        'isChangePoint': isChangePoint,
-        'legCat': legCat,
-        'legNum': legNum,
-        'time': isFirstInSegment ? legPartenza : (isLastInSegment ? legArrivo : '--:--'),
-        'isLastInSegment': isLastInSegment,
-        'isFirstInSegment': isFirstInSegment,
-      });
     }
-  }
 
-  return ListView.builder(
-    padding: const EdgeInsets.all(16),
-    itemCount: allStops.length,
-    itemBuilder: (ctx, idx) {
-      final stop = allStops[idx];
-      final isFirst = stop['isFirst'] as bool? ?? false;
-      final isLast = stop['isLast'] as bool? ?? false;
-      final isChangePoint = stop['isChangePoint'] as bool? ?? false;
-      final isLastInSegment = stop['isLastInSegment'] as bool? ?? false;
-      final name = stop['name'] as String? ?? '--';
-      final time = stop['time'] as String? ?? '--:--';
-      final legCat = stop['legCat'] as String? ?? 'TRN';
-      final legNum = stop['legNum'] as String? ?? '';
+    if (allStops.isEmpty) {
+      return Center(
+        child: Text(
+          'Nessuna fermata disponibile',
+          style: TextStyle(color: theme.secondaryTextColor),
+        ),
+      );
+    }
 
-      // Determina se il testo deve essere in grassetto
-      final bool isBold = isFirst || isLast || isChangePoint;
-      
-      // Colore del testo
-      final Color textColor = isFirst 
-          ? Colors.green 
-          : (isLast 
-              ? Colors.red 
-              : (isChangePoint 
-                  ? Colors.orange 
-                  : theme.textColor));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: allStops.length,
+      itemBuilder: (ctx, idx) {
+        final stop = allStops[idx];
+        final isFirst = stop['isFirst'] as bool? ?? false;
+        final isLast = stop['isLast'] as bool? ?? false;
+        final isChangePoint = stop['isChangePoint'] as bool? ?? false;
+        final isLastInSegment = stop['isLastInSegment'] as bool? ?? false;
+        final name = stop['name'] as String? ?? '--';
+        final time = stop['time'] as String? ?? '--:--';
+        final legCat = stop['legCat'] as String? ?? 'TRN';
+        final legNum = stop['legNum'] as String? ?? '';
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Linea verticale con cerchio
-            SizedBox(
-              width: 30,
-              child: Column(
-                children: [
-                  if (isFirst)
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.check, color: Colors.white, size: 12),
-                    )
-                  else if (isLast)
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.flag, color: Colors.white, size: 12),
-                    )
-                  else if (isChangePoint)
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.swap_horiz, color: Colors.white, size: 12),
-                    )
-                  else
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  if (!isLast)
-                    Container(
-                      width: 2,
-                      height: 28,
-                      color: isLastInSegment && !isLast
-                          ? Colors.orange.withOpacity(0.5)
-                          : theme.secondaryTextColor.withOpacity(0.3),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: TextStyle(
-                            color: textColor,
-                            fontWeight: isBold ? FontWeight.bold : FontWeight.normal, // <-- GRASSETTO PER CAMBI
-                            fontSize: isFirst || isLast ? 16 : 14,
+        final bool isBold = isFirst || isLast || isChangePoint;
+        
+        final Color textColor = isFirst 
+            ? Colors.green 
+            : (isLast 
+                ? Colors.red 
+                : (isChangePoint 
+                    ? Colors.orange 
+                    : theme.textColor));
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 34,
+                child: Column(
+                  children: [
+                    if (isFirst)
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green.shade400, Colors.green.shade700],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.3),
+                              blurRadius: 6,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        time,
-                        style: TextStyle(
-                          color: theme.secondaryTextColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (isChangePoint) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(Icons.train_rounded, size: 12, color: theme.primaryColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Cambio con $legCat $legNum',
-                          style: TextStyle(
-                            color: theme.primaryColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                        child: const Icon(Icons.check, color: Colors.white, size: 12),
+                      )
+                    else if (isLast)
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.red.shade400, Colors.red.shade700],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.3),
+                              blurRadius: 6,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
-                  if (isFirst)
-                    Text(
-                      '🚆 Partenza',
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                        child: const Icon(Icons.flag, color: Colors.white, size: 12),
+                      )
+                    else if (isChangePoint)
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.orange.shade400, Colors.orange.shade700],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.withOpacity(0.3),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.swap_horiz, color: Colors.white, size: 12),
+                      )
+                    else
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.primaryColor.withOpacity(0.3),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  if (isLast)
-                    Text(
-                      '🏁 Arrivo',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  if (isLastInSegment && !isLast)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Container(
-                        height: 1,
+                    if (!isLast)
+                      Container(
+                        width: 2,
+                        height: 30,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Colors.orange.withOpacity(0.5),
-                              Colors.transparent,
+                              isLastInSegment && !isLast
+                                  ? Colors.orange.withOpacity(0.5)
+                                  : theme.secondaryTextColor.withOpacity(0.3),
+                              isLastInSegment && !isLast
+                                  ? Colors.orange.withOpacity(0.1)
+                                  : theme.secondaryTextColor.withOpacity(0.05),
                             ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+              const SizedBox(width: 14),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: isFirst || isLast || isChangePoint
+                        ? textColor.withOpacity(0.05)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                                fontSize: isFirst || isLast ? 15 : 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.secondaryTextColor.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              time,
+                              style: TextStyle(
+                                color: theme.secondaryTextColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isChangePoint) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(Icons.train_rounded, size: 12, color: theme.primaryColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Cambio con $legCat $legNum',
+                              style: TextStyle(
+                                color: theme.primaryColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (isFirst)
+                        Text(
+                          '🚆 Partenza',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      if (isLast)
+                        Text(
+                          '🏁 Arrivo',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildInfoChip({
     required IconData icon,
     required String label,
     required String value,
     required ThemeProvider theme,
+    required Color color,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.surfaceColor,
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.secondaryTextColor.withOpacity(0.1),
+          color: color.withOpacity(0.15),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: theme.primaryColor),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
           Text(
             '$label: ',
             style: TextStyle(
               color: theme.secondaryTextColor,
-              fontSize: 12,
+              fontSize: 11,
             ),
           ),
           Text(
             value,
             style: TextStyle(
               color: theme.textColor,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1305,6 +1602,19 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final cat = category.isNotEmpty ? category : 'TRN';
     final num = number.isNotEmpty ? number : '---';
 
+    final bool isHighSpeed = cat.toLowerCase().contains('fr') ||
+        cat.toLowerCase().contains('freccia') ||
+        cat.toLowerCase().contains('ec') ||
+        cat.toLowerCase().contains('ic') ||
+        cat.toLowerCase().contains('nationalexpress') ||
+        cat.toLowerCase().contains('ice') ||
+        cat.toLowerCase().contains('rj') ||
+        cat.toLowerCase().contains('tgc') ||
+        cat.toLowerCase().contains('tgv') ||
+        cat.toLowerCase().contains('ave');
+    
+    final Color color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
+
     if (settings.vectorLogosEnabled) {
       final fileName = cat.toLowerCase().replaceAll(' ', '_');
       final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
@@ -1312,12 +1622,12 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            height: 20,
+            height: 18,
             constraints: const BoxConstraints(maxWidth: 50),
             child: Image.network(
               logoUrl,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _buildColorBadge(cat, num, theme),
+              errorBuilder: (_, __, ___) => _buildColorBadge(cat, num, theme, color),
             ),
           ),
           const SizedBox(width: 4),
@@ -1326,39 +1636,28 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: theme.textColor,
-              fontSize: 12,
+              fontSize: 11,
             ),
           ),
         ],
       );
     }
-    return _buildColorBadge(cat, num, theme);
+    return _buildColorBadge(cat, num, theme, color);
   }
 
-  Widget _buildColorBadge(String category, String number, ThemeProvider theme) {
-    final isHighSpeed = category.toLowerCase().contains('fr') ||
-        category.toLowerCase().contains('freccia') ||
-        category.toLowerCase().contains('ec') ||
-        category.toLowerCase().contains('ic') ||
-        category.toLowerCase().contains('nationalexpress') ||
-        category.toLowerCase().contains('ice') ||
-        category.toLowerCase().contains('rj') ||
-        category.toLowerCase().contains('tgc') ||
-        category.toLowerCase().contains('tgv') ||
-        category.toLowerCase().contains('ave');
-    final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
+  Widget _buildColorBadge(String category, String number, ThemeProvider theme, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Text(
         '$category $number',
         style: TextStyle(
           fontSize: 9,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           color: color,
         ),
       ),

@@ -25,6 +25,7 @@ import '../../../../core/services/runtime_localizations.dart';
 import 'railway_station_stats_screen.dart' as station_stats;
 import 'train_stats_screen.dart' as train_stats;
 import 'package:intl/intl.dart';
+import 'routing_search_screen.dart';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -96,12 +97,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   Map<String, dynamic>? _routingData;
   TimeOfDay _selectedRoutingTime = TimeOfDay.now();
   DateTime _selectedRoutingDate = DateTime.now();
+  String _selectedRoutingProvider = 'eurail';
 
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
 
-  // ==================== FUNZIONI HELPER PER FUSO ORARIO E DURATA ====================
-
+  // Mappa dei fusi orari per paese
   static const Map<String, String> _timezoneMap = {
     'IT': 'Europe/Rome',
     'AT': 'Europe/Vienna',
@@ -227,54 +228,568 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     return '${mins}m';
   }
 
+  // ==================== FUNZIONI HELPER PER NORMALIZZAZIONE DATI ====================
+
+  String _extractTimeFromIso(dynamic isoValue) {
+    if (isoValue == null) return '--:--';
+    final isoString = isoValue.toString();
+    if (isoString.isEmpty) return '--:--';
+    try {
+      final date = DateTime.parse(isoString);
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '--:--';
+    }
+  }
+
+  String _extractDateFromIso(dynamic isoValue) {
+    if (isoValue == null) return '';
+    final isoString = isoValue.toString();
+    if (isoString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(isoString);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  int _calculateWaitMinutes(dynamic arrivalIso, dynamic departureIso) {
+    if (arrivalIso == null || departureIso == null) return 0;
+    try {
+      final arrival = DateTime.parse(arrivalIso.toString());
+      final departure = DateTime.parse(departureIso.toString());
+      final diff = departure.difference(arrival);
+      return diff.inMinutes > 0 ? diff.inMinutes : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _extractCountryFromTrain(dynamic train) {
+    if (train == null) return 'EU';
+    
+    // Se train è una lista, prendi il primo elemento
+    dynamic trainData = train;
+    if (train is List && train.isNotEmpty) {
+      trainData = train.first;
+    }
+    
+    if (trainData is! Map<String, dynamic>) return 'EU';
+    
+    final country = trainData['country'] ?? trainData['countryCode'] ?? trainData['provider'];
+    if (country != null && country is String && country.isNotEmpty) {
+      if (country.length == 2) return country.toUpperCase();
+    }
+    
+    final operator = trainData['operatorName'] ?? trainData['denomination'] ?? trainData['operator'] ?? '';
+    final operatorMap = {
+      'Trenitalia': 'IT',
+      'Italo': 'IT',
+      'ÖBB': 'AT',
+      'DB': 'DE',
+      'SNCF': 'FR',
+      'Renfe': 'ES',
+      'SBB': 'CH',
+      'CFF': 'CH',
+      'NS': 'NL',
+      'SNCB': 'BE',
+      'NMBS': 'BE',
+      'DSB': 'DK',
+      'VR': 'FI',
+      'SJ': 'SE',
+      'PKP': 'PL',
+      'ČD': 'CZ',
+      'MAV': 'HU',
+      'CFR': 'RO',
+      'FS': 'IT',
+      'nationalExpress': 'DE',
+      'ICE': 'DE',
+      'IC': 'IT',
+      'EC': 'EU',
+      'RJ': 'AT',
+      'NJ': 'AT',
+      'WB': 'AT',
+      'EN': 'EU',
+      'TGV': 'FR',
+      'AVE': 'ES',
+      'Eurostar': 'GB',
+      'FRECCIAROSSA': 'IT',
+      'Frecciarossa': 'IT',
+      'InterCityNotte': 'IT',
+      'Intercity': 'IT',
+      'EuroCity': 'EU',
+      'Euro Night': 'EU',
+      'Railjet': 'AT',
+      'Night Jet': 'AT',
+    };
+    
+    for (final entry in operatorMap.entries) {
+      if (operator.toLowerCase().contains(entry.key.toLowerCase())) {
+        return entry.value;
+      }
+    }
+    
+    final trainName = trainData['description'] ?? trainData['name'] ?? '';
+    for (final entry in operatorMap.entries) {
+      if (trainName.toLowerCase().contains(entry.key.toLowerCase())) {
+        return entry.value;
+      }
+    }
+    
+    return 'EU';
+  }
+
   String _getCountryCodeForSolution(Map<String, dynamic> solution) {
     final percorso = solution['percorso'] as List? ?? [];
     if (percorso.isNotEmpty) {
-      final firstLeg = percorso.first;
-      final country = firstLeg['country'] ?? firstLeg['countryCode'] ?? firstLeg['provider'] ?? firstLeg['operator'];
-      if (country != null && country is String && country.isNotEmpty) {
-        if (country.length == 2) return country.toUpperCase();
-        final operatorMap = {
-          'Trenitalia': 'IT',
-          'Italo': 'IT',
-          'ÖBB': 'AT',
-          'DB': 'DE',
-          'SNCF': 'FR',
-          'Renfe': 'ES',
-          'SBB': 'CH',
-          'CFF': 'CH',
-          'NS': 'NL',
-          'SNCB': 'BE',
-          'NMBS': 'BE',
-          'DSB': 'DK',
-          'VR': 'FI',
-          'SJ': 'SE',
-          'PKP': 'PL',
-          'ČD': 'CZ',
-          'MAV': 'HU',
-          'CFR': 'RO',
-          'FS': 'IT',
-          'nationalExpress': 'DE',
-          'ICE': 'DE',
-          'IC': 'IT',
-          'EC': 'EU',
-          'RJ': 'AT',
-          'NJ': 'AT',
-          'WB': 'AT',
-          'EN': 'EU',
-          'TGV': 'FR',
-          'AVE': 'ES',
-          'Eurostar': 'GB',
-        };
-        for (final entry in operatorMap.entries) {
-          if (country.toLowerCase().contains(entry.key.toLowerCase())) {
-            return entry.value;
+      final firstLeg = percorso.first as Map<String, dynamic>?;
+      if (firstLeg != null) {
+        final country = firstLeg['country'] ?? firstLeg['countryCode'] ?? firstLeg['provider'] ?? firstLeg['operator'];
+        if (country != null && country is String && country.isNotEmpty) {
+          if (country.length == 2) return country.toUpperCase();
+          final operatorMap = {
+            'Trenitalia': 'IT',
+            'Italo': 'IT',
+            'ÖBB': 'AT',
+            'DB': 'DE',
+            'SNCF': 'FR',
+            'Renfe': 'ES',
+            'SBB': 'CH',
+            'CFF': 'CH',
+            'NS': 'NL',
+            'SNCB': 'BE',
+            'NMBS': 'BE',
+            'DSB': 'DK',
+            'VR': 'FI',
+            'SJ': 'SE',
+            'PKP': 'PL',
+            'ČD': 'CZ',
+            'MAV': 'HU',
+            'CFR': 'RO',
+            'FS': 'IT',
+            'nationalExpress': 'DE',
+            'ICE': 'DE',
+            'IC': 'IT',
+            'EC': 'EU',
+            'RJ': 'AT',
+            'NJ': 'AT',
+            'WB': 'AT',
+            'EN': 'EU',
+            'TGV': 'FR',
+            'AVE': 'ES',
+            'Eurostar': 'GB',
+          };
+          final operator = firstLeg['operator'] ?? firstLeg['denomination'] ?? '';
+          for (final entry in operatorMap.entries) {
+            if (country.toLowerCase().contains(entry.key.toLowerCase()) ||
+                operator.toLowerCase().contains(entry.key.toLowerCase())) {
+              return entry.value;
+            }
           }
         }
       }
     }
     return 'IT';
   }
+
+  // ==================== NORMALIZZAZIONE DATI ROUTING ====================
+
+  Map<String, dynamic> _normalizeRoutingData(Map<String, dynamic> rawData) {
+    // Controlla se la risposta contiene un errore
+    if (rawData['ok'] == false) {
+      final errorMsg = rawData['error'] ?? 'Errore sconosciuto';
+      debugPrint('❌ Errore dal backend: $errorMsg');
+      return {
+        'ok': false,
+        'error': errorMsg,
+        'totaleSoluzioni': 0,
+        'soluzioni': [],
+        'richiesta': {
+          'from': _originController.text,
+          'to': _destinationController.text,
+        },
+      };
+    }
+
+    final provider = rawData['provider'] ?? 'eurail';
+    
+    // Se è RFI (provider "rfi"), normalizza i dati dal campo 'data'
+    if (provider == 'rfi' && rawData['data'] != null) {
+      return _normalizeRfiData(rawData);
+    }
+    
+    // Se è Eurail, normalizza i dati
+    if (provider == 'eurail' && rawData['data'] != null) {
+      return _normalizeEurailData(rawData);
+    }
+    
+    // Fallback: se i dati sono già nel formato atteso (soluzioni)
+    if (rawData['soluzioni'] != null) {
+      return rawData;
+    }
+    
+    // Se non riconosce il formato, restituisce array vuoto
+    return {
+      'ok': true,
+      'provider': 'unknown',
+      'totaleSoluzioni': 0,
+      'soluzioni': [],
+      'richiesta': {
+        'from': _originController.text,
+        'to': _destinationController.text,
+      },
+    };
+  }
+
+  Map<String, dynamic> _normalizeRfiData(Map<String, dynamic> rawData) {
+    final rfiData = rawData['data'];
+    if (rfiData == null) {
+      return {
+        'ok': true,
+        'provider': 'rfi',
+        'totaleSoluzioni': 0,
+        'soluzioni': [],
+        'richiesta': {
+          'from': _originController.text,
+          'to': _destinationController.text,
+        },
+      };
+    }
+    
+    final rfiSolutions = rfiData['solutions'] as List? ?? [];
+    final normalizedSolutions = <Map<String, dynamic>>[];
+    
+    for (int s = 0; s < rfiSolutions.length; s++) {
+      final solutionWrapper = rfiSolutions[s];
+      if (solutionWrapper is! Map<String, dynamic>) continue;
+      
+      final solution = solutionWrapper['solution'] as Map<String, dynamic>?;
+      if (solution == null) continue;
+      
+      final nodes = solution['nodes'] as List? ?? [];
+      final trains = solution['trains'] as List? ?? [];
+      final percorso = <Map<String, dynamic>>[];
+      
+      for (int n = 0; n < nodes.length; n++) {
+        final node = nodes[n];
+        if (node is! Map<String, dynamic>) continue;
+        
+        final trainInfo = n < trains.length ? trains[n] : null;
+        final trainInfoMap = (trainInfo is Map<String, dynamic>) ? trainInfo : null;
+        final nodeTrain = node['train'] as Map<String, dynamic>?;
+        
+        final leg = <String, dynamic>{
+          'da': node['origin']?.toString() ?? '--',
+          'a': node['destination']?.toString() ?? '--',
+          'partenza': _extractTimeFromIso(node['departureTime']),
+          'arrivo': _extractTimeFromIso(node['arrivalTime']),
+          'dataPartenza': _extractDateFromIso(node['departureTime']),
+          'dataArrivo': _extractDateFromIso(node['arrivalTime']),
+          'categoria': trainInfoMap?['trainCategory']?.toString() ?? nodeTrain?['trainCategory']?.toString() ?? 'TRN',
+          'numeroTreno': trainInfoMap?['description']?.toString() ?? nodeTrain?['description']?.toString() ?? '',
+          'durataLeggibile': node['duration']?.toString() ?? solution['duration']?.toString() ?? '--:--',
+          'country': _extractCountryFromTrain(trainInfo ?? nodeTrain),
+          'stops': (node['stops'] as List?)?.map((s) => s.toString()).toList() ?? [],
+          'operator': trainInfoMap?['denomination']?.toString() ?? nodeTrain?['denomination']?.toString() ?? '',
+          'platform': node['platform']?.toString() ?? '',
+          'attesaCambioMinuti': 0,
+        };
+        
+        // Calcola attesa cambio
+        if (n < nodes.length - 1) {
+          final nextNode = nodes[n + 1];
+          if (nextNode is Map<String, dynamic>) {
+            final waitMinutes = _calculateWaitMinutes(
+              node['arrivalTime'],
+              nextNode['departureTime'],
+            );
+            leg['attesaCambioMinuti'] = waitMinutes > 0 ? waitMinutes : 0;
+          }
+        }
+        
+        percorso.add(leg);
+      }
+      
+      if (percorso.isEmpty) continue;
+      
+      // Calcola totale fermate
+      int totalStops = 0;
+      for (final node in nodes) {
+        if (node is Map<String, dynamic>) {
+          final stops = node['stops'] as List?;
+          if (stops != null) totalStops += stops.length;
+        }
+      }
+      
+      // Estrai prezzo
+      double price = 0;
+      final priceData = solution['price'];
+      if (priceData is num) {
+        price = priceData.toDouble();
+      } else if (priceData is Map) {
+        final amount = priceData['amount'];
+        if (amount is num) {
+          price = amount.toDouble();
+        }
+      }
+      
+      normalizedSolutions.add({
+        'percorso': percorso,
+        'cambi': nodes.length - 1,
+        'durataViaggioTotaleLeggibile': solution['duration']?.toString() ?? '--:--',
+        'arrivoStimato': _extractTimeFromIso(solution['arrivalTime']),
+        'dataArrivoStimata': _extractDateFromIso(solution['arrivalTime']),
+        'totaleFermate': totalStops,
+        'prezzo': price,
+        'moneta': 'EUR',
+        'id': solution['id']?.toString() ?? 'rfi_${DateTime.now().millisecondsSinceEpoch}',
+      });
+    }
+    
+    return {
+      'ok': true,
+      'provider': 'rfi',
+      'totaleSoluzioni': normalizedSolutions.length,
+      'soluzioni': normalizedSolutions,
+      'richiesta': {
+        'from': _originController.text,
+        'to': _destinationController.text,
+      },
+    };
+  }
+
+Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
+  final eurailData = rawData['data'];
+  
+  if (eurailData == null) {
+    return {
+      'ok': true,
+      'provider': 'eurail',
+      'totaleSoluzioni': 0,
+      'soluzioni': [],
+      'richiesta': {
+        'from': _originController.text,
+        'to': _destinationController.text,
+      },
+    };
+  }
+  
+  final journeys = (eurailData is List) 
+      ? eurailData 
+      : (eurailData['data'] as List? ?? eurailData['journeys'] as List? ?? []);
+  
+  if (journeys.isEmpty) {
+    debugPrint('⚠️ Nessun viaggio trovato da Eurail');
+    return {
+      'ok': true,
+      'provider': 'eurail',
+      'totaleSoluzioni': 0,
+      'soluzioni': [],
+      'richiesta': {
+        'from': _originController.text,
+        'to': _destinationController.text,
+      },
+    };
+  }
+  
+  final normalizedSolutions = <Map<String, dynamic>>[];
+  
+  for (int j = 0; j < journeys.length; j++) {
+    final journey = journeys[j];
+    
+    if (journey is! Map<String, dynamic>) {
+      debugPrint('⚠️ Journey $j non è una Map: ${journey.runtimeType}');
+      continue;
+    }
+    
+    final legs = journey['legs'] as List? ?? [];
+    final percorso = <Map<String, dynamic>>[];
+    
+    for (int l = 0; l < legs.length; l++) {
+      final leg = legs[l];
+      
+      if (leg is! Map<String, dynamic>) {
+        debugPrint('⚠️ Leg $l non è una Map: ${leg.runtimeType}');
+        continue;
+      }
+      
+      final legType = leg['type'] as String? ?? '';
+      if (legType == 'PLATFORM_CHANGE' || legType == 'STATION_CHANGE_WALK') {
+        continue;
+      }
+      
+      final start = leg['start'] as Map<String, dynamic>? ?? {};
+      final end = leg['end'] as Map<String, dynamic>? ?? {};
+      final transport = leg['transport'] as Map<String, dynamic>? ?? {};
+      
+      // ================================================================
+      // LOGICA MIGLIORATA PER ESTRAZIONE CATEGORIA
+      // ================================================================
+      final rawCode = transport['code']?.toString() ?? transport['trainNumber']?.toString() ?? '';
+      
+      // 1. Prova a estrarre dal codice (es. "FR 8830" → "FR")
+      String categoriaEstratta = '';
+      if (rawCode.isNotEmpty) {
+        final match = RegExp(r'^[a-zA-Z]+').stringMatch(rawCode);
+        if (match != null && match.isNotEmpty) {
+          categoriaEstratta = match;
+        }
+      }
+      
+      // 2. Se non è stata estratta, usa trainType o type
+      if (categoriaEstratta.isEmpty) {
+        final trainType = transport['trainType']?.toString() ?? transport['type']?.toString() ?? '';
+        if (trainType.isNotEmpty && trainType != 'TRN') {
+          categoriaEstratta = trainType;
+        }
+      }
+      
+      // 3. Se ancora vuota, prova dal serviceName
+      if (categoriaEstratta.isEmpty) {
+        final serviceName = transport['serviceName']?.toString() ?? transport['operatorName']?.toString() ?? '';
+        if (serviceName.isNotEmpty) {
+          final serviceMatch = RegExp(r'^[A-Z]+').stringMatch(serviceName);
+          if (serviceMatch != null && serviceMatch.isNotEmpty) {
+            categoriaEstratta = serviceMatch;
+          }
+        }
+      }
+      
+      // 4. Fallback finale
+      if (categoriaEstratta.isEmpty) {
+        categoriaEstratta = 'TRN';
+      }
+      // ================================================================
+
+      // Per il numero del treno, usa trainNumber o code o estrai dal codice
+      String numeroTreno = transport['trainNumber']?.toString() ?? '';
+      if (numeroTreno.isEmpty) {
+        final code = transport['code']?.toString() ?? '';
+        // Se il codice contiene numeri, estraili
+        final numberMatch = RegExp(r'\d+').stringMatch(code);
+        if (numberMatch != null && numberMatch.isNotEmpty) {
+          numeroTreno = numberMatch;
+        } else {
+          numeroTreno = code;
+        }
+      }
+
+      final legData = <String, dynamic>{
+        'da': start['station']?.toString() ?? '--',
+        'a': end['station']?.toString() ?? '--',
+        'partenza': _extractTimeFromIso(start['dateTimeInISO']),
+        'arrivo': _extractTimeFromIso(end['dateTimeInISO']),
+        'dataPartenza': _extractDateFromIso(start['dateTimeInISO']),
+        'dataArrivo': _extractDateFromIso(end['dateTimeInISO']),
+        'categoria': categoriaEstratta,
+        'numeroTreno': numeroTreno,
+        'country': start['country']?.toString() ?? end['country']?.toString() ?? 'EU',
+        'operator': transport['operatorName']?.toString() ?? transport['type']?.toString() ?? '',
+        'platform': end['track']?.toString() ?? start['track']?.toString() ?? '',
+        'attesaCambioMinuti': 0,
+      };
+      
+      // Durata del leg
+      final duration = leg['duration'] as Map<String, dynamic>?;
+      if (duration != null) {
+        final hours = duration['hours'] as int? ?? 0;
+        final minutes = duration['minutes'] as int? ?? 0;
+        legData['durataLeggibile'] = '$hours h $minutes m';
+      } else {
+        legData['durataLeggibile'] = '--:--';
+      }
+      
+      // Stops
+      final stopsData = leg['stops'] as Map<String, dynamic>?;
+      if (stopsData != null) {
+        final stopsList = stopsData['stops'] as List? ?? [];
+        legData['stops'] = stopsList.map((s) {
+          if (s is Map<String, dynamic>) {
+            return s['station']?.toString() ?? '--';
+          }
+          return s.toString();
+        }).toList();
+      } else {
+        legData['stops'] = [];
+      }
+      
+      // Calcola attesa cambio
+      if (percorso.isNotEmpty) {
+        final prevLeg = percorso.last;
+        final prevArrivo = prevLeg['arrivo'] as String? ?? '--:--';
+        final prevData = prevLeg['dataArrivo'] as String? ?? '';
+        final currPartenza = legData['partenza'] as String? ?? '--:--';
+        final currData = legData['dataPartenza'] as String? ?? '';
+        
+        if (prevArrivo != '--:--' && currPartenza != '--:--') {
+          try {
+            final prevDateTime = DateTime.parse('$prevData $prevArrivo:00');
+            final currDateTime = DateTime.parse('$currData $currPartenza:00');
+            if (currDateTime.isAfter(prevDateTime)) {
+              legData['attesaCambioMinuti'] = currDateTime.difference(prevDateTime).inMinutes;
+            }
+          } catch (_) {}
+        }
+      }
+      
+      percorso.add(legData);
+    }
+    
+    if (percorso.isEmpty) continue;
+    
+    // Durata totale del viaggio
+    final journeyDuration = journey['duration'] as Map<String, dynamic>?;
+    String durataTotale = '--:--';
+    if (journeyDuration != null) {
+      final hours = journeyDuration['hours'] as int? ?? 0;
+      final minutes = journeyDuration['minutes'] as int? ?? 0;
+      durataTotale = '$hours h $minutes m';
+    }
+    
+    // Calcola totale fermate
+    int totalStops = 0;
+    for (final leg in percorso) {
+      final stops = leg['stops'] as List?;
+      if (stops != null) totalStops += stops.length;
+    }
+    
+    // Estrai il prezzo
+    double price = 0;
+    final priceData = journey['price'];
+    if (priceData is num) {
+      price = priceData.toDouble();
+    } else if (priceData is Map) {
+      final amount = priceData['amount'];
+      if (amount is num) {
+        price = amount.toDouble();
+      }
+    }
+    
+    normalizedSolutions.add({
+      'percorso': percorso,
+      'cambi': percorso.length - 1,
+      'durataViaggioTotaleLeggibile': durataTotale,
+      'arrivoStimato': _extractTimeFromIso(journey['arrival']),
+      'dataArrivoStimata': _extractDateFromIso(journey['arrival']),
+      'totaleFermate': totalStops,
+      'prezzo': price,
+      'moneta': 'EUR',
+      'id': journey['id']?.toString() ?? 'eurail_${DateTime.now().millisecondsSinceEpoch}',
+    });
+  }
+  
+  return {
+    'ok': true,
+    'provider': 'eurail',
+    'totaleSoluzioni': normalizedSolutions.length,
+    'soluzioni': normalizedSolutions,
+    'richiesta': {
+      'from': _originController.text,
+      'to': _destinationController.text,
+    },
+  };
+}
 
   // ==================== FUNZIONI ESISTENTI ====================
 
@@ -724,15 +1239,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
 
     if (category.isEmpty || number.isEmpty) {
-      debugPrint('  - ❌ Categoria o numero vuoti');
       return null;
     }
 
     try {
       final trainProvider = Provider.of<TrainProvider>(context, listen: false);
       final client = await trainProvider.getDatabase();
-      
-      debugPrint('  - 📡 Query Turso: SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1');
       
       final result = await client.query(
         'SELECT trip_id, delay FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
@@ -749,17 +1261,12 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
             'trip_id': tripId,
             'delay': delay,
           };
-          
           _tripCache[cacheKey] = data;
-          
-          debugPrint('  - ✅ Trovato: trip_id="$tripId", delay=$delay');
           return data;
         }
       }
-      
-      debugPrint('  - 📭 Nessun risultato per "$category $number"');
     } catch (e) {
-      debugPrint('  - ❌ Errore query Turso: $e');
+      debugPrint('Errore query Turso: $e');
     }
 
     return null;
@@ -804,6 +1311,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     });
   }
 
+  // ==================== ROUTING SEARCH CON SUPPORTO DUAL PROVIDER ====================
+
   Future<void> _performRoutingSearch() async {
     final origin = _originController.text.trim();
     final dest = _destinationController.text.trim();
@@ -816,47 +1325,120 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     });
 
     try {
-      final timeStr = "${_selectedRoutingTime.hour.toString().padLeft(2, '0')}:${_selectedRoutingTime.minute.toString().padLeft(2, '0')}";
-      final dateStr = "${_selectedRoutingDate.year}-${_selectedRoutingDate.month.toString().padLeft(2, '0')}-${_selectedRoutingDate.day.toString().padLeft(2, '0')}"; // <-- FORMATTAZIONE DATA
+      final String timeStr = "${_selectedRoutingTime.hour.toString().padLeft(2, '0')}:${_selectedRoutingTime.minute.toString().padLeft(2, '0')}";
+      final String dateStr = "${_selectedRoutingDate.year}-${_selectedRoutingDate.month.toString().padLeft(2, '0')}-${_selectedRoutingDate.day.toString().padLeft(2, '0')}";
+      
+      // Costruisci il payload base
+      final Map<String, dynamic> payload = {
+        'provider': _selectedRoutingProvider,
+        'from': origin,
+        'to': dest,
+        'date': dateStr,
+        'time': timeStr,
+      };
+
+      // Parametri specifici per provider
+      if (_selectedRoutingProvider == 'eurail') {
+        // Eurail accetta tripsNumber tra 1 e 6
+        payload['tripsNumber'] = 5;
+        payload['includeStops'] = true;
+        payload['travellers'] = 1;
+        payload['currency'] = 'EUR';
+        
+        // Timestamp nel formato corretto per Eurail
+        final dateTime = DateTime(
+          _selectedRoutingDate.year,
+          _selectedRoutingDate.month,
+          _selectedRoutingDate.day,
+          _selectedRoutingTime.hour,
+          _selectedRoutingTime.minute,
+        );
+        payload['timestamp'] = dateTime.toUtc().toIso8601String();
+        
+        payload['arrival'] = false;
+        payload['minChangeTime'] = 1;
+        
+      } else if (_selectedRoutingProvider == 'rfi') {
+        payload['tripsNumber'] = 10;
+        payload['includeStops'] = true;
+        payload['adults'] = 1;
+        payload['children'] = 0;
+        payload['criteria'] = {
+          'frecceOnly': false,
+          'regionalOnly': false,
+          'noChanges': false,
+          'order': 'DEPARTURE_DATE',
+          'limit': 10,
+          'offset': 0,
+        };
+        payload['advancedSearchRequest'] = {
+          'bestFare': false,
+        };
+      }
+
+      debugPrint('📤 Payload inviato a /api/trains/routing: ${json.encode(payload)}');
 
       final response = await http.post(
         Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/routing'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'from': origin,
-          'to': dest,
-          'time': timeStr,
-          'date': dateStr,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode(payload),
       ).timeout(const Duration(seconds: 40));
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        _safeSetState(() => _routingData = data);
+        final rawData = json.decode(response.body);
+        debugPrint('✅ Routing OK (${_selectedRoutingProvider})');
+        final normalizedData = _normalizeRoutingData(rawData);
+        _safeSetState(() => _routingData = normalizedData);
         
-        debugPrint('✅ Routing OK: ${data['totaleSoluzioni']} soluzioni trovate');
-        if (data['soluzioni'] != null) {
-          debugPrint('  - Prima soluzione: ${data['soluzioni'][0]['durataViaggioTotaleLeggibile']}');
+        final totaleSoluzioni = normalizedData['totaleSoluzioni'] ?? 0;
+        if (totaleSoluzioni > 0) {
+          debugPrint('  - $totaleSoluzioni soluzioni trovate');
+          if (normalizedData['soluzioni'] != null && normalizedData['soluzioni'].isNotEmpty) {
+            debugPrint('  - Prima soluzione: ${normalizedData['soluzioni'][0]['durataViaggioTotaleLeggibile']}');
+          }
+        } else {
+          debugPrint('  - Nessuna soluzione trovata');
         }
       } else {
+        String errorMessage = "Errore: ${response.statusCode}";
+        try {
+          final errorJson = json.decode(response.body);
+          debugPrint('❌ Errore response: $errorJson');
+          
+          if (errorJson['error'] != null) {
+            errorMessage = errorJson['error'].toString();
+          }
+          if (errorJson['details'] != null) {
+            errorMessage += '\n${errorJson['details']}';
+          }
+          if (errorJson['resultMessage'] != null) {
+            errorMessage = errorJson['resultMessage'].toString();
+          }
+        } catch (_) {}
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Errore: ${response.statusCode}"),
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
             ),
           );
         }
       }
     } catch (e) {
-      debugPrint('Errore ricerca soluzioni: $e');
+      debugPrint('❌ Errore ricerca soluzioni: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Errore: $e"),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -918,6 +1500,34 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     }
   }
 
+  Future<void> _selectRoutingDate(BuildContext context, ThemeProvider theme) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedRoutingDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 90)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: theme.primaryColor,
+              onPrimary: Colors.white,
+              surface: theme.surfaceColor,
+              onSurface: theme.textColor,
+            ),
+            dialogBackgroundColor: theme.surfaceColor,
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedRoutingDate) {
+      _safeSetState(() {
+        _selectedRoutingDate = picked;
+      });
+    }
+  }
+
   void _showTrainDetails(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
     if (index >= 0 && (dep.stops == null || dep.stops.isEmpty)) {
       Provider.of<TrainProvider>(context, listen: false).expandTrainDetails(index);
@@ -943,34 +1553,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
         ),
       ),
     );
-  }
-
-  Future<void> _selectRoutingDate(BuildContext context, ThemeProvider theme) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedRoutingDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)), // Permette di cercare da ieri in poi
-      lastDate: DateTime.now().add(const Duration(days: 90)),      // Fino a 3 mesi nel futuro
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: theme.primaryColor,
-              onPrimary: Colors.white,
-              surface: theme.surfaceColor,
-              onSurface: theme.textColor,
-            ),
-            dialogBackgroundColor: theme.surfaceColor,
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null && picked != _selectedRoutingDate) {
-      _safeSetState(() {
-        _selectedRoutingDate = picked;
-      });
-    }
   }
 
   void _showSavedStationsSheet(TrainProvider provider, ThemeProvider theme) {
@@ -1165,6 +1747,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
+  // ==================== WIDGET BUILD ====================
+
   Widget _buildSearchHome(BuildContext context, TrainProvider provider, ThemeProvider theme) {
     final displayedCountries = provider.selectedService == 'direct'
         ? _countries.where((c) => ['IT', 'FAL', 'EU'].contains(c['code'])).toList()
@@ -1211,12 +1795,20 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                 if (newIndex == 1 && _trainSearchController.text.isEmpty) {
                   Future.microtask(() => _loadLiveTrains(silent: false));
                 }
-                if (newIndex == 2) {
-                  _safeSetState(() {
-                    _routingData = null;
-                    _isSearchingRouting = false;
-                  });
-                }
+                 if (newIndex == 2) {
+                // Naviga verso la schermata di ricerca soluzioni
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RoutingSearchScreen(),
+                  ),
+                ).then((_) {
+                  // Quando si torna indietro, resetta la selezione al tab 0 (Stazioni)
+                  if (mounted) {
+                    _safeSetState(() => _selectedIndex = 0);
+                  }
+                });
+              }
               },
               style: ButtonStyle(
                 backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
@@ -1255,6 +1847,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
+  // ==================== SEZIONE SOLUZIONI ====================
+
   Widget _buildSolutionsContent(ThemeProvider theme) {
     return Column(
       children: [
@@ -1292,19 +1886,49 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                   ),
                 ),
                 Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                
                 IntrinsicHeight(
                   child: Row(
                     children: [
-                      // PULSANTE SELEZIONE DATA
+                      // SELEZIONE PROVIDER
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedRoutingProvider,
+                              isExpanded: true,
+                              style: TextStyle(
+                                color: theme.textColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              dropdownColor: theme.surfaceColor,
+                              icon: Icon(Icons.arrow_drop_down_rounded, color: theme.primaryColor),
+                              items: const [
+                                DropdownMenuItem(value: 'eurail', child: Text('Eurail')),
+                                DropdownMenuItem(value: 'rfi', child: Text('RFI / LeFrecce')),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  _safeSetState(() => _selectedRoutingProvider = value);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      VerticalDivider(width: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                      // SELEZIONE DATA
                       Expanded(
                         child: InkWell(
                           onTap: () => _selectRoutingDate(context, theme),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                             child: Row(
                               children: [
                                 Icon(Icons.calendar_today_rounded, color: theme.primaryColor),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1313,7 +1937,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                         RuntimeLocalizations.t(context, 'routing_date_label') ?? 'Data',
                                         style: TextStyle(
                                           color: theme.secondaryTextColor,
-                                          fontSize: 12,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -1321,7 +1945,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                         DateFormat('dd/MM/yyyy').format(_selectedRoutingDate),
                                         style: TextStyle(
                                           color: theme.textColor,
-                                          fontSize: 16,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -1334,7 +1958,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                         ),
                       ),
                       VerticalDivider(width: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
-                      // PULSANTE SELEZIONE ORA
+                      // SELEZIONE ORA
                       Expanded(
                         child: InkWell(
                           onTap: () => _selectRoutingTime(context, theme),
@@ -1343,7 +1967,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                             child: Row(
                               children: [
                                 Icon(Icons.access_time_rounded, color: theme.primaryColor),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1352,7 +1976,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                         RuntimeLocalizations.t(context, 'routing_time_label') ?? 'Ora',
                                         style: TextStyle(
                                           color: theme.secondaryTextColor,
-                                          fontSize: 12,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -1360,7 +1984,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                         _selectedRoutingTime.format(context),
                                         style: TextStyle(
                                           color: theme.textColor,
-                                          fontSize: 16,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -1375,6 +1999,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                     ],
                   ),
                 ),
+                
                 InkWell(
                   onTap: _performRoutingSearch,
                   child: Container(
@@ -1394,9 +2019,32 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                                 color: theme.primaryColor,
                               ),
                             )
-                          : Text(
-                              RuntimeLocalizations.t(context, 'routing_search_btn'),
-                              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 16),
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.search_rounded, color: theme.primaryColor, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  RuntimeLocalizations.t(context, 'routing_search_btn'),
+                                  style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: theme.primaryColor.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    _selectedRoutingProvider.toUpperCase(),
+                                    style: TextStyle(
+                                      color: theme.primaryColor,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                     ),
                   ),
@@ -1422,6 +2070,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
                               textAlign: TextAlign.center,
                               style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
                             ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Provider: ${_selectedRoutingProvider.toUpperCase()}',
+                              style: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.6), fontSize: 12),
+                            ),
                           ],
                         ),
                       ),
@@ -1432,50 +2085,73 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-  Widget _buildRoutingResultsList(ThemeProvider theme) {
-    final totaleSoluzioni = _routingData?['totaleSoluzioni'] ?? 0;
-    if (totaleSoluzioni == 0) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withOpacity(0.4)),
-              const SizedBox(height: 16),
-              Text(
-                RuntimeLocalizations.t(context, 'routing_no_results') ?? 'Nessuna soluzione trovata',
-                style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+ Widget _buildRoutingResultsList(ThemeProvider theme) {
+  final totaleSoluzioni = _routingData?['totaleSoluzioni'] ?? 0;
+  final provider = _routingData?['provider'] ?? 'eurail';
+  
+  if (totaleSoluzioni == 0) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, size: 56, color: theme.secondaryTextColor.withOpacity(0.4)),
+            const SizedBox(height: 16),
+            Text(
+              RuntimeLocalizations.t(context, 'routing_no_results') ?? 'Nessuna soluzione trovata',
+              style: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Provider: ${provider.toUpperCase()}',
+              style: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.6), fontSize: 12),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    final solutions = _routingData?['soluzioni'] as List? ?? [];
+  final solutions = _routingData?['soluzioni'] as List? ?? [];
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100, top: 4),
-      itemCount: solutions.length,
-      itemBuilder: (ctx, i) {
-        final sol = solutions[i];
-        final percorso = sol['percorso'] as List? ?? [];
-        final cambi = sol['cambi'] as int? ?? 0;
-        final firstLeg = percorso.isNotEmpty ? percorso.first : null;
-        final lastLeg = percorso.isNotEmpty ? percorso.last : null;
-        final isDirect = cambi == 0;
+  return ListView.builder(
+    padding: const EdgeInsets.only(bottom: 100, top: 4),
+    itemCount: solutions.length,
+    itemBuilder: (ctx, i) {
+      final sol = solutions[i] as Map<String, dynamic>;
+      final percorso = sol['percorso'] as List? ?? [];
+      final cambi = sol['cambi'] as int? ?? 0;
+      final firstLeg = percorso.isNotEmpty ? percorso.first as Map<String, dynamic>? : null;
+      final lastLeg = percorso.isNotEmpty ? percorso.last as Map<String, dynamic>? : null;
+      final isDirect = cambi == 0;
 
-        // CALCOLA LA DURATA TOTALE REALE
-        String durataLeggibile = '--:--';
-        if (firstLeg != null && lastLeg != null) {
-          final firstPartenza = firstLeg['partenza'] ?? '--:--';
-          final lastArrivo = lastLeg['arrivo'] ?? '--:--';
-          final firstData = firstLeg['dataPartenza'] ?? '';
-          final lastData = lastLeg['dataArrivo'] ?? '';
+      // Calcola durata totale
+      String durataLeggibile = sol['durataViaggioTotaleLeggibile'] ?? '--:--';
+      
+      if (durataLeggibile == '--:--' && firstLeg != null && lastLeg != null) {
+        final firstPartenza = firstLeg['partenza'] as String? ?? '--:--';
+        final lastArrivo = lastLeg['arrivo'] as String? ?? '--:--';
+        final firstData = firstLeg['dataPartenza'] as String? ?? '';
+        final lastData = lastLeg['dataArrivo'] as String? ?? '';
+        
+        // Per Eurail usa il calcolo diretto senza conversione timezone
+        if (provider == 'eurail') {
+          // Calcola durata direttamente
+          try {
+            final firstDateTime = DateTime.parse('$firstData $firstPartenza:00');
+            final lastDateTime = DateTime.parse('$lastData $lastArrivo:00');
+            final diff = lastDateTime.difference(firstDateTime);
+            if (diff.inMinutes > 0) {
+              durataLeggibile = _formatDuration(diff.inMinutes);
+            }
+          } catch (_) {
+            durataLeggibile = '--:--';
+          }
+        } else {
+          // Per RFI usa la conversione con timezone
           final countryCode = _getCountryCodeForSolution(sol);
-          
           final durationMinutes = _calculateDurationMinutes(
             firstPartenza,
             lastArrivo,
@@ -1485,202 +2161,287 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
           );
           durataLeggibile = _formatDuration(durationMinutes);
         }
+      }
 
-        final totalStops = percorso.fold<int>(
-          0,
-          (sum, leg) => sum + ((leg['stops'] as List?)?.length ?? 0),
-        );
+      // Calcola fermate totali
+      final totalStops = percorso.fold<int>(
+        0,
+        (sum, leg) {
+          final legMap = leg as Map<String, dynamic>;
+          final stops = legMap['stops'] as List?;
+          return sum + (stops?.length ?? 0);
+        },
+      );
 
-        // Formatta l'orario di arrivo con il fuso orario
-        String arrivoFormattato = sol['arrivoStimato'] ?? '--:--';
-        if (lastLeg != null) {
+      // Formatta orario di arrivo - per Eurail usa il valore diretto
+      String arrivoFormattato = sol['arrivoStimato'] as String? ?? '--:--';
+      if (lastLeg != null) {
+        final arrivoRaw = lastLeg['arrivo'] as String? ?? '--:--';
+        if (provider == 'eurail') {
+          // Per Eurail usa il tempo già nel formato corretto
+          arrivoFormattato = arrivoRaw;
+        } else {
+          // Per RFI usa la conversione con timezone
           arrivoFormattato = _formatTimeWithTimezone(
-            lastLeg['arrivo'] ?? '--:--',
-            lastLeg['dataArrivo'],
+            arrivoRaw,
+            lastLeg['dataArrivo'] as String?,
             _getCountryCodeForSolution(sol)
           );
         }
+      }
 
-        // Formatta l'orario di partenza con il fuso orario
-        String partenzaFormattata = '--:--';
-        String dataPartenzaFormattata = '';
-        if (firstLeg != null) {
+      // Formatta orario di partenza - per Eurail usa il valore diretto
+      String partenzaFormattata = '--:--';
+      String dataPartenzaFormattata = '';
+      if (firstLeg != null) {
+        final partenzaRaw = firstLeg['partenza'] as String? ?? '--:--';
+        if (provider == 'eurail') {
+          // Per Eurail usa il tempo già nel formato corretto
+          partenzaFormattata = partenzaRaw;
+        } else {
+          // Per RFI usa la conversione con timezone
           partenzaFormattata = _formatTimeWithTimezone(
-            firstLeg['partenza'] ?? '--:--',
-            firstLeg['dataPartenza'],
+            partenzaRaw,
+            firstLeg['dataPartenza'] as String?,
             _getCountryCodeForSolution(sol)
           );
-          dataPartenzaFormattata = firstLeg['dataPartenza'] ?? '';
         }
+        dataPartenzaFormattata = firstLeg['dataPartenza'] as String? ?? '';
+      }
 
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RoutingDetailsScreen(
-                  routingData: _routingData!,
-                  selectedSolutionIndex: i,
-                ),
+      // Estrai prezzo
+      String prezzoText = '';
+      final prezzo = sol['prezzo'] ?? 0;
+      if (prezzo is num && prezzo > 0) {
+        prezzoText = '€${prezzo.toStringAsFixed(2)}';
+      }
+
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RoutingDetailsScreen(
+                routingData: _routingData!,
+                selectedSolutionIndex: i,
               ),
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Intestazione
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.surfaceColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: (isDirect ? theme.successColor : Colors.orange).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isDirect
+                              ? (RuntimeLocalizations.t(context, 'routing_direct') ?? 'Diretto')
+                              : (RuntimeLocalizations.t(context, 'routing_changes', params: {'count': cambi.toString()}) ?? '$cambi cambi'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: isDirect ? theme.successColor : Colors.orange,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (firstLeg != null)
+                        _buildColorBadge(
+                          firstLeg['categoria'] as String? ?? 'TRN',
+                          firstLeg['numeroTreno'] as String? ?? '',
+                          theme,
+                        ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      if (prezzoText.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: (isDirect ? theme.successColor : Colors.orange).withOpacity(0.15),
+                            color: theme.primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            isDirect
-                                ? (RuntimeLocalizations.t(context, 'routing_direct') ?? 'Diretto')
-                                : (RuntimeLocalizations.t(context, 'routing_changes', params: {'count': cambi.toString()}) ?? '$cambi cambi'),
+                            prezzoText,
                             style: TextStyle(
+                              color: theme.primaryColor,
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: isDirect ? theme.successColor : Colors.orange,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        if (firstLeg != null)
-                          _buildColorBadge(
-                            firstLeg['categoria'] ?? 'TRN',
-                            firstLeg['numeroTreno'] ?? '',
-                            theme,
-                          ),
-                      ],
-                    ),
-                    Text(
-                      durataLeggibile,
-                      style: TextStyle(
-                        color: theme.secondaryTextColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Orari
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          partenzaFormattata,
-                          style: TextStyle(
-                            color: theme.textColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -1,
-                          ),
-                        ),
-                        Text(
-                          dataPartenzaFormattata,
-                          style: TextStyle(
-                            color: theme.secondaryTextColor,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 20),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          arrivoFormattato,
-                          style: TextStyle(
-                            color: theme.textColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -1,
-                          ),
-                        ),
-                        Text(
-                          sol['dataArrivoStimata'] ?? '',
-                          style: TextStyle(
-                            color: theme.secondaryTextColor,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Info aggiuntive
-                Row(
-                  children: [
-                    if (totalStops > 0) ...[
-                      Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: theme.secondaryTextColor),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 8),
                       Text(
-                        '$totalStops fermate',
+                        durataLeggibile,
                         style: TextStyle(
                           color: theme.secondaryTextColor,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    if (percorso.length > 1) ...[
-                      Icon(Icons.train_rounded, size: 14, color: theme.secondaryTextColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${percorso.length} treni',
-                        style: TextStyle(
-                          color: theme.secondaryTextColor,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Dettagli →',
-                        style: TextStyle(
-                          color: theme.primaryColor,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        partenzaFormattata,
+                        style: TextStyle(
+                          color: theme.textColor,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                      Text(
+                        dataPartenzaFormattata,
+                        style: TextStyle(
+                          color: theme.secondaryTextColor,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 20),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        arrivoFormattato,
+                        style: TextStyle(
+                          color: theme.textColor,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                      Text(
+                        sol['dataArrivoStimata'] as String? ?? '',
+                        style: TextStyle(
+                          color: theme.secondaryTextColor,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (totalStops > 0) ...[
+                    Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: theme.secondaryTextColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$totalStops fermate',
+                      style: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  if (percorso.length > 1) ...[
+                    Icon(Icons.train_rounded, size: 14, color: theme.secondaryTextColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${percorso.length} treni',
+                      style: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Dettagli →',
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (provider == 'rfi')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'RFI',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              if (provider == 'eurail')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Eurail',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
+
+  // ==================== FUNZIONI DI BUILD AUSILIARIE ====================
 
   Widget _buildSearchHeader(TrainProvider provider, ThemeProvider theme, List<Map<String, String>> countries) {
     final hasCities = _selectedCountry.isNotEmpty && _citiesByCountry.containsKey(_selectedCountry);
@@ -2542,7 +3303,6 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
     );
   }
 
-
   Widget _buildTimetableResults(
       BuildContext context, TrainProvider provider, ThemeProvider theme, TrainStation station) {
     final List<String> availablePlatforms = provider.departures
@@ -3013,7 +3773,7 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
         final textPainter = TextPainter(
           text: TextSpan(text: text, style: style),
           maxLines: 1,
-          textDirection: Directionality.of(context),  // <-- ltr minuscolo
+          textDirection: Directionality.of(context),
         )..layout();
         if (textPainter.size.width > constraints.maxWidth) {
           return SizedBox(
