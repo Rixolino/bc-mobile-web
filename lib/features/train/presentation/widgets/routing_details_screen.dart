@@ -22,7 +22,7 @@ class RoutingDetailsScreen extends StatefulWidget {
 }
 
 class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin { // <-- CAMBIA QUI: SingleTickerProviderStateMixin -> TickerProviderStateMixin
   late TabController _tabController;
   int _selectedSolutionIndex = 0;
   late AnimationController _animationController;
@@ -228,28 +228,6 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     return 'IT';
   }
 
-  // Funzione helper per estrarre le fermate in modo sicuro
-  List<String> _extractStops(dynamic stopsData) {
-    if (stopsData == null) return [];
-    
-    // Se è già una lista di stringhe (caso Eurail)
-    if (stopsData is List<String>) {
-      return stopsData;
-    }
-    
-    // Se è una lista di oggetti (caso RFI)
-    if (stopsData is List) {
-      return stopsData.map((s) {
-        if (s is Map<String, dynamic>) {
-          return s['station']?.toString() ?? s.toString();
-        }
-        return s.toString();
-      }).toList();
-    }
-    
-    return [];
-  }
-
   @override
   void initState() {
     super.initState();
@@ -276,6 +254,10 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     _animationController.dispose();
     super.dispose();
   }
+
+  // ... il resto del codice rimane uguale ...
+  // (tutte le funzioni _buildSolutionSummary, _buildOverviewTab, _buildSegmentsTab, _buildStopsTab,
+  // _buildInfoChip, _buildTrainBadge, _buildColorBadge rimangono identiche)
 
   @override
   Widget build(BuildContext context) {
@@ -505,6 +487,8 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     );
   }
 
+  // ==================== WIDGET BUILD ====================
+
   Widget _buildSolutionSummary(ThemeProvider theme, Map<String, dynamic> sol) {
     final cambi = sol['cambi'] as int? ?? 0;
     final durata = sol['durataViaggioTotaleLeggibile'] ?? '--:--';
@@ -712,18 +696,11 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final cambi = sol['cambi'] as int? ?? 0;
     final durataLeggibile = sol['durataViaggioTotaleLeggibile'] ?? '--:--';
     final countryCode = _getCountryCodeForSolution(sol);
-    final provider = widget.routingData['provider'] ?? 'eurail';
 
-    int totalStops = 0;
-    for (final leg in percorso) {
-      final stops = leg['stops'];
-      if (stops != null) {
-        if (stops is List) {
-          totalStops += stops.length;
-        }
-      }
-    }
-    
+    final totalStops = percorso.fold<int>(
+      0,
+      (sum, leg) => sum + ((leg['stops'] as List?)?.length ?? 0),
+    );
     final categories = percorso.map((leg) => leg['categoria'] as String).toSet().toList();
     final trains = percorso.map((leg) => '${leg['categoria']} ${leg['numeroTreno']}').toSet().toList();
 
@@ -1010,7 +987,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         final legDataPartenza = leg['dataPartenza'] ?? '';
         final legDataArrivo = leg['dataArrivo'] ?? '';
         final legDurataText = leg['durataLeggibile'] ?? '';
-        final legStops = _extractStops(leg['stops']);
+        final legStops = leg['stops'] as List? ?? [];
         final attesa = leg['attesaCambioMinuti'] as int? ?? 0;
 
         return Container(
@@ -1279,7 +1256,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     
     for (int legIndex = 0; legIndex < percorso.length; legIndex++) {
       final leg = percorso[legIndex];
-      final stops = _extractStops(leg['stops']);
+      final stops = leg['stops'] as List? ?? [];
       final legCat = leg['categoria'] ?? 'TRN';
       final legNum = leg['numeroTreno'] ?? '';
       final legPartenza = _formatTimeWithTimezone(
@@ -1299,7 +1276,6 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         final isFirstInSegment = i == 0;
         final isLastInSegment = i == stops.length - 1;
         
-        // Evita duplicati quando c'è un cambio
         if (isFirstInSegment && legIndex > 0) {
           final lastStopInPrevious = allStops.isNotEmpty ? allStops.last['name'] : null;
           if (lastStopInPrevious == stop) {

@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:glassmorphism/glassmorphism.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -10,7 +12,6 @@ import 'dart:async';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import 'routing_details_screen.dart';
-import 'routing_ui_components.dart';
 import 'shimmer_and_toggle.dart';
 
 class RoutingSearchScreen extends StatefulWidget {
@@ -590,231 +591,182 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
   }
 
   Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
-  final eurailData = rawData['data'];
-  
-  if (eurailData == null) {
-    return {
-      'ok': true,
-      'provider': 'eurail',
-      'totaleSoluzioni': 0,
-      'soluzioni': [],
-      'richiesta': {
-        'from': _originController.text,
-        'to': _destinationController.text,
-      },
-    };
-  }
-  
-  final journeys = (eurailData is List) 
-      ? eurailData 
-      : (eurailData['data'] as List? ?? eurailData['journeys'] as List? ?? []);
-  
-  if (journeys.isEmpty) {
-    debugPrint('⚠️ Nessun viaggio trovato da Eurail');
-    return {
-      'ok': true,
-      'provider': 'eurail',
-      'totaleSoluzioni': 0,
-      'soluzioni': [],
-      'richiesta': {
-        'from': _originController.text,
-        'to': _destinationController.text,
-      },
-    };
-  }
-  
-  final normalizedSolutions = <Map<String, dynamic>>[];
-  
-  for (int j = 0; j < journeys.length; j++) {
-    final journey = journeys[j];
+    final eurailData = rawData['data'];
     
-    if (journey is! Map<String, dynamic>) {
-      debugPrint('⚠️ Journey $j non è una Map: ${journey.runtimeType}');
-      continue;
+    if (eurailData == null) {
+      return {
+        'ok': true,
+        'provider': 'eurail',
+        'totaleSoluzioni': 0,
+        'soluzioni': [],
+        'richiesta': {
+          'from': _originController.text,
+          'to': _destinationController.text,
+        },
+      };
     }
     
-    final legs = journey['legs'] as List? ?? [];
-    final percorso = <Map<String, dynamic>>[];
+    final journeys = (eurailData is List) 
+        ? eurailData 
+        : (eurailData['data'] as List? ?? eurailData['journeys'] as List? ?? []);
     
-    for (int l = 0; l < legs.length; l++) {
-      final leg = legs[l];
+    if (journeys.isEmpty) {
+      debugPrint('⚠️ Nessun viaggio trovato da Eurail');
+      return {
+        'ok': true,
+        'provider': 'eurail',
+        'totaleSoluzioni': 0,
+        'soluzioni': [],
+        'richiesta': {
+          'from': _originController.text,
+          'to': _destinationController.text,
+        },
+      };
+    }
+    
+    final normalizedSolutions = <Map<String, dynamic>>[];
+    
+    for (int j = 0; j < journeys.length; j++) {
+      final journey = journeys[j];
       
-      if (leg is! Map<String, dynamic>) {
-        debugPrint('⚠️ Leg $l non è una Map: ${leg.runtimeType}');
+      if (journey is! Map<String, dynamic>) {
+        debugPrint('⚠️ Journey $j non è una Map: ${journey.runtimeType}');
         continue;
       }
       
-      final legType = leg['type'] as String? ?? '';
-      // Salta leg di tipo PLATFORM_CHANGE o STATION_CHANGE_WALK
-      // ma mantieni i leg di tipo TRAIN_TRAVEL
-      if (legType == 'PLATFORM_CHANGE' || legType == 'STATION_CHANGE_WALK') {
-        continue;
-      }
+      final legs = journey['legs'] as List? ?? [];
+      final percorso = <Map<String, dynamic>>[];
       
-      final start = leg['start'] as Map<String, dynamic>? ?? {};
-      final end = leg['end'] as Map<String, dynamic>? ?? {};
-      final transport = leg['transport'] as Map<String, dynamic>? ?? {};
-      
-      // Estrai categoria e numero treno in modo robusto
-      final rawCode = transport['code']?.toString() ?? transport['trainNumber']?.toString() ?? '';
-      final fallbackCategory = transport['trainType']?.toString() ?? transport['type']?.toString() ?? 'TRN';
-      String categoriaEstratta = RegExp(r'^[a-zA-Z]+').stringMatch(rawCode) ?? fallbackCategory;
-      
-      // Normalizzazione categorie per Eurail
-      final categoryMap = {
-        'INI': 'ICN',
-        'NI': 'ICN',
-        'FR': 'FR',
-        'EN': 'EN',
-        'EC': 'EC',
-        'RJ': 'RJ',
-        'RJX': 'RJX',
-        'NJ': 'NJ',
-        'RE': 'RE',
-        'IC': 'IC',
-        'S': 'S',
-        'SBA': 'S',
-        'TGV': 'TGV',
-        'AVE': 'AVE',
-        'EXP': 'EXP',
-        'BUS': 'BUS',
-        'TRN': 'TRN',
-      };
-      
-      if (categoryMap[categoriaEstratta] != null) {
-        categoriaEstratta = categoryMap[categoriaEstratta]!;
-      }
-      
-      // Per il numero del treno
-      String numeroTreno = transport['trainNumber']?.toString() ?? '';
-      if (numeroTreno.isEmpty) {
-        final code = transport['code']?.toString() ?? '';
-        final numberMatch = RegExp(r'\d+').stringMatch(code);
-        if (numberMatch != null && numberMatch.isNotEmpty) {
-          numeroTreno = numberMatch;
-        } else {
-          numeroTreno = code;
-        }
-      }
-
-      final legData = <String, dynamic>{
-        'da': start['station']?.toString() ?? '--',
-        'a': end['station']?.toString() ?? '--',
-        'partenza': _extractTimeFromIso(start['dateTimeInISO']),
-        'arrivo': _extractTimeFromIso(end['dateTimeInISO']),
-        'dataPartenza': _extractDateFromIso(start['dateTimeInISO']),
-        'dataArrivo': _extractDateFromIso(end['dateTimeInISO']),
-        'categoria': categoriaEstratta,
-        'numeroTreno': numeroTreno,
-        'country': start['country']?.toString() ?? end['country']?.toString() ?? 'EU',
-        'operator': transport['operatorName']?.toString() ?? transport['type']?.toString() ?? '',
-        'platform': end['track']?.toString() ?? start['track']?.toString() ?? '',
-        'attesaCambioMinuti': 0,
-      };
-      
-      // Durata del leg
-      final duration = leg['duration'] as Map<String, dynamic>?;
-      if (duration != null) {
-        final hours = duration['hours'] as int? ?? 0;
-        final minutes = duration['minutes'] as int? ?? 0;
-        legData['durataLeggibile'] = '$hours h $minutes m';
-      } else {
-        legData['durataLeggibile'] = '--:--';
-      }
-      
-      // STOPS - FIX PER EURAIL
-      // Gestisce sia il caso in cui stops è una lista di oggetti che di stringhe
-      final stopsData = leg['stops'] as Map<String, dynamic>?;
-      if (stopsData != null) {
-        final stopsList = stopsData['stops'] as List? ?? [];
-        legData['stops'] = stopsList.map((s) {
-          if (s is Map<String, dynamic>) {
-            // Caso RFI: oggetto con campo 'station'
-            return s['station']?.toString() ?? s['name']?.toString() ?? s.toString();
-          }
-          // Caso Eurail: stringa diretta
-          return s.toString();
-        }).toList();
-      } else {
-        legData['stops'] = [];
-      }
-      
-      // Calcola attesa cambio (differenza tra arrivo di questo leg e partenza del precedente)
-      if (percorso.isNotEmpty) {
-        final prevLeg = percorso.last;
-        final prevArrivo = prevLeg['arrivo'] as String? ?? '--:--';
-        final prevData = prevLeg['dataArrivo'] as String? ?? '';
-        final currPartenza = legData['partenza'] as String? ?? '--:--';
-        final currData = legData['dataPartenza'] as String? ?? '';
+      for (int l = 0; l < legs.length; l++) {
+        final leg = legs[l];
         
-        if (prevArrivo != '--:--' && currPartenza != '--:--') {
-          try {
-            final prevDateTime = DateTime.parse('$prevData $prevArrivo:00');
-            final currDateTime = DateTime.parse('$currData $currPartenza:00');
-            if (currDateTime.isAfter(prevDateTime)) {
-              legData['attesaCambioMinuti'] = currDateTime.difference(prevDateTime).inMinutes;
+        if (leg is! Map<String, dynamic>) {
+          debugPrint('⚠️ Leg $l non è una Map: ${leg.runtimeType}');
+          continue;
+        }
+        
+        final legType = leg['type'] as String? ?? '';
+        if (legType == 'PLATFORM_CHANGE' || legType == 'STATION_CHANGE_WALK') {
+          continue;
+        }
+        
+        final start = leg['start'] as Map<String, dynamic>? ?? {};
+        final end = leg['end'] as Map<String, dynamic>? ?? {};
+        final transport = leg['transport'] as Map<String, dynamic>? ?? {};
+        
+        final rawCode = transport['code']?.toString() ?? transport['trainNumber']?.toString() ?? '';
+        final fallbackCategory = transport['trainType']?.toString() ?? transport['type']?.toString() ?? 'TRN';
+        final categoriaEstratta = RegExp(r'^[a-zA-Z]+').stringMatch(rawCode) ?? fallbackCategory;
+
+        final legData = <String, dynamic>{
+          'da': start['station']?.toString() ?? '--',
+          'a': end['station']?.toString() ?? '--',
+          'partenza': _extractTimeFromIso(start['dateTimeInISO']),
+          'arrivo': _extractTimeFromIso(end['dateTimeInISO']),
+          'dataPartenza': _extractDateFromIso(start['dateTimeInISO']),
+          'dataArrivo': _extractDateFromIso(end['dateTimeInISO']),
+          'categoria': categoriaEstratta,
+          'numeroTreno': transport['trainNumber']?.toString() ?? transport['code']?.toString() ?? '',
+          'country': start['country']?.toString() ?? end['country']?.toString() ?? 'EU',
+          'operator': transport['operatorName']?.toString() ?? transport['type']?.toString() ?? '',
+          'platform': end['track']?.toString() ?? start['track']?.toString() ?? '',
+          'attesaCambioMinuti': 0,
+        };
+        
+        final duration = leg['duration'] as Map<String, dynamic>?;
+        if (duration != null) {
+          final hours = duration['hours'] as int? ?? 0;
+          final minutes = duration['minutes'] as int? ?? 0;
+          legData['durataLeggibile'] = '$hours h $minutes m';
+        } else {
+          legData['durataLeggibile'] = '--:--';
+        }
+        
+        final stopsData = leg['stops'] as Map<String, dynamic>?;
+        if (stopsData != null) {
+          final stopsList = stopsData['stops'] as List? ?? [];
+          legData['stops'] = stopsList.map((s) {
+            if (s is Map<String, dynamic>) {
+              return s['station']?.toString() ?? '--';
             }
-          } catch (_) {}
+            return s.toString();
+          }).toList();
+        } else {
+          legData['stops'] = [];
+        }
+        
+        if (percorso.isNotEmpty) {
+          final prevLeg = percorso.last;
+          final prevArrivo = prevLeg['arrivo'] as String? ?? '--:--';
+          final prevData = prevLeg['dataArrivo'] as String? ?? '';
+          final currPartenza = legData['partenza'] as String? ?? '--:--';
+          final currData = legData['dataPartenza'] as String? ?? '';
+          
+          if (prevArrivo != '--:--' && currPartenza != '--:--') {
+            try {
+              final prevDateTime = DateTime.parse('$prevData $prevArrivo:00');
+              final currDateTime = DateTime.parse('$currData $currPartenza:00');
+              if (currDateTime.isAfter(prevDateTime)) {
+                legData['attesaCambioMinuti'] = currDateTime.difference(prevDateTime).inMinutes;
+              }
+            } catch (_) {}
+          }
+        }
+        
+        percorso.add(legData);
+      }
+      
+      if (percorso.isEmpty) continue;
+      
+      final journeyDuration = journey['duration'] as Map<String, dynamic>?;
+      String durataTotale = '--:--';
+      if (journeyDuration != null) {
+        final hours = journeyDuration['hours'] as int? ?? 0;
+        final minutes = journeyDuration['minutes'] as int? ?? 0;
+        durataTotale = '$hours h $minutes m';
+      }
+      
+      int totalStops = 0;
+      for (final leg in percorso) {
+        final stops = leg['stops'] as List?;
+        if (stops != null) totalStops += stops.length;
+      }
+      
+      double price = 0;
+      final priceData = journey['price'];
+      if (priceData is num) {
+        price = priceData.toDouble();
+      } else if (priceData is Map) {
+        final amount = priceData['amount'];
+        if (amount is num) {
+          price = amount.toDouble();
         }
       }
       
-      percorso.add(legData);
+      normalizedSolutions.add({
+        'percorso': percorso,
+        'cambi': percorso.length - 1,
+        'durataViaggioTotaleLeggibile': durataTotale,
+        'arrivoStimato': _extractTimeFromIso(journey['arrival']),
+        'dataArrivoStimata': _extractDateFromIso(journey['arrival']),
+        'totaleFermate': totalStops,
+        'prezzo': price,
+        'moneta': 'EUR',
+        'id': journey['id']?.toString() ?? 'eurail_${DateTime.now().millisecondsSinceEpoch}',
+      });
     }
     
-    if (percorso.isEmpty) continue;
-    
-    // Durata totale del viaggio
-    final journeyDuration = journey['duration'] as Map<String, dynamic>?;
-    String durataTotale = '--:--';
-    if (journeyDuration != null) {
-      final hours = journeyDuration['hours'] as int? ?? 0;
-      final minutes = journeyDuration['minutes'] as int? ?? 0;
-      durataTotale = '$hours h $minutes m';
-    }
-    
-    // Calcola totale fermate
-    int totalStops = 0;
-    for (final leg in percorso) {
-      final stops = leg['stops'] as List?;
-      if (stops != null) totalStops += stops.length;
-    }
-    
-    // Estrai il prezzo
-    double price = 0;
-    final priceData = journey['price'];
-    if (priceData is num) {
-      price = priceData.toDouble();
-    } else if (priceData is Map) {
-      final amount = priceData['amount'];
-      if (amount is num) {
-        price = amount.toDouble();
-      }
-    }
-    
-    normalizedSolutions.add({
-      'percorso': percorso,
-      'cambi': percorso.length - 1,
-      'durataViaggioTotaleLeggibile': durataTotale,
-      'arrivoStimato': _extractTimeFromIso(journey['arrival']),
-      'dataArrivoStimata': _extractDateFromIso(journey['arrival']),
-      'totaleFermate': totalStops,
-      'prezzo': price,
-      'moneta': 'EUR',
-      'id': journey['id']?.toString() ?? 'eurail_${DateTime.now().millisecondsSinceEpoch}',
-    });
+    return {
+      'ok': true,
+      'provider': 'eurail',
+      'totaleSoluzioni': normalizedSolutions.length,
+      'soluzioni': normalizedSolutions,
+      'richiesta': {
+        'from': _originController.text,
+        'to': _destinationController.text,
+      },
+    };
   }
-  
-  return {
-    'ok': true,
-    'provider': 'eurail',
-    'totaleSoluzioni': normalizedSolutions.length,
-    'soluzioni': normalizedSolutions,
-    'richiesta': {
-      'from': _originController.text,
-      'to': _destinationController.text,
-    },
-  };
-}
 
   Future<void> _performRoutingSearch() async {
     final origin = _originController.text.trim();
