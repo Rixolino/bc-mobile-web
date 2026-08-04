@@ -119,7 +119,7 @@ class _DashboardFeedState extends State<DashboardFeed>
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: 76)),
+          const SliverToBoxAdapter(child: SizedBox(height: 120)),
 
           // ── 1. HEADER ────────────────────────────────────────
           SliverToBoxAdapter(
