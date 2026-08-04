@@ -132,6 +132,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const SizedBox(height: 10),
                         Text(
                           _greeting(),
                           style: TextStyle(
