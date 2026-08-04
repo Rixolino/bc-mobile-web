@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -47,7 +48,12 @@ class _HomeScreenState extends State<HomeScreen> {
   late int _previousModeIndex;
   bool _searchByNumber = false;
   bool _showStopDropdown = false;
-  bool _searchExpanded = true;
+  bool _searchExpanded = false;
+
+  // --- LIQUID GLASS DOCK: stato del drag ---
+  bool _isDockDragging = false;
+  double? _dockDragX; // posizione live della "goccia" mentre si trascina
+  double _dockSegmentWidth = 0; // larghezza di uno slot icona, calcolata a runtime
 
   @override
   void initState() {
@@ -228,16 +234,34 @@ class _HomeScreenState extends State<HomeScreen> {
         onRefresh: _refresh,
         child: Stack(
           children: [
-            // 1. BACKGROUND / PANELS
-            _selectedModeIndex == 0
-                ? Positioned.fill(
-                    child: DashboardFeed(
+            // 1. BACKGROUND / PANELS CON TRANSIZIONE MODERNA
+            Positioned.fill(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 500),
+                switchInCurve: Curves.easeOutExpo,
+                switchOutCurve: Curves.easeInExpo,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.03),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: _selectedModeIndex == 0
+                    ? DashboardFeed(
+                        key: const ValueKey('Dashboard'),
                         onOpenMap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                                 builder: (_) =>
-                                    const MapScreen(initialCategory: -1)))))
-                : Positioned.fill(
-                    child: _buildTransportPanel(_selectedModeIndex, theme)),
+                                    const MapScreen(initialCategory: -1))))
+                    : _buildTransportPanel(_selectedModeIndex, theme),
+              ),
+            ),
 
             // 2. TOP HEADER (Logo + Actions)
             Positioned(
@@ -253,17 +277,25 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildTopActionIcons(theme),
                     ],
                   ),
-                  if (_selectedModeIndex > 0 && _searchExpanded) ...[
-                    const SizedBox(height: 12),
-                    _buildSearchBar(theme, accentColor, busProvider),
-                  ],
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutCirc,
+                    child: (_selectedModeIndex > 0 && _searchExpanded)
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _buildSearchBar(theme, accentColor, busProvider),
+                          )
+                        : const SizedBox(width: double.infinity, height: 0),
+                  ),
                 ],
               ),
             ),
 
             // 3. BUS STOP BANNER (Se presente)
             if (_selectedModeIndex == 2 && busProvider.selectedStop != null)
-              Positioned(
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
                 top: MediaQuery.of(context).padding.top +
                     140 +
                     (_searchExpanded ? 60 : 0),
@@ -366,13 +398,19 @@ class _HomeScreenState extends State<HomeScreen> {
       IconData icon, VoidCallback onTap, ThemeProvider theme) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: theme.surfaceColor.withOpacity(0.85),
-            shape: BoxShape.circle,
-            border: Border.all(color: theme.textColor.withOpacity(0.05))),
-        child: Icon(icon, size: 22, color: theme.textColor),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: theme.surfaceColor.withOpacity(0.4),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+            ),
+            child: Icon(icon, size: 22, color: theme.textColor),
+          ),
+        ),
       ),
     );
   }
@@ -428,12 +466,20 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [Color(0xFF00E5FF), Color(0xFF3b82f6)]),
-              shape: BoxShape.circle),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF3b82f6).withOpacity(0.4),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 2),
+                )
+              ]),
           child: CircleAvatar(
-              radius: 20,
+              radius: 19,
               backgroundColor: theme.surfaceColor,
               child: Icon(Icons.person_outline_rounded,
-                  size: 22, color: theme.textColor)),
+                  size: 20, color: theme.textColor)),
         ),
       ),
     );
@@ -537,39 +583,215 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  static const List<IconData> _dockIcons = [
+    Icons.grid_view_rounded,
+    Icons.train_rounded,
+    Icons.directions_bus_rounded,
+    Icons.flight_takeoff_rounded,
+  ];
+
+  void _handleDockDrag(double localDx) {
+    if (_dockSegmentWidth <= 0) return;
+    final maxLeft = _dockSegmentWidth * (_dockIcons.length - 1);
+    final rawLeft = (localDx - _dockSegmentWidth / 2)
+        .clamp(0.0, maxLeft);
+    final index =
+        (localDx / _dockSegmentWidth).floor().clamp(0, _dockIcons.length - 1);
+
+    setState(() {
+      _isDockDragging = true;
+      _dockDragX = rawLeft;
+    });
+
+    if (index != _selectedModeIndex) {
+      _setMode(index);
+    }
+  }
+
+  void _endDockDrag() {
+    setState(() {
+      _isDockDragging = false;
+      _dockDragX = null;
+    });
+  }
+
   Widget _buildBottomDock(ThemeProvider theme, Color accentColor) {
     return Positioned(
       bottom: 24,
-      left: 20,
-      right: 20,
-      child: GlassmorphicContainer(
-        width: double.infinity,
-        height: 74,
-        borderRadius: 37,
-        blur: 30,
-        alignment: Alignment.center,
-        border: 1.5,
-        linearGradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF1A1F24).withOpacity(0.9),
-              const Color(0xFF0D1013).withOpacity(0.95)
-            ]),
-        borderGradient: LinearGradient(colors: [
-          Colors.white.withOpacity(0.1),
-          Colors.white.withOpacity(0.05)
-        ]),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildDockIcon(Icons.grid_view_rounded, 0, theme),
-            _buildDockIcon(Icons.train_rounded, 1, theme),
-            _buildDockIcon(Icons.directions_bus_rounded, 2, theme),
-            _buildDockIcon(Icons.flight_takeoff_rounded, 3, theme),
-            VerticalDivider(color: Colors.white10, indent: 22, endIndent: 22),
-            _buildActionDockIcon(Icons.settings_suggest_rounded, _openSettings),
-          ],
+      left: 0,
+      right: 0,
+      child: Center(
+        child: SizedBox(
+          width: 300, // LARGHEZZA FISSA: capsula ristretta
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  color: Colors.black.withOpacity(0.35),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.14), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8)),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 0.5,
+                      left: 18,
+                      right: 18,
+                      child: Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [
+                            Colors.transparent,
+                            Colors.white.withOpacity(0.35),
+                            Colors.transparent,
+                          ]),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              _dockSegmentWidth =
+                                  constraints.maxWidth / _dockIcons.length;
+                              final indicatorLeft = _isDockDragging &&
+                                      _dockDragX != null
+                                  ? _dockDragX!
+                                  : _dockSegmentWidth * _selectedModeIndex;
+
+                              return GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanDown: (d) =>
+                                    _handleDockDrag(d.localPosition.dx),
+                                onPanUpdate: (d) =>
+                                    _handleDockDrag(d.localPosition.dx),
+                                onPanEnd: (_) => _endDockDrag(),
+                                onPanCancel: _endDockDrag,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Row(
+                                      children: List.generate(
+                                        _dockIcons.length,
+                                        (i) => Expanded(
+                                          child: _buildDockIcon(
+                                              _dockIcons[i], i, theme),
+                                        ),
+                                      ),
+                                    ),
+                                    AnimatedPositioned(
+                                      duration: _isDockDragging
+                                          ? Duration.zero
+                                          : const Duration(milliseconds: 280),
+                                      curve: Curves.easeOutBack,
+                                      left: indicatorLeft,
+                                      top: 6,
+                                      child: SizedBox(
+                                        width: _dockSegmentWidth,
+                                        height: 44,
+                                        child: Center(
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                                milliseconds: 200),
+                                            curve: Curves.easeOut,
+                                            width: 34,
+                                            height: 34,
+                                            clipBehavior: Clip.antiAlias,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(17),
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                  Colors.white.withOpacity(0.22),
+                                                  Colors.white.withOpacity(0.10),
+                                                  Colors.white.withOpacity(0.03),
+                                                ],
+                                                stops: const [0.0, 0.5, 1.0],
+                                              ),
+                                              border: Border.all(
+                                                  color: Colors.white
+                                                      .withOpacity(0.55),
+                                                  width: 1),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(0.25),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 3)),
+                                                BoxShadow(
+                                                    color: Colors.white
+                                                        .withOpacity(0.15),
+                                                    blurRadius: 4,
+                                                    spreadRadius: -2,
+                                                    offset: const Offset(0, -1)),
+                                              ],
+                                            ),
+                                            child: Stack(
+                                              children: [
+                                                Positioned(
+                                                  top: 3,
+                                                  left: 6,
+                                                  right: 6,
+                                                  child: Container(
+                                                    height: 8,
+                                                    decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              6),
+                                                      gradient: LinearGradient(
+                                                        colors: [
+                                                          Colors.white
+                                                              .withOpacity(0.0),
+                                                          Colors.white
+                                                              .withOpacity(0.55),
+                                                          Colors.white
+                                                              .withOpacity(0.0),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 22,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          color: Colors.white.withOpacity(0.14),
+                        ),
+                        _buildActionDockIcon(
+                            Icons.settings_suggest_rounded, _openSettings),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -577,38 +799,47 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDockIcon(IconData icon, int index, ThemeProvider theme) {
     bool isSelected = _selectedModeIndex == index;
-    Color color = isSelected ? _getAccentColor(index) : Colors.white38;
+    Color color = isSelected
+        ? Colors.white
+        : Colors.white.withOpacity(0.55);
     return GestureDetector(
       onTap: () => _setMode(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
-            shape: BoxShape.circle),
-        child: Icon(icon, color: color, size: 26),
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: AnimatedScale(
+          scale: isSelected ? 1.05 : 1.0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          child: Icon(icon, color: color, size: 22),
+        ),
       ),
     );
   }
 
   Widget _buildActionDockIcon(IconData icon, VoidCallback onTap) {
-    return IconButton(
-        icon: Icon(icon, color: Colors.white38, size: 24), onPressed: onTap);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 44,
+        height: 56,
+        child: Center(
+          child: Icon(icon, color: Colors.white.withOpacity(0.55), size: 22),
+        ),
+      ),
+    );
   }
 
   Widget _buildTransportPanel(int mode, ThemeProvider theme) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      child: Container(
-        key: ValueKey(mode),
-        color: theme.backgroundColor,
-        padding: EdgeInsets.only(top: _searchExpanded ? 140 : 80),
-        child: mode == 1
-            ? const TrainSearchScreen()
-            : mode == 2
-                ? const BusSearchScreen()
-                : const PlaneSearchScreen(),
-      ),
+    return Container(
+      key: ValueKey('Panel_$mode'),
+      color: theme.backgroundColor,
+      padding: EdgeInsets.only(top: _searchExpanded ? 140 : 80),
+      child: mode == 1
+          ? const TrainSearchScreen()
+          : mode == 2
+              ? const BusSearchScreen()
+              : const PlaneSearchScreen(),
     );
   }
 
@@ -697,40 +928,45 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- MODALS (ORIGINALI) ---
+  // --- MODALS ---
 
   void _showLogoMenuSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      elevation: 0,
       builder: (ctx) {
         final theme = Provider.of<ThemeProvider>(ctx, listen: false);
         return DraggableScrollableSheet(
-          initialChildSize: 0.4,
-          minChildSize: 0.2,
+          initialChildSize: 0.45,
+          minChildSize: 0.3,
           maxChildSize: 0.8,
           builder: (_, sc) => Container(
             decoration: BoxDecoration(
-                color: theme.surfaceColor,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24))),
+                color: theme.backgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))
+                ]
+            ),
             child: ListView(
               controller: sc,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               children: [
                 Center(
                     child: Container(
-                        width: 40,
-                        height: 4,
+                        width: 48,
+                        height: 5,
                         decoration: BoxDecoration(
-                            color: theme.secondaryTextColor.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 20),
+                            color: theme.secondaryTextColor.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(10)))),
+                const SizedBox(height: 24),
                 Text(AppLocalizations.of(ctx)?.quickActions ?? "Azioni Rapide",
                     style: GoogleFonts.syne(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
                         color: theme.textColor)),
                 const SizedBox(height: 16),
                 _buildModalTile(
