@@ -24,6 +24,7 @@ import 'notifications_manager_screen.dart';
 import '../../features/favorites/screens/favorites_page.dart';
 import '../../features/favorites/providers/favorites_provider.dart';
 import '../../core/services/android_background_service.dart';
+import '../../features/roadways/presentation/pages/roadways_page.dart';
 import '../widgets/map_widget.dart';
 import 'map_screen.dart';
 import '../widgets/dashboard_feed.dart';
@@ -43,7 +44,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
 
-  // 0: Home, 1: Treni, 2: Bus, 3: Aerei
+  // 0: Home, 1: Treni, 2: Bus, 3: Aerei, 4: Autostrade
   late int _selectedModeIndex;
   late int _previousModeIndex;
   bool _searchByNumber = false;
@@ -149,6 +150,10 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (mode == 3) {
         Provider.of<TrainProvider>(context, listen: false).clearAll();
         Provider.of<BusProvider>(context, listen: false).clearAll();
+      } else if (mode == 4) {
+        Provider.of<TrainProvider>(context, listen: false).clearAll();
+        Provider.of<BusProvider>(context, listen: false).clearAll();
+        Provider.of<PlaneProvider>(context, listen: false).clearAll();
       }
 
       setState(() {
@@ -182,6 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.tealAccent;
       case 3:
         return Colors.blueAccent;
+      case 4:
+        return Colors.greenAccent;
       default:
         return const Color(0xFF00E5FF);
     }
@@ -588,6 +595,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Icons.train_rounded,
     Icons.directions_bus_rounded,
     Icons.flight_takeoff_rounded,
+    Icons.route,
   ];
 
   void _handleDockDrag(double localDx) {
@@ -839,7 +847,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const TrainSearchScreen()
           : mode == 2
               ? const BusSearchScreen()
-              : const PlaneSearchScreen(),
+              : mode == 3
+                  ? const PlaneSearchScreen()
+                  : const RoadwaysPage(),
     );
   }
 
