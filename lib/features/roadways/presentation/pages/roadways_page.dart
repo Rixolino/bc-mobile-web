@@ -72,42 +72,47 @@ class _RoadwaysPageState extends State<RoadwaysPage>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Indicatore trascinamento superiore
                 Center(
                   child: Container(
-                    width: 36,
-                    height: 4,
+                    width: 40,
+                    height: 5,
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(2),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Text(
-                    isIt ? 'Seleziona Nazione' : 'Land auswählen',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.5,
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.public_rounded, color: theme.colorScheme.primary, size: 22),
+                      const SizedBox(width: 10),
+                      Text(
+                        isIt ? 'Seleziona Nazione' : 'Land auswählen',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 _buildCountryOption(
                   code: 'it',
                   name: 'Italia',
-                  subtitle: 'Servizi autostradali IT',
-                  icon: Icons.flag_rounded,
+                  subtitle: 'Autostrade / Servizi autostradali',
+                  flag: '🇮🇹',
                   theme: theme,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 _buildCountryOption(
                   code: 'de',
-                  name: 'Germania (Deutschland)',
-                  subtitle: 'Autobahn-Services DE',
-                  icon: Icons.flag_rounded,
+                  name: 'Germania',
+                  subtitle: 'Autobahn / Rastanlagen',
+                  flag: '🇩🇪',
                   theme: theme,
                 ),
                 const SizedBox(height: 12),
@@ -123,7 +128,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
     required String code,
     required String name,
     required String subtitle,
-    required IconData icon,
+    required String flag,
     required ThemeData theme,
   }) {
     final isSelected = _country == code;
@@ -133,37 +138,35 @@ class _RoadwaysPageState extends State<RoadwaysPage>
         Navigator.pop(context);
         _setCountry(code);
       },
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.primary.withValues(alpha: 0.75),
+                  ],
+                )
+              : null,
           color: isSelected
-              ? theme.colorScheme.primaryContainer.withOpacity(0.4)
-              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(16),
+              ? null
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-            width: 1.5,
+            color: isSelected
+                ? Colors.transparent
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+            width: 1.2,
           ),
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.surfaceContainerHighest,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 16),
+            Text(flag, style: const TextStyle(fontSize: 26)),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,23 +175,28 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                     name,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                     ),
                   ),
                   Text(
                     subtitle,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary.withValues(alpha: 0.85)
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check_circle_rounded,
-                color: theme.colorScheme.primary,
-                size: 24,
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onPrimary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.check_rounded, color: theme.colorScheme.primary, size: 16),
               ),
           ],
         ),
@@ -207,100 +215,165 @@ class _RoadwaysPageState extends State<RoadwaysPage>
     final theme = Theme.of(context);
     final isIt = _country == 'it';
 
-    // Fissione dinamica tra primario e sfondo per eliminare il grigio
-    final baseBgColor = theme.brightness == Brightness.light ? Colors.white : const Color(0xFF121212);
-    final tintedBackground = Color.alphaBlend(
-      theme.colorScheme.primary.withOpacity(0.08),
-      baseBgColor,
-    );
-
     return Scaffold(
-      backgroundColor: tintedBackground,
       appBar: AppBar(
-        centerTitle: true,
+        centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
-        title: Text(
-          isIt ? 'Servizi Autostradali' : 'Autobahn-Services',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
+        titleSpacing: 0,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                theme.brightness == Brightness.light
+                    ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        ),
+        title: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isIt ? 'Servizi Autostradali' : 'Autobahn-Services',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                isIt
+                    ? 'Notifiche, caselli e aree di servizio'
+                    : 'Meldungen, Maut & Rastanlagen',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
-          // Bottone Popup Nazionalità
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _showCountryPicker,
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: theme.colorScheme.primary.withOpacity(0.2),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.language_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
+            child: Tooltip(
+              message: isIt ? 'Nazione' : 'Land',
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _showCountryPicker,
+                  borderRadius: BorderRadius.circular(24),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.primary.withValues(alpha: 0.15),
+                          theme.colorScheme.secondary.withValues(alpha: 0.12),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _country.toUpperCase(),
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _country == 'it' ? '🇮🇹' : '🇩🇪',
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _country.toUpperCase(),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 20,
                           color: theme.colorScheme.primary,
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorSize: TabBarIndicatorSize.tab,
-          dividerColor: Colors.transparent,
-          indicator: BoxDecoration(
-            color: theme.colorScheme.primary.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(100),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Container(
+              height: 50,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                ),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                labelColor: theme.colorScheme.primary,
+                unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                indicator: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary.withValues(alpha: 0.15),
+                      theme.colorScheme.secondary.withValues(alpha: 0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(40),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+                tabs: [
+                  Tab(
+                    text: isIt ? 'Notizie' : 'Meldungen',
+                    icon: const Icon(Icons.campaign_rounded, size: 20),
+                  ),
+                  Tab(
+                    text: isIt ? 'Caselli' : 'Maut',
+                    icon: const Icon(Icons.toll_rounded, size: 20),
+                  ),
+                  Tab(
+                    text: isIt ? 'Servizi' : 'Rastanlagen',
+                    icon: const Icon(Icons.local_gas_station_rounded, size: 20),
+                  ),
+                ],
+              ),
+            ),
           ),
-          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
-          splashBorderRadius: BorderRadius.circular(100),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          tabs: [
-            Tab(
-              text: isIt ? 'Notizie' : 'Meldungen',
-              icon: const Icon(Icons.campaign_rounded),
-            ),
-            Tab(
-              text: isIt ? 'Caselli' : 'Maut',
-              icon: const Icon(Icons.euro_rounded),
-            ),
-            Tab(
-              text: isIt ? 'Servizi' : 'Rastanlagen',
-              icon: const Icon(Icons.local_gas_station_rounded),
-            ),
-          ],
         ),
       ),
       body: TabBarView(
@@ -311,32 +384,44 @@ class _RoadwaysPageState extends State<RoadwaysPage>
           _buildServicesTab(),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _refreshData,
-        elevation: 2,
-        backgroundColor: theme.colorScheme.primaryContainer,
-        foregroundColor: theme.colorScheme.onPrimaryContainer,
-        tooltip: isIt ? 'Aggiorna' : 'Aktualisieren',
-        child: const Icon(Icons.refresh_rounded),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 16, right: 8),
+        child: FloatingActionButton.extended(
+          onPressed: _refreshData,
+          elevation: 4,
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          icon: const Icon(Icons.refresh_rounded, size: 22),
+          label: Text(
+            isIt ? 'Refresh' : 'Aktualisieren',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onPrimary,
+            ),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
   // HELPER PER LE CARD MATERIAL 3
   // ---------------------------------------------------------------------------
+
   BoxDecoration _m3CardDecoration(ThemeData theme) {
     return BoxDecoration(
       color: theme.brightness == Brightness.light ? Colors.white : theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       border: Border.all(
-        color: theme.colorScheme.primary.withOpacity(0.15),
-        width: 1.5,
+        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        width: 1,
       ),
       boxShadow: [
         BoxShadow(
-          color: theme.colorScheme.shadow.withOpacity(0.04),
-          blurRadius: 10,
+          color: theme.colorScheme.shadow.withValues(alpha: 0.08),
+          blurRadius: 16,
           offset: const Offset(0, 4),
         ),
       ],
@@ -353,6 +438,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
     return RefreshIndicator(
       onRefresh: _refreshData,
+      color: theme.colorScheme.primary,
       child: FutureBuilder<List<RoadwayNews>>(
         future: _newsFuture,
         builder: (context, snapshot) {
@@ -367,15 +453,16 @@ class _RoadwaysPageState extends State<RoadwaysPage>
             return _buildEmptyState(
               theme,
               isIt ? 'Nessuna notizia disponibile.' : 'Keine Meldungen verfügbar.',
-              Icons.check_circle_outline,
+              Icons.campaign_outlined,
             );
           }
 
+          final news = snapshot.data!;
           return ListView.builder(
-            padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 80),
-            itemCount: snapshot.data!.length,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            itemCount: news.length,
             itemBuilder: (context, index) {
-              return _buildNewsCard(snapshot.data![index], theme);
+              return _buildNewsCard(news[index], theme);
             },
           );
         },
@@ -386,6 +473,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
   Widget _buildNewsCard(RoadwayNews news, ThemeData theme) {
     final typeColor = _newsTypeColor(news.type, theme);
     final typeIcon = _newsTypeIcon(news.type);
+    final isSevere = news.type.toLowerCase() == 'closure' || news.type.toLowerCase() == 'event';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -394,14 +482,28 @@ class _RoadwaysPageState extends State<RoadwaysPage>
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           leading: Container(
-            padding: const EdgeInsets.all(12),
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: typeColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isSevere
+                    ? [typeColor.withValues(alpha: 0.22), typeColor.withValues(alpha: 0.08)]
+                    : [
+                        theme.colorScheme.primary.withValues(alpha: 0.16),
+                        theme.colorScheme.secondary.withValues(alpha: 0.12),
+                      ],
+              ),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(typeIcon, color: typeColor, size: 26),
+            child: Icon(
+              typeIcon,
+              color: isSevere ? typeColor : theme.colorScheme.primary,
+              size: 24,
+            ),
           ),
           title: Text(
             news.title.isNotEmpty ? news.title : news.description,
@@ -412,102 +514,127 @@ class _RoadwaysPageState extends State<RoadwaysPage>
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
-                  [
-                    if (news.location.isNotEmpty) news.location,
-                    if (news.direction.isNotEmpty) news.direction,
-                  ].join(' • '),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: typeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ),
-                if (news.type.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: typeColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(typeIcon, size: 12, color: typeColor),
+                      const SizedBox(width: 4),
+                      Text(
                         news.type.toUpperCase(),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: typeColor,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 0.6,
                         ),
                       ),
-                    ),
+                    ],
+                  ),
+                ),
+                if (news.location.isNotEmpty)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.place_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          news.location,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
               ],
             ),
           ),
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [typeColor.withValues(alpha: 0.06), Colors.transparent],
+                ),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 8),
                   if (news.description.isNotEmpty)
                     Text(
                       news.description,
-                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        height: 1.55,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                      ),
                     ),
-                  if (news.cause != null && news.cause!.isNotEmpty) ...[
+                  if (news.direction.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Causa: ${news.cause}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
+                    _infoRow(
+                      theme: theme,
+                      icon: Icons.navigation_rounded,
+                      color: typeColor,
+                      text: news.direction,
+                    ),
+                  ],
+                  if (news.cause != null && news.cause!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _infoRow(
+                      theme: theme,
+                      icon: Icons.report_problem_outlined,
+                      color: Colors.orange.shade700,
+                      text: news.cause!,
                     ),
                   ],
                   if (news.from != null || news.to != null) ...[
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.route_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Tratta: ${news.from ?? "—"} → ${news.to ?? "—"}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
+                    _infoRow(
+                      theme: theme,
+                      icon: Icons.signpost_outlined,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      text: '${news.from ?? "—"} → ${news.to ?? "—"}',
                     ),
                   ],
                   if (news.queueKm != null && news.queueKm! > 0) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.errorContainer.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(12),
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: theme.colorScheme.error.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded, size: 18, color: theme.colorScheme.error),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Coda: ${news.queueKm!.toStringAsFixed(1)} km'
-                            '${news.delayMinutes != null ? " · Ritardo ${news.delayMinutes} min" : ""}',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: theme.colorScheme.error,
-                              fontWeight: FontWeight.bold,
+                          Icon(Icons.traffic_rounded, size: 20, color: theme.colorScheme.error),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Code: ${news.queueKm!.toStringAsFixed(1)} km'
+                              '${news.delayMinutes != null ? " · Delay ${news.delayMinutes} min" : ""}',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
@@ -515,18 +642,29 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Icon(Icons.access_time_filled_rounded, size: 16, color: theme.colorScheme.primary),
-                      const SizedBox(width: 6),
-                      Text(
-                        news.date,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: typeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.schedule_rounded, size: 14, color: typeColor),
+                          const SizedBox(width: 6),
+                          Text(
+                            news.date,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: typeColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -539,6 +677,8 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
   Color _newsTypeColor(String type, ThemeData theme) {
     switch (type.toLowerCase()) {
+      case 'open':
+        return Colors.green.shade600;
       case 'closure':
       case 'event':
         return theme.colorScheme.error;
@@ -553,6 +693,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
   IconData _newsTypeIcon(String type) {
     switch (type.toLowerCase()) {
+      case 'open': return Icons.check_circle_outline_rounded;
       case 'closure': return Icons.block_rounded;
       case 'warning': return Icons.warning_rounded;
       case 'roadworks': return Icons.construction_rounded;
@@ -571,6 +712,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
     return RefreshIndicator(
       onRefresh: _refreshData,
+      color: theme.colorScheme.primary,
       child: FutureBuilder<({List<RoadwayToll> tolls, String? note})>(
         future: _tollsFuture,
         builder: (context, snapshot) {
@@ -596,7 +738,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 80),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
             itemCount: tolls.length,
             itemBuilder: (context, index) {
               return _buildTollCard(tolls[index], theme);
@@ -608,6 +750,8 @@ class _RoadwaysPageState extends State<RoadwaysPage>
   }
 
   Widget _buildTollCard(RoadwayToll toll, ThemeData theme) {
+    final isOpen = toll.status == 'OPEN';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: _m3CardDecoration(theme),
@@ -615,17 +759,25 @@ class _RoadwaysPageState extends State<RoadwaysPage>
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           leading: Container(
-            padding: const EdgeInsets.all(12),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: theme.colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.secondary.withValues(alpha: 0.2),
+                  theme.colorScheme.primary.withValues(alpha: 0.14),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               Icons.toll_rounded,
-              color: theme.colorScheme.onSecondaryContainer,
-              size: 26,
+              color: theme.colorScheme.primary,
+              size: 24,
             ),
           ),
           title: Text(
@@ -636,94 +788,138 @@ class _RoadwaysPageState extends State<RoadwaysPage>
             ),
           ),
           subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4.0),
-            child: Text(
-              [
-                if (toll.highway.isNotEmpty) toll.highway,
-                if (toll.highwayDescription.isNotEmpty) toll.highwayDescription,
-              ].join(' • '),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            padding: const EdgeInsets.only(top: 6.0),
+            child: Row(
+              children: [
+                _statusDot(isOpen),
+                const SizedBox(width: 6),
+                Text(
+                  isOpen
+                      ? (_country == 'it' ? 'Aperto' : 'Offen')
+                      : (_country == 'it' ? 'Chiuso' : 'Geschlossen'),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: isOpen ? Colors.green.shade600 : theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (toll.highway.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      toll.highway,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 8),
+                  if (toll.highwayDescription.isNotEmpty)
+                    _infoRow(
+                      theme: theme,
+                      icon: Icons.signpost_outlined,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      text: toll.highwayDescription,
+                    ),
                   if (toll.address.isNotEmpty)
-                    Text(toll.address, style: theme.textTheme.bodyMedium),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _infoRow(
+                        theme: theme,
+                        icon: Icons.location_on_outlined,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        text: toll.address,
+                      ),
+                    ),
                   if (toll.km > 0)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4.0),
-                      child: Text(
-                        'Km ${toll.km.toStringAsFixed(1)}',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _infoRow(
+                        theme: theme,
+                        icon: Icons.straighten_rounded,
+                        color: theme.colorScheme.primary,
+                        text: 'Km ${toll.km.toStringAsFixed(1)}',
                       ),
                     ),
                   if (toll.paymentMethods.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'METODI DI PAGAMENTO',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                        color: theme.colorScheme.primary,
-                      ),
+                    const SizedBox(height: 20),
+                    _sectionLabel(
+                      theme,
+                      _country == 'de' ? 'ZAHLUNGSMETHODEN' : 'METODI DI PAGAMENTO',
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: toll.paymentMethods
-                          .map((pm) => Chip(
-                                label: Text(pm.description.isNotEmpty ? pm.description : pm.code),
-                                backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                                side: BorderSide.none,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (toll.entranceGates.isNotEmpty) 
-                              Text('Porte entrata: ${toll.entranceGates.length}', style: theme.textTheme.bodyMedium),
-                            if (toll.exitGates.isNotEmpty) 
-                              Text('Porte uscita: ${toll.exitGates.length}', style: theme.textTheme.bodyMedium),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      children: toll.paymentMethods.map((pm) {
+                        final desc = pm.description.isNotEmpty ? pm.description : pm.code;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                           decoration: BoxDecoration(
-                            color: toll.status == 'OPEN' 
-                                ? Colors.green.withOpacity(0.1) 
-                                : theme.colorScheme.error.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            toll.status,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: toll.status == 'OPEN' ? Colors.green.shade700 : theme.colorScheme.error,
-                              fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
                             ),
                           ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.payment_rounded, size: 15, color: theme.colorScheme.primary),
+                              const SizedBox(width: 6),
+                              Text(
+                                desc,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _GateStat(
+                          count: toll.entranceGates.length,
+                          label: _country == 'de' ? 'Einfahrt' : 'Entrata',
+                          icon: Icons.call_missed_outgoing_rounded,
+                          theme: theme,
                         ),
+                        Container(width: 1, height: 34, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                        _GateStat(
+                          count: toll.exitGates.length,
+                          label: _country == 'de' ? 'Ausfahrt' : 'Uscita',
+                          icon: Icons.call_received_rounded,
+                          theme: theme,
+                        ),
+                        Container(width: 1, height: 34, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                        _GateStatus(open: isOpen, theme: theme),
                       ],
                     ),
                   ),
@@ -746,6 +942,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
     return RefreshIndicator(
       onRefresh: _refreshData,
+      color: theme.colorScheme.primary,
       child: FutureBuilder<List<RoadwayAreaService>>(
         future: _servicesFuture,
         builder: (context, snapshot) {
@@ -760,7 +957,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
             return _buildEmptyState(
               theme,
               isIt ? 'Servizi non disponibili.' : 'Keine Rastanlagen verfügbar.',
-              Icons.local_gas_station_rounded,
+              Icons.local_gas_station_outlined,
             );
           }
 
@@ -772,8 +969,8 @@ class _RoadwaysPageState extends State<RoadwaysPage>
           return Column(
             children: [
               Container(
-                height: 56,
-                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                height: 48,
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -788,7 +985,7 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                         Icons.search_off_rounded,
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.only(left: 16, right: 16, top: 4, bottom: 80),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                         itemCount: filteredAreas.length,
                         itemBuilder: (context, index) {
                           return _AreaServiceCardItem(
@@ -813,42 +1010,25 @@ class _RoadwaysPageState extends State<RoadwaysPage>
     return [
       Padding(
         padding: const EdgeInsets.only(right: 8),
-        child: ChoiceChip(
-          label: Text(_country == 'it' ? 'Tutte' : 'Alle'),
+        child: _FilterChip(
+          label: _country == 'it' ? 'Tutte' : 'Alle',
+          icon: Icons.apps_rounded,
           selected: _servicesFilter.isEmpty,
-          onSelected: (_) => setState(() => _servicesFilter = ''),
-          showCheckmark: false,
-          selectedColor: theme.colorScheme.primary,
-          labelStyle: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: _servicesFilter.isEmpty ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          side: BorderSide(
-            color: _servicesFilter.isEmpty ? Colors.transparent : theme.colorScheme.outlineVariant,
-          ),
+          theme: theme,
+          color: theme.colorScheme.primary,
+          onSelected: () => setState(() => _servicesFilter = ''),
         ),
       ),
       ...highways.map((highway) {
-        final isSelected = _servicesFilter == highway;
         return Padding(
           padding: const EdgeInsets.only(right: 8),
-          child: ChoiceChip(
-            label: Text(highway),
-            selected: isSelected,
-            onSelected: (selected) {
-              setState(() => _servicesFilter = selected ? highway : '');
-            },
-            showCheckmark: false,
-            selectedColor: theme.colorScheme.primary,
-            labelStyle: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
-            ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            side: BorderSide(
-              color: isSelected ? Colors.transparent : theme.colorScheme.outlineVariant,
-            ),
+          child: _FilterChip(
+            label: highway,
+            icon: Icons.route_rounded,
+            selected: _servicesFilter == highway,
+            theme: theme,
+            color: theme.colorScheme.secondary,
+            onSelected: () => setState(() => _servicesFilter = highway),
           ),
         );
       }),
@@ -856,25 +1036,106 @@ class _RoadwaysPageState extends State<RoadwaysPage>
   }
 
   // ---------------------------------------------------------------------------
-  // EMPTY / ERROR
+  // COMMON UI HELPERS
   // ---------------------------------------------------------------------------
+  Widget _sectionLabel(ThemeData theme, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          text,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusDot(bool open) {
+    final color = open ? Colors.green : Colors.red;
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.4),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow({
+    required ThemeData theme,
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 15, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildEmptyState(ThemeData theme, String message, IconData icon) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              width: 120,
+              height: 120,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.primary.withValues(alpha: 0.14),
+                    theme.colorScheme.secondary.withValues(alpha: 0.08),
+                  ],
+                ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 64, color: theme.colorScheme.onSurfaceVariant),
+              child: Icon(icon, size: 52, color: theme.colorScheme.primary),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 26),
             Text(
               message,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -891,23 +1152,191 @@ class _RoadwaysPageState extends State<RoadwaysPage>
 
   Widget _buildErrorState(ThemeData theme, String message) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer,
-              shape: BoxShape.circle,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.cloud_off_rounded, size: 52, color: theme.colorScheme.error),
             ),
-            child: Icon(Icons.error_rounded, size: 64, color: theme.colorScheme.error),
+            const SizedBox(height: 26),
+            Text(
+              message,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.error,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _refreshData,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(_country == 'it' ? 'Riprova' : 'Erneut versuchen'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// FILTER CHIP
+// =============================================================================
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final ThemeData theme;
+  final Color color;
+  final VoidCallback onSelected;
+
+  const _FilterChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.theme,
+    required this.color,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? LinearGradient(
+                  colors: [
+                    color,
+                    color.withValues(alpha: 0.8),
+                  ],
+                )
+              : null,
+          color: selected ? null : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? Colors.transparent : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
           ),
-          const SizedBox(height: 24),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+                color: selected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// GATE STAT
+// =============================================================================
+class _GateStat extends StatelessWidget {
+  final int count;
+  final String label;
+  final IconData icon;
+  final ThemeData theme;
+
+  const _GateStat({
+    required this.count,
+    required this.label,
+    required this.icon,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.primary),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$count',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _GateStatus extends StatelessWidget {
+  final bool open;
+  final ThemeData theme;
+
+  const _GateStatus({required this.open, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = open ? Colors.green.shade600 : theme.colorScheme.error;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            open ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 5),
           Text(
-            message,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.error,
+            open ? 'Aperto' : 'Chiuso',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: color,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -946,6 +1375,10 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
     final area = widget.area;
     final fuelBrand = area.fuelBrand;
     final foodBrands = area.foodBrands;
+    final logoBrand = foodBrands.isNotEmpty
+        ? foodBrands.first
+        : (fuelBrand.isNotEmpty ? fuelBrand : (area.brands.isNotEmpty ? (area.brands.first.name.isNotEmpty ? area.brands.first.name : area.brands.first.type) : null));
+    final logoUrl = logoBrand != null ? BrandLogos.getLogoUrl(logoBrand) : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -955,61 +1388,59 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           onExpansionChanged: (expanded) => setState(() => _isExpanded = expanded),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (fuelBrand.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    fuelBrand,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 12),
-              AnimatedRotation(
-                turns: _isExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          trailing: AnimatedRotation(
+            turns: _isExpanded ? 0.5 : 0.0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
               ),
-            ],
+              child: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           leading: Container(
-            padding: const EdgeInsets.all(12),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.primary.withValues(alpha: 0.18),
+                  theme.colorScheme.secondary.withValues(alpha: 0.12),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               Icons.local_gas_station_rounded,
-              color: theme.colorScheme.onPrimaryContainer,
-              size: 26,
+              color: theme.colorScheme.primary,
+              size: 24,
             ),
           ),
           title: Padding(
             padding: const EdgeInsets.only(bottom: 4.0),
             child: Row(
               children: [
-                _buildAreaLogo(area, theme),
+                if (logoUrl != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Image.network(
+                      logoUrl,
+                      width: 26,
+                      height: 26,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const SizedBox(width: 26, height: 26),
+                    ),
+                  ),
                 Expanded(
                   child: Text(
                     area.name,
@@ -1023,85 +1454,123 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
               ],
             ),
           ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.isGerman ? 'Autobahn ${area.highway}' : 'Autostrada ${area.highway}',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (area.highwayDescription.isNotEmpty)
-                Text(
-                  area.highwayDescription,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
-                ),
-              if (area.km > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    'Km ${area.km.toStringAsFixed(1)}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (area.highway.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      area.highway,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-            ],
+                if (area.km > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.straighten_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Km ${area.km.toStringAsFixed(1)}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                if (fuelBrand.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.local_gas_station_outlined, size: 12, color: theme.colorScheme.onTertiaryContainer),
+                        const SizedBox(width: 3),
+                        Text(
+                          fuelBrand,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onTertiaryContainer,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Divider(),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   if (area.direction.isNotEmpty && area.direction.toLowerCase() != 'undefined')
-                    _buildInfoRow(
-                      Icons.navigation_rounded, 
-                      widget.isGerman ? 'Richtung' : 'Direzione', 
-                      area.direction, 
-                      theme
+                    _infoRow(
+                      theme: theme,
+                      icon: Icons.navigation_rounded,
+                      color: theme.colorScheme.primary,
+                      text: '${widget.isGerman ? 'Richtung' : 'Direzione'}: ${area.direction}',
                     ),
                   if (area.from.isNotEmpty || area.to.isNotEmpty)
-                    _buildInfoRow(
-                      Icons.route_rounded, 
-                      widget.isGerman ? 'Strecke' : 'Tratta', 
-                      '${area.from} → ${area.to}', 
-                      theme
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _infoRow(
+                        theme: theme,
+                        icon: Icons.route_outlined,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        text: '${widget.isGerman ? 'Strecke' : 'Tratta'}: ${area.from} → ${area.to}',
+                      ),
                     ),
                   if (area.descriptionAdsPmr.isNotEmpty)
-                    _buildInfoRow(
-                      Icons.accessible_rounded, 
-                      'PMR', 
-                      area.descriptionAdsPmr, 
-                      theme
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _infoRow(
+                        theme: theme,
+                        icon: Icons.accessible_rounded,
+                        color: theme.colorScheme.primary,
+                        text: 'PMR: ${area.descriptionAdsPmr}',
+                      ),
                     ),
-                  
-                  if (area.parking != null && (area.parking!.carSpaces != null || area.parking!.truckSpaces != null))
-                    _buildInfoRow(
-                      Icons.local_parking_rounded, 
-                      widget.isGerman ? 'Parkplätze' : 'Parcheggi', 
-                      '${area.parking!.carSpaces != null ? "PKW ${area.parking!.carSpaces}" : ""}'
-                      '${area.parking!.carSpaces != null && area.parking!.truckSpaces != null ? " • " : ""}'
-                      '${area.parking!.truckSpaces != null ? "LKW ${area.parking!.truckSpaces}" : ""}'
-                      '${area.parking!.isBlocked == true ? " (gesperrt)" : ""}', 
-                      theme
+                  if (area.parking != null &&
+                      (area.parking!.carSpaces != null || area.parking!.truckSpaces != null))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _infoRow(
+                        theme: theme,
+                        icon: Icons.local_parking_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        text: [
+                          if (area.parking!.carSpaces != null) 'PKW ${area.parking!.carSpaces}',
+                          if (area.parking!.truckSpaces != null) 'LKW ${area.parking!.truckSpaces}',
+                          if (area.parking!.isBlocked == true) 'gesperrt',
+                        ].join(' • '),
+                      ),
                     ),
 
                   if (area.fuelPrices.values.any((f) => f.price > 0)) ...[
-                    const SizedBox(height: 24),
-                    Text(
+                    const SizedBox(height: 20),
+                    _sectionLabel(
+                      theme,
                       widget.isGerman ? 'KRAFTSTOFFPREISE' : 'PREZZI CARBURANTE',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                        color: theme.colorScheme.primary,
-                      ),
                     ),
                     const SizedBox(height: 12),
                     ..._buildFuelPriceRows(area, theme),
@@ -1109,12 +1578,17 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
                 ],
               ),
             ),
-            
+
             if (area.events.isNotEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20.0),
-                color: theme.colorScheme.errorContainer.withOpacity(0.5),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.15)),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: area.events.map((event) {
@@ -1146,110 +1620,141 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
             if (area.services.isNotEmpty) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20.0),
+                padding: const EdgeInsets.symmetric(vertical: 20),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
-                  border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5))),
-                ),
-                child: SizedBox(
-                  height: 90,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    children: area.services.map((service) {
-                      final available = service.available ?? 0;
-                      final total = service.total ?? 0;
-                      return Container(
-                        width: 100,
-                        margin: const EdgeInsets.only(right: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              service.name.isNotEmpty ? service.name : service.code,
-                              style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            if (total > 0 || available > 0)
-                              Text(
-                                total > 0 ? '$available / $total' : '$available',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: available > 0 ? theme.colorScheme.primary : theme.colorScheme.outline,
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                   ),
-                ),
-              ),
-            ],
-
-if (area.brands.isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.isGerman ? 'ANBIETER' : 'ESERCENTI',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                        color: theme.colorScheme.primary,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _sectionLabel(
+                        theme,
+                        widget.isGerman ? 'AUSSTATTUNG' : 'SERVIZI',
                       ),
                     ),
                     const SizedBox(height: 12),
+                    SizedBox(
+                      height: 96,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: area.services.map((service) {
+                          final available = service.available ?? 0;
+                          final total = service.total ?? 0;
+                          return Container(
+                            width: 108,
+                            margin: const EdgeInsets.only(right: 10),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: theme.brightness == Brightness.light
+                                  ? Colors.white
+                                  : theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _serviceIcon(service.code, service.name),
+                                  size: 20,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  service.name.isNotEmpty ? service.name : service.code,
+                                  style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                if (total > 0 || available > 0)
+                                  Text(
+                                    total > 0 ? '$available / $total' : '$available',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: available > 0
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.outline,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            if (area.brands.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionLabel(
+                      theme,
+                      widget.isGerman ? 'ANBIETER' : 'ESERCENTI',
+                    ),
+                    const SizedBox(height: 16),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 12,
+                      runSpacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: area.brands.map((brand) {
                         final label = brand.name.isNotEmpty
                             ? brand.name
                             : (brand.nameSecond.isNotEmpty ? brand.nameSecond : brand.type);
                         final logoUrl = BrandLogos.getLogoUrl(label);
-                        debugPrint('Brand: $label -> Logo URL: $logoUrl');
                         final hasLogo = logoUrl != null;
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (hasLogo)
                                 Image.network(
-                                  logoUrl!,
-                                  height: 20,
-                                  width: 20,
+                                  logoUrl,
+                                  height: 28,
+                                  width: 28,
                                   fit: BoxFit.contain,
                                   errorBuilder: (context, error, stackTrace) =>
-                                      Icon(_iconForBrandType(brand.type), size: 16, color: theme.colorScheme.onSurfaceVariant),
+                                      _BrandIcon(type: brand.type, theme: theme),
                                 )
                               else
-                                Icon(_iconForBrandType(brand.type), size: 16, color: theme.colorScheme.onSurfaceVariant),
-                              const SizedBox(width: 6),
+                                _BrandIcon(type: brand.type, theme: theme),
+                              const SizedBox(width: 10),
                               Text(
                                 label,
                                 style: theme.textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                                 ),
                               ),
                             ],
@@ -1267,28 +1772,80 @@ if (area.brands.isNotEmpty) ...[
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface),
-                children: [
-                  TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  TextSpan(text: value, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                ],
-              ),
+  Widget _sectionLabel(ThemeData theme, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          text,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _infoRow({
+    required ThemeData theme,
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 15, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+              height: 1.4,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  IconData _serviceIcon(String code, String name) {
+    final s = '$code $name'.toUpperCase();
+    if (s.contains('TOILET') || s.contains('W.C.') || s.contains('SANIT') || s.contains('BAGNO')) {
+      return Icons.wc_rounded;
+    }
+    if (s.contains('RIPOSO') || s.contains('PARCHEGGIO') || s.contains('PARK')) {
+      return Icons.local_parking_rounded;
+    }
+    if (s.contains('BAR') || s.contains('RIST') || s.contains('FOOD')) {
+      return Icons.restaurant_rounded;
+    }
+    if (s.contains('ELETTR') || s.contains('EV ') || s.contains('CHARG')) {
+      return Icons.ev_station_rounded;
+    }
+    if (s.contains('BENZ') || s.contains('GASOL') || s.contains('DISTRIBUZ')) {
+      return Icons.local_gas_station_rounded;
+    }
+    return Icons.star_rounded;
   }
 
   List<Widget> _buildFuelPriceRows(RoadwayAreaService area, ThemeData theme) {
@@ -1303,25 +1860,43 @@ if (area.brands.isNotEmpty) ...[
     for (final entry in labels.entries) {
       final price = area.fuelPrices[entry.key];
       if (price == null || price.price <= 0) continue;
-      
+
       final update = price.lastUpdate != null && price.lastUpdate!.isNotEmpty
           ? _shortDate(price.lastUpdate!)
           : '';
-          
+
       rows.add(
         Container(
-          margin: const EdgeInsets.only(bottom: 8.0),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            gradient: LinearGradient(
+              colors: [
+                theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+              ],
+            ),
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                entry.value,
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              Row(
+                children: [
+                  Icon(
+                    _fuelIcon(entry.key),
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    entry.value,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1350,6 +1925,16 @@ if (area.brands.isNotEmpty) ...[
     return rows;
   }
 
+  IconData _fuelIcon(String key) {
+    switch (key) {
+      case 'benzina': return Icons.oil_barrel_rounded;
+      case 'diesel': return Icons.local_gas_station_rounded;
+      case 'gpl': return Icons.propane_tank_rounded;
+      case 'metano': return Icons.gas_meter_rounded;
+      default: return Icons.local_gas_station_rounded;
+    }
+  }
+
   String _shortDate(String iso) {
     try {
       final dt = DateTime.parse(iso);
@@ -1359,43 +1944,39 @@ if (area.brands.isNotEmpty) ...[
       return iso;
     }
   }
+}
 
-  IconData _iconForBrandType(String type) {
+class _BrandIcon extends StatelessWidget {
+  final String type;
+  final ThemeData theme;
+
+  const _BrandIcon({
+    required this.type,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    IconData iconData;
     final t = type.toUpperCase();
-    if (t == 'OIL' || t.contains('FUEL') || t.contains('CARB')) return Icons.local_gas_station_rounded;
-    if (t == 'FOOD' || t.contains('RIST') || t.contains('BAR')) return Icons.restaurant_rounded;
-    if (t.contains('ELECTRIC') || t.contains('CHARG')) return Icons.ev_station_rounded;
-    return Icons.storefront_rounded;
-  }
+    if (t == 'OIL' || t.contains('FUEL') || t.contains('CARB')) {
+      iconData = Icons.local_gas_station_rounded;
+    } else if (t == 'FOOD' || t.contains('RIST') || t.contains('BAR')) {
+      iconData = Icons.restaurant_rounded;
+    } else if (t.contains('ELECTRIC') || t.contains('CHARG')) {
+      iconData = Icons.ev_station_rounded;
+    } else {
+      iconData = Icons.storefront_rounded;
+    }
 
-  Widget _buildAreaLogo(RoadwayAreaService area, ThemeData theme) {
-    String? logoBrand;
-    if (area.foodBrands.isNotEmpty) {
-      logoBrand = area.foodBrands.first;
-    } else if (area.fuelBrand.isNotEmpty) {
-      logoBrand = area.fuelBrand;
-    } else if (area.brands.isNotEmpty) {
-      logoBrand = area.brands.first.name.isNotEmpty ? area.brands.first.name : area.brands.first.type;
-    }
-    
-    if (logoBrand == null) {
-      return const SizedBox(width: 24, height: 24);
-    }
-    
-    final logoUrl = BrandLogos.getLogoUrl(logoBrand);
-    if (logoUrl == null) {
-      return const SizedBox(width: 24, height: 24);
-    }
-    
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: Image.network(
-        logoUrl,
-        width: 24,
-        height: 24,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => const SizedBox(width: 24, height: 24),
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
       ),
+      child: Icon(iconData, size: 18, color: theme.colorScheme.primary),
     );
   }
 }

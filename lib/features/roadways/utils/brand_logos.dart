@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class BrandLogos {
   static const String _baseUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/autogrills';
 
