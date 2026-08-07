@@ -1437,8 +1437,22 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
                       width: 26,
                       height: 26,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const SizedBox(width: 26, height: 26),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const SizedBox(width: 26, height: 26);
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        final localPath = BrandLogos.getLocalLogoPath(logoBrand ?? '');
+                        if (localPath != null) {
+                          return Image.asset(
+                            localPath,
+                            width: 26,
+                            height: 26,
+                            fit: BoxFit.contain,
+                          );
+                        }
+                        return const SizedBox(width: 26, height: 26);
+                      },
                     ),
                   ),
                 Expanded(
@@ -1738,14 +1752,28 @@ class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (hasLogo)
+                               if (hasLogo)
                                 Image.network(
                                   logoUrl,
                                   height: 28,
                                   width: 28,
                                   fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      _BrandIcon(type: brand.type, theme: theme),
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return const SizedBox(width: 28, height: 28);
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
+                                    final localPath = BrandLogos.getLocalLogoPath(label);
+                                    if (localPath != null) {
+                                      return Image.asset(
+                                        localPath,
+                                        height: 28,
+                                        width: 28,
+                                        fit: BoxFit.contain,
+                                      );
+                                    }
+                                    return _BrandIcon(type: brand.type, theme: theme);
+                                  },
                                 )
                               else
                                 _BrandIcon(type: brand.type, theme: theme),

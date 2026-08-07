@@ -37,13 +37,28 @@ class BrandLogos {
   };
 
   static String? getLogoUrl(String brandName) {
+    final fileName = _getFileName(brandName);
+    if (fileName != null) {
+      return '$_baseUrl/$fileName.png';
+    }
+    return null;
+  }
+
+  static String? _getFileName(String brandName) {
     final normalized = brandName.toLowerCase().trim();
     
     for (final entry in _brandToFileName.entries) {
       if (normalized.contains(entry.key) || _normalizeForMatch(normalized).contains(_normalizeForMatch(entry.key))) {
-        final fileName = entry.value;
-        return '$_baseUrl/$fileName.png';
+        return entry.value;
       }
+    }
+    return null;
+  }
+
+  static String? getLocalLogoPath(String brandName) {
+    final fileName = _getFileName(brandName);
+    if (fileName != null) {
+      return 'assets/logos/autogrills/$fileName.png';
     }
     return null;
   }
