@@ -7,6 +7,7 @@ import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import '../../../../core/design_system.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_bus_line.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -149,77 +150,122 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<BusProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
+    final theme = Provider.of<ThemeProvider>(context);
     final BusVehicle bus = provider.selectedBus ?? widget.bus;
-
     final tripStopsData = provider.selectedTripStops;
     final hasTripStopsData = tripStopsData != null && tripStopsData.stops.isNotEmpty;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.surfaceColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, -5))],
-      ),
-      child: Column(
+    return Scaffold(
+      backgroundColor: theme.backgroundColor,
+      body: Column(
         children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 45, height: 5,
-              decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+          // ── HERO HEADER ──
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTokens.busColor.withValues(alpha: theme.isDark ? 0.25 : 0.12),
+                  theme.backgroundColor,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                  child: Column(
+                    children: [
+                      // Back button
+                      Row(
+                        children: [
+                          _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
+                          const Spacer(),
+                          if (_timer != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: theme.successColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+                                border: Border.all(color: theme.successColor.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(width: 6, height: 6, decoration: BoxDecoration(color: theme.successColor, shape: BoxShape.circle)),
+                                  const SizedBox(width: 5),
+                                  Text('LIVE', style: TextStyle(color: theme.successColor, fontSize: 10, fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      // Bus icon centered
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [AppTokens.busColor, AppTokens.busColor.withValues(alpha: 0.7)]),
+                          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+                          boxShadow: [BoxShadow(color: AppTokens.busColor.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.directions_bus_rounded, color: Colors.white, size: 24),
+                            const SizedBox(width: 12),
+                           Text(bus.line, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Linea ${bus.line}', style: AppTextStyle.titleMedium(color: theme.textColor), textAlign: TextAlign.center),
+                    const SizedBox(height: 4),
+                    Text(bus.destination ?? '', style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
             ),
           ),
-          
+
+          // ── ACTION ROW ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _buildActionRow(theme, bus),
+          ),
+
+          // ── CONTENT ──
           Expanded(
             child: SingleChildScrollView(
-              controller: widget.scrollController, // Controller esterno per il drag dello sheet
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(theme, bus, provider),
-                  const SizedBox(height: 20),
-                  _buildActionRow(theme, bus),
-                  const SizedBox(height: 24),
                   _buildVehicleInfoCard(theme, bus),
-                  const SizedBox(height: 24),
-                  
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(RuntimeLocalizations.t(context, 'trip_stops_title'), style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 20),
+                  Text(
+                    RuntimeLocalizations.t(context, 'trip_stops_title') ?? 'Fermate',
+                    style: AppTextStyle.titleMedium(color: theme.textColor),
                   ),
                   const SizedBox(height: 12),
-                  
-                  // Sezione Timeline
                   if (provider.selectedProvider?.endpoints['trip_stops'] == true) ...[
-                    SizedBox(
-                      height: 380, // Altezza maggiorata per UX migliore
-                        child: provider.isLoadingTripStops
-                          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                          : (provider.apiTripUpdates.isNotEmpty
+                    provider.isLoadingTripStops
+                        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                        : (provider.apiTripUpdates.isNotEmpty
                             ? _buildBusTimeline(provider.apiTripUpdates, theme)
-                              : (hasTripStopsData
-                              ? _buildTripStopsTimeline(tripStopsData.stops, theme)
-                              : (_isLoadingUpdates
-                                ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                                : _tripUpdates.isEmpty
-                                  ? Center(child: Text(RuntimeLocalizations.t(context, 'no_updates'), style: TextStyle(color: theme.secondaryTextColor)))
-                                  : _buildBusTimeline(_tripUpdates, theme)))) ,
-                    ),
+                            : (hasTripStopsData
+                                ? _buildTripStopsTimeline(tripStopsData!.stops, theme)
+                                : (_isLoadingUpdates
+                                    ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                                    : _tripUpdates.isEmpty
+                                        ? _buildEmptyState(theme)
+                                        : _buildBusTimeline(_tripUpdates, theme)))),
                   ] else ...[
-                    SizedBox(
-                      height: 200,
-                      child: Center(
-                        child: Text(
-                              RuntimeLocalizations.t(context, 'trip_stops_unavailable', params: {'provider': provider.selectedProvider?.name ?? RuntimeLocalizations.t(context, 'press_for_info')}),
-                              style: TextStyle(color: theme.secondaryTextColor),
-                              textAlign: TextAlign.center,
-                            ),
-                      ),
-                    ),
+                    _buildUnavailableState(theme, provider),
                   ],
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -229,51 +275,41 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     );
   }
 
-  Widget _buildHeader(ThemeProvider theme, BusVehicle bus, BusProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GlassmorphicContainer(
-            width: 65, height: 65,
-            borderRadius: 20, blur: 10, alignment: Alignment.center,
-            border: 2, linearGradient: LinearGradient(colors: [theme.primaryColor.withOpacity(0.6), theme.primaryColor.withOpacity(0.2)]),
-            borderGradient: LinearGradient(colors: [Colors.white24, Colors.white10]),
-            child: Text(bus.line, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text((bus.provider ?? 'BUS').toUpperCase(), style: TextStyle(color: theme.primaryColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-                    const SizedBox(width: 8),
-                    if (_timer != null) _buildLiveBadge(theme),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  bus.destination ?? RuntimeLocalizations.t(context, 'destination_na'),
-                  style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.w900, height: 1.1),
-                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.close_rounded, color: theme.secondaryTextColor),
-            onPressed: () {
-              provider.clearBusSelection();
-              if (widget.scrollController == null) Navigator.of(context).pop();
-            },
-          )
-        ],
+  Widget _buildEmptyState(ThemeProvider theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            Icon(Icons.update_rounded, size: 48, color: theme.tertiaryTextColor),
+            const SizedBox(height: 12),
+            Text(RuntimeLocalizations.t(context, 'no_updates') ?? 'Nessun aggiornamento', style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor)),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _buildUnavailableState(ThemeProvider theme, BusProvider provider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            Icon(Icons.bus_alert_rounded, size: 48, color: theme.tertiaryTextColor),
+            const SizedBox(height: 12),
+            Text(
+              RuntimeLocalizations.t(context, 'trip_stops_unavailable', params: {'provider': provider.selectedProvider?.name ?? ''}) ?? 'Fermate non disponibili',
+              style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Header rimosso - ora nel build principale
 
   Widget _buildLiveBadge(ThemeProvider theme) {
     return Container(
@@ -291,27 +327,24 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   }
 
   Widget _buildActionRow(ThemeProvider theme, BusVehicle bus) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          Expanded(child: _FavoriteBusButton(bus: bus, theme: theme)),
-          const SizedBox(width: 12),
-          Consumer<SettingsProvider>(
-            builder: (context, settings, _) {
-              final canRefresh = settings.busRefreshSeconds > 0;
-              return _buildSquareButton(
-                icon: _timer != null ? Icons.timer_rounded : Icons.timer_off_rounded,
-                color: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
-                theme: theme,
-                onTap: canRefresh ? _toggleAutoRefresh : null,
-              );
-            },
-          ),
-          const SizedBox(width: 12),
-          _BusLineNotificationsButton(bus: bus),
-        ],
-      ),
+    return Row(
+      children: [
+        Expanded(child: _FavoriteBusButton(bus: bus, theme: theme)),
+        const SizedBox(width: 12),
+        Consumer<SettingsProvider>(
+          builder: (context, settings, _) {
+            final canRefresh = settings.busRefreshSeconds > 0;
+            return _buildSquareButton(
+              icon: _timer != null ? Icons.timer_rounded : Icons.timer_off_rounded,
+              color: _timer != null ? theme.primaryColor : theme.secondaryTextColor,
+              theme: theme,
+              onTap: canRefresh ? _toggleAutoRefresh : null,
+            );
+          },
+        ),
+        const SizedBox(width: 12),
+        _BusLineNotificationsButton(bus: bus),
+      ],
     );
   }
 
@@ -332,42 +365,39 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
   }
 
   Widget _buildVehicleInfoCard(ThemeProvider theme, BusVehicle bus) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.secondaryTextColor.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
-        ),
-        child: Column(
-          children: [
-            ListTile(
-              onTap: () => _showVehicleDetailsDialog(context, bus, theme),
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-                child: Icon(Icons.info_outline_rounded, color: theme.primaryColor, size: 20),
-              ),
-              title: Text(RuntimeLocalizations.t(context, 'details_and_position'), style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-              subtitle: Text('${RuntimeLocalizations.t(context, 'id_prefix', params: {'id': bus.id})} • ${RuntimeLocalizations.t(context, 'press_for_info')}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-              trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        border: Border.all(color: theme.borderColor.withValues(alpha: theme.isDark ? 0.15 : 0.1)),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            onTap: () => _showVehicleDetailsDialog(context, bus, theme),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+              child: Icon(Icons.info_outline_rounded, color: theme.primaryColor, size: 20),
             ),
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.my_location_rounded, color: theme.secondaryTextColor, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text("${bus.latitude.toStringAsFixed(5)}, ${bus.longitude.toStringAsFixed(5)}", style: TextStyle(color: theme.textColor, fontSize: 13, fontFamily: 'monospace')),
-                  ),
-                ],
-              ),
+            title: Text(RuntimeLocalizations.t(context, 'details_and_position'), style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text('${RuntimeLocalizations.t(context, 'id_prefix', params: {'id': bus.id})} • ${RuntimeLocalizations.t(context, 'press_for_info')}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+            trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+          ),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.my_location_rounded, color: theme.secondaryTextColor, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("${bus.latitude.toStringAsFixed(5)}, ${bus.longitude.toStringAsFixed(5)}", style: TextStyle(color: theme.textColor, fontSize: 13, fontFamily: 'monospace')),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -864,6 +894,34 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
           border: Border.all(color: _enabled ? theme.primaryColor.withOpacity(0.3) : Colors.transparent),
         ),
         child: Icon(_enabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded, color: _enabled ? theme.primaryColor : theme.secondaryTextColor, size: 22),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Back button widget
+// ─────────────────────────────────────────────────────────
+class _BackButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final ThemeProvider theme;
+
+  const _BackButton({required this.icon, required this.onTap, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: theme.surfaceColor.withValues(alpha: 0.7),
+          shape: BoxShape.circle,
+          border: Border.all(color: theme.borderColor.withValues(alpha: 0.2)),
+        ),
+        child: Icon(icon, color: theme.textColor, size: 18),
       ),
     );
   }

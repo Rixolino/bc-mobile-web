@@ -7,6 +7,7 @@ import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../core/api_constants.dart';
+import '../../../../core/design_system.dart';
 import '../../data/models/bus_model.dart';
 import 'shimmer_and_toggle.dart';
 import 'scrolling_text.dart';
@@ -1015,11 +1016,8 @@ class _BusPanelContentState extends State<BusPanelContent> {
             ),
             onTap: () {
               mapState.flyTo(stop.latitude, stop.longitude, zoom: 16.0);
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (ctx) => BusStopDetailsSheet(stop: stop),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => BusStopDetailsSheet(stop: stop)),
               );
             },
           );
@@ -1154,39 +1152,16 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   // Select the bus to show details sheet
                   await busProvider.selectBus(v);
                   if (context.mounted) {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => DraggableScrollableSheet(
-                          initialChildSize: 0.6,
-                          minChildSize: 0.4,
-                          maxChildSize: 0.95,
-                          expand: false,
-                          builder: (_, controller) => BusDetailsSheet(
-                                bus: v,
-                                scrollController: controller,
-                              )),
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => BusDetailsSheet(bus: v)),
                     );
                   }
                 } catch (e) {
                   print('Error fetching bus details: $e');
-                  // On error, fallback to just selecting the bus
                   await busProvider.selectBus(v);
                   if (context.mounted) {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => DraggableScrollableSheet(
-                          initialChildSize: 0.6,
-                          minChildSize: 0.4,
-                          maxChildSize: 0.95,
-                          expand: false,
-                          builder: (_, controller) => BusDetailsSheet(
-                                bus: v,
-                                scrollController: controller,
-                              )),
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => BusDetailsSheet(bus: v)),
                     );
                   }
                 }

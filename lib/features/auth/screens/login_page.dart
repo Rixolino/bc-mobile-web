@@ -5,6 +5,8 @@ import 'register_page.dart';
 import 'dashboard_page.dart';
 import '../../../presentation/screens/home_screen.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
+import '../../../core/design_system.dart';
+import '../../../core/responsive.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -83,9 +85,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              theme.primaryColor.withOpacity(0.8),
-              theme.primaryColor.withOpacity(0.6),
-              theme.colorScheme.secondary.withOpacity(0.4),
+              theme.primaryColor.withValues(alpha: 0.8),
+              theme.primaryColor.withValues(alpha: 0.6),
+              theme.colorScheme.secondary.withValues(alpha: 0.4),
             ],
           ),
         ),
@@ -93,34 +95,37 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.lg),
                   // Logo/Icon Section
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(AppSpacing.xl),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
                         ],
                       ),
-                      child: Icon(
-                        Icons.directions_bus,
-                        size: 60,
-                        color: theme.primaryColor,
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
+                        child: const Icon(
+                          Icons.directions_bus_rounded,
+                          size: 56,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: AppSpacing.xxl),
                   // Title Section
                   Text(
                     loc?.welcomeTitle ?? 'Benvenuto su\nBC Transporter',

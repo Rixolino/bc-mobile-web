@@ -6,6 +6,8 @@ import '../../features/bus/presentation/providers/bus_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
 import '../../core/services/android_background_service.dart';
 import '../../core/notification_channels.dart';
+import '../../core/design_system.dart';
+import '../../core/responsive.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 import 'dart:ui';
@@ -147,7 +149,7 @@ class SettingsScreen extends StatelessWidget {
 
   SliverAppBar _buildSliverAppBar(BuildContext context, ThemeProvider theme) {
     return SliverAppBar(
-      backgroundColor: theme.backgroundColor.withOpacity(0.9),
+      backgroundColor: theme.backgroundColor.withValues(alpha: 0.9),
       elevation: 0,
       pinned: true,
       stretch: true,
@@ -175,49 +177,38 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildSectionCard(BuildContext context, ThemeProvider theme, {required String title, required IconData icon, required List<Widget> children}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
       decoration: BoxDecoration(
-        color: theme.surfaceColor.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.06)),
-        boxShadow: [
-          BoxShadow(
-            color: theme.primaryColor.withOpacity(0.02),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: theme.surfaceColor.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(AppTokens.radius3Xl),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.08)),
+        boxShadow: theme.cardShadow,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(AppTokens.radius3Xl),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(AppTokens.space8),
                     decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
+                      color: theme.primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                     ),
-                    child: Icon(icon, color: theme.primaryColor, size: 20),
+                    child: Icon(icon, color: theme.primaryColor, size: AppTokens.iconMd),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppTokens.space12),
                   Text(
                     title.toUpperCase(),
-                    style: TextStyle(
-                      color: theme.secondaryTextColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
+                    style: AppTextStyle.labelLarge(color: theme.secondaryTextColor).copyWith(letterSpacing: 1.2),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xl),
               ...children,
             ],
           ),

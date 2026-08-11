@@ -6,6 +6,8 @@ import '../providers/plane_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import '../../../../core/design_system.dart';
+import '../../../../core/responsive.dart';
 import 'flight_details_sheet.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 
@@ -57,13 +59,11 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildHeader(ThemeProvider theme, PlaneProvider provider) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)
-        ],
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppTokens.radius3Xl)),
+        boxShadow: theme.cardShadow,
       ),
       child: Column(
         children: [
@@ -203,17 +203,12 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
   Widget _buildFlightCard(dynamic f, ThemeProvider theme,
       PlaneProvider provider, MapStateProvider mapState) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: AppTokens.space12),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.05)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
-        ],
+        borderRadius: BorderRadius.circular(AppTokens.radius2Xl),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.08)),
+        boxShadow: theme.cardShadow,
       ),
       child: Material(
         color: Colors.transparent,
@@ -224,12 +219,8 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
               mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);
             }
             provider.selectFlight(f);
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (ctx) => FractionallySizedBox(
-                  heightFactor: 0.85, child: FlightDetailsSheet(flight: f)),
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => FlightDetailsSheet(flight: f)),
             );
           },
           child: Padding(
@@ -558,14 +549,8 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
             mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);
           }
 
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (ctx) => FractionallySizedBox(
-              heightFactor: 0.85,
-              child: FlightDetailsSheet(flight: f),
-            ),
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => FlightDetailsSheet(flight: f)),
           );
         },
       ),

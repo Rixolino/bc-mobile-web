@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/map_state_provider.dart';
 import '../providers/theme_provider.dart';
 import '../widgets/map_widget.dart';
+import '../../core/design_system.dart';
 
 class MapScreen extends StatelessWidget {
   final int? initialCategory;

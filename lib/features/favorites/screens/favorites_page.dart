@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:ui'; // Per l'effetto Glassmorphism
+import 'dart:ui';
 import '../providers/favorites_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../features/train/presentation/providers/train_provider.dart';
@@ -15,6 +15,7 @@ import '../models/favorite_item.dart';
 import '../models/favorite_stop.dart';
 import '../models/favorite_train.dart';
 import '../models/favorite_bus_line.dart';
+import '../../../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
 
@@ -920,14 +921,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
       // Usa il detail sheet del treno con dati reali
       final realTimeData = _realTimeData[item.id];
       if (realTimeData is TrainDeparture) {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          barrierColor: Colors.transparent,
-          builder: (context) => TrainDetailsSheet(
-            departure: realTimeData,
-            isArrivalMode: trainProvider.isArrivalMode,
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TrainDetailsSheet(
+              departure: realTimeData,
+              isArrivalMode: trainProvider.isArrivalMode,
+            ),
           ),
         );
       } else {
@@ -941,11 +940,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
         // Imposta il bus selezionato nel provider prima di mostrare il sheet
         final busProvider = Provider.of<BusProvider>(context, listen: false);
         busProvider.selectBus(realTimeData);
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => BusDetailsSheet(bus: realTimeData, page: 'favorites'),
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => BusDetailsSheet(bus: realTimeData, page: 'favorites')),
         );
       } else {
         // Fallback: cerca veicoli per questa linea
@@ -972,11 +968,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
       } else {
         // Fermata bus
         if (realTimeData is BariStop) {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) => BusStopDetailsSheet(stop: realTimeData),
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => BusStopDetailsSheet(stop: realTimeData)),
           );
         } else {
           // Fallback: cerca la fermata
@@ -1057,14 +1050,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               trailing: Text(result.scheduledTime != null ? '${result.scheduledTime!.hour.toString().padLeft(2, '0')}:${result.scheduledTime!.minute.toString().padLeft(2, '0')}' : RuntimeLocalizations.t(context, 'na')),
                               onTap: () {
                                 Navigator.pop(context);
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  barrierColor: Colors.transparent,
-                                  builder: (context) => TrainDetailsSheet(
-                                    departure: result,
-                                    isArrivalMode: provider.isArrivalMode,
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TrainDetailsSheet(
+                                      departure: result,
+                                      isArrivalMode: provider.isArrivalMode,
+                                    ),
                                   ),
                                 );
                               },
@@ -1176,11 +1167,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               // Imposta il bus selezionato nel provider prima di mostrare il sheet
                               final busProvider = Provider.of<BusProvider>(context, listen: false);
                               busProvider.selectBus(vehicle);
-                              showModalBottomSheet(
-                                context: context,
-                                isScrollControlled: true,
-                                backgroundColor: Colors.transparent,
-                                builder: (context) => BusDetailsSheet(bus: vehicle, page: 'favorites'),
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => BusDetailsSheet(bus: vehicle, page: 'favorites'),
+                                ),
                               );
                             },
                           ),
@@ -1273,11 +1263,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             subtitle: Text(RuntimeLocalizations.t(context, 'id_prefix', params: {'id': foundStop.stopId})),
                             onTap: () {
                               Navigator.pop(context);
-                              showModalBottomSheet(
-                                context: context,
-                                isScrollControlled: true,
-                                backgroundColor: Colors.transparent,
-                                builder: (context) => BusStopDetailsSheet(stop: foundStop),
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => BusStopDetailsSheet(stop: foundStop),
+                                ),
                               );
                             },
                           ),

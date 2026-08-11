@@ -12,6 +12,7 @@ import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
 import '../providers/map_state_provider.dart';
 import '../providers/theme_provider.dart';
+import '../../core/design_system.dart';
 import '../../features/train/presentation/screens/train_search_screen.dart';
 import '../../features/bus/presentation/screens/bus_search_screen.dart';
 import '../../features/plane/presentation/screens/plane_search_screen.dart';
@@ -182,15 +183,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Color _getAccentColor(int index) {
     switch (index) {
       case 1:
-        return Colors.orangeAccent;
+        return AppTokens.trainColor;
       case 2:
-        return Colors.tealAccent;
+        return AppTokens.busColor;
       case 3:
-        return Colors.blueAccent;
+        return AppTokens.planeColor;
       case 4:
-        return Colors.greenAccent;
+        return AppTokens.roadColor;
       default:
-        return const Color(0xFF00E5FF);
+        return AppTokens.homeColor;
     }
   }
 
@@ -315,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Center(child: CircularProgressIndicator()),
 
             // 4. FLOATING BOTTOM DOCK
-            _buildBottomDock(theme, accentColor),
+            _buildBottomDock(theme, accentColor, MediaQuery.of(context).size.width),
           ],
         ),
       ),
@@ -323,63 +324,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildLogoWidget(ThemeProvider theme) {
-    return GlassmorphicContainer(
-      width: 145,
-      height: 52,
-      borderRadius: 16,
-      blur: 20,
-      alignment: Alignment.center,
-      border: 1.5,
-      linearGradient: LinearGradient(colors: [
-        theme.surfaceColor.withOpacity(0.7),
-        theme.surfaceColor.withOpacity(0.4)
-      ]),
-      borderGradient: LinearGradient(colors: [
-        theme.textColor.withOpacity(0.1),
-        theme.textColor.withOpacity(0.05)
-      ]),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          children: [
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF6B35), Color(0xFF43AA8B)])
-                  .createShader(bounds),
-              child: Text('BC',
-                  style: GoogleFonts.syne(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white)),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: 145,
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [
+              theme.surfaceColor.withValues(alpha: 0.7),
+              theme.surfaceColor.withValues(alpha: 0.4),
+            ]),
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+            border: Border.all(
+              color: theme.borderColor.withValues(alpha: 0.15),
+              width: 1,
             ),
-            GestureDetector(
-              onTap: _showLogoMenuSheet,
-              child: Row(
-                children: [
-                  Text('.',
-                      style: GoogleFonts.syne(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF3b82f6))),
-                  Text('T',
-                      style: GoogleFonts.syne(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: theme.textColor)),
-                ],
+          ),
+          child: Row(
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
+                child: Text('BC',
+                    style: GoogleFonts.syne(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white)),
               ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => setState(() => _searchExpanded = !_searchExpanded),
-              child: Icon(
-                  _searchExpanded
-                      ? Icons.unfold_less_rounded
-                      : Icons.unfold_more_rounded,
-                  size: 18,
-                  color: theme.secondaryTextColor),
-            )
-          ],
+              GestureDetector(
+                onTap: _showLogoMenuSheet,
+                child: Row(
+                  children: [
+                    Text('.',
+                        style: GoogleFonts.syne(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: theme.primaryColor)),
+                    Text('T',
+                        style: GoogleFonts.syne(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: theme.textColor)),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _searchExpanded = !_searchExpanded),
+                child: Icon(
+                    _searchExpanded
+                        ? Icons.unfold_less_rounded
+                        : Icons.unfold_more_rounded,
+                    size: 18,
+                    color: theme.secondaryTextColor),
+              )
+            ],
+          ),
         ),
       ),
     );
@@ -393,9 +395,9 @@ class _HomeScreenState extends State<HomeScreen> {
             () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const FavoritesPage())),
             theme),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppTokens.space8),
         _buildNotificationButton(theme),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppTokens.space8),
         _buildUserAvatar(theme),
       ],
     );
@@ -411,9 +413,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Container(
             padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
-              color: theme.surfaceColor.withOpacity(0.4),
+              color: theme.surfaceColor.withValues(alpha: 0.4),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+              border: Border.all(color: theme.borderColor.withValues(alpha: 0.2), width: 1),
             ),
             child: Icon(icon, size: 22, color: theme.textColor),
           ),
@@ -471,12 +473,11 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [Color(0xFF00E5FF), Color(0xFF3b82f6)]),
+              gradient: theme.primaryGradient,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF3b82f6).withOpacity(0.4),
+                  color: theme.primaryColor.withValues(alpha: 0.4),
                   blurRadius: 10,
                   spreadRadius: 1,
                   offset: const Offset(0, 2),
@@ -623,32 +624,30 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildBottomDock(ThemeProvider theme, Color accentColor) {
+  Widget _buildBottomDock(ThemeProvider theme, Color accentColor, double screenWidth) {
+    final dockWidth = screenWidth < 360 ? screenWidth - 48 : 300.0;
     return Positioned(
       bottom: 24,
       left: 0,
       right: 0,
       child: Center(
         child: SizedBox(
-          width: 300, // LARGHEZZA FISSA: capsula ristretta
+          width: dockWidth,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
+            borderRadius: BorderRadius.circular(AppTokens.radiusFull),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
               child: Container(
                 height: 56,
                 padding: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(30),
-                  color: Colors.black.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+                  color: theme.isDark
+                      ? Colors.black.withValues(alpha: 0.5)
+                      : Colors.white.withValues(alpha: 0.7),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.14), width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8)),
-                  ],
+                      color: theme.borderColor.withValues(alpha: 0.2), width: 1),
+                  boxShadow: theme.elevatedShadow,
                 ),
                 child: Stack(
                   children: [
@@ -792,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.white.withOpacity(0.14),
                         ),
                         _buildActionDockIcon(
-                            Icons.settings_suggest_rounded, _openSettings),
+                            Icons.settings_suggest_rounded, _openSettings, theme),
                       ],
                     ),
                   ],
@@ -808,15 +807,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDockIcon(IconData icon, int index, ThemeProvider theme) {
     bool isSelected = _selectedModeIndex == index;
     Color color = isSelected
-        ? Colors.white
-        : Colors.white.withOpacity(0.55);
+        ? (theme.isDark ? Colors.white : theme.primaryColor)
+        : (theme.isDark ? Colors.white.withValues(alpha: 0.5) : theme.secondaryTextColor);
     return GestureDetector(
       onTap: () => _setMode(index),
       behavior: HitTestBehavior.opaque,
       child: Center(
         child: AnimatedScale(
           scale: isSelected ? 1.05 : 1.0,
-          duration: const Duration(milliseconds: 220),
+          duration: AppTokens.animNormal,
           curve: Curves.easeOut,
           child: Icon(icon, color: color, size: 22),
         ),
@@ -824,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionDockIcon(IconData icon, VoidCallback onTap) {
+  Widget _buildActionDockIcon(IconData icon, VoidCallback onTap, ThemeProvider theme) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -832,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
         width: 44,
         height: 56,
         child: Center(
-          child: Icon(icon, color: Colors.white.withOpacity(0.55), size: 22),
+          child: Icon(icon, color: theme.isDark ? Colors.white.withValues(alpha: 0.5) : theme.secondaryTextColor, size: 22),
         ),
       ),
     );

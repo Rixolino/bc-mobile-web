@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../repositories/auth_repository.dart';
 import '../../favorites/screens/favorites_page.dart';
+import '../../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class DashboardPage extends StatefulWidget {

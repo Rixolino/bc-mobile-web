@@ -9,6 +9,7 @@ import '../../../../presentation/providers/settings_provider.dart';
 import 'train_details_sheet.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../../core/design_system.dart';
 import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_stop.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -1537,19 +1538,12 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         ? dep.country!
         : (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT');
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        maxChildSize: 0.98,
-        minChildSize: 0.5,
-        builder: (_, sc) => TrainDetailsSheet(
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TrainDetailsSheet(
           departure: dep,
           isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
           selectedCountry: effectiveCountry,
-          scrollController: sc,
         ),
       ),
     );

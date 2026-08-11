@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/notification_manager_provider.dart';
 import '../../core/services/android_background_service.dart';
+import '../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 

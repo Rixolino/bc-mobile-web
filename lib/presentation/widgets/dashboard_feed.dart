@@ -8,6 +8,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 import '../../core/services/weather_service.dart';
+import '../../core/design_system.dart';
+import '../../core/responsive.dart';
 
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_page.dart';
@@ -124,7 +126,7 @@ class _DashboardFeedState extends State<DashboardFeed>
           // ── 1. HEADER ────────────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22.0),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -132,17 +134,12 @@ class _DashboardFeedState extends State<DashboardFeed>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 10),
+                        const SizedBox(height: AppTokens.space8),
                         Text(
                           _greeting(),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: theme.secondaryTextColor,
-                            letterSpacing: 0.2,
-                          ),
+                          style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor).copyWith(letterSpacing: 0.2),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: AppTokens.space2),
                         ShaderMask(
                           shaderCallback: (bounds) => LinearGradient(
                             colors: isDark
@@ -151,12 +148,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                           ).createShader(bounds),
                           child: Text(
                             authProvider.isAuthenticated ? userName : RuntimeLocalizations.t(context, 'guest'),
-                            style: GoogleFonts.syne(
-                              fontSize: 34,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -1,
-                              color: Colors.white,
-                            ),
+                            style: AppTextStyle.displayMedium(color: Colors.white),
                           ),
                         ),
                       ],
@@ -166,11 +158,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                     width: 48, height: 48,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [theme.primaryColor, theme.primaryColor.withValues(alpha: 0.6)],
-                      ),
+                      gradient: theme.primaryGradient,
                       boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
                     ),
                     child: Center(
@@ -204,22 +192,22 @@ class _DashboardFeedState extends State<DashboardFeed>
           // ── 3. QUICK ACTIONS ─────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22.0),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Azioni rapide',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.secondaryTextColor, letterSpacing: 0.5),
+                    style: AppTextStyle.labelMedium(color: theme.secondaryTextColor),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppTokens.space12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildQuickAction(Icons.map_rounded, 'Mappa', theme, widget.onOpenMap, color: const Color(0xFF4361EE)),
-                      _buildQuickAction(Icons.confirmation_num_rounded, 'Ticket', theme, () {}, color: const Color(0xFF3A0CA3)),
-                      _buildQuickAction(Icons.alt_route_rounded, 'Percorsi', theme, () {}, color: const Color(0xFF7209B7)),
-                      _buildQuickAction(Icons.campaign_rounded, 'Avvisi', theme, () {}, color: const Color(0xFFF72585)),
+                      _buildQuickAction(Icons.map_rounded, 'Mappa', theme, widget.onOpenMap, color: AppTokens.brandBlue),
+                      _buildQuickAction(Icons.confirmation_num_rounded, 'Ticket', theme, () {}, color: AppTokens.brandPurple),
+                      _buildQuickAction(Icons.alt_route_rounded, 'Percorsi', theme, () {}, color: AppTokens.brandIndigo),
+                      _buildQuickAction(Icons.campaign_rounded, 'Avvisi', theme, () {}, color: AppTokens.brandPink),
                     ],
                   ),
                 ],
@@ -604,14 +592,14 @@ class _DashboardFeedState extends State<DashboardFeed>
           Container(
             width: 64, height: 64,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: color.withValues(alpha: 0.18)),
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+              border: Border.all(color: color.withValues(alpha: 0.15)),
             ),
             child: Icon(icon, color: color, size: 26),
           ),
-          const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: AppTokens.space8),
+          Text(label, style: AppTextStyle.labelMedium(color: theme.secondaryTextColor)),
         ],
       ),
     );

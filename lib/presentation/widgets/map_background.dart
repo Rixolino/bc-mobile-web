@@ -62,6 +62,9 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
   void _showStopInfo(BuildContext context, BariStop stop) {
     final busProvider = Provider.of<BusProvider>(context, listen: false);
     busProvider.selectStop(stop);
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => BusStopDetailsSheet(stop: stop)),
+    );
   }
 
   Color _stringToColor(String str) {
@@ -156,11 +159,14 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                     onTap: () async {
                       // Solo gli autobus live position possono essere selezionati per aprire i dettagli
                       if (busProvider.selectedStop != null) {
-                        // Fly to bus location and select the bus
                         final mapState = Provider.of<MapStateProvider>(context, listen: false);
                         mapState.flyTo(v.latitude, v.longitude, zoom: 15);
                         await busProvider.selectBus(v);
-                        // No modal - the sheet will appear as overlay
+                        if (context.mounted) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => BusDetailsSheet(bus: v)),
+                          );
+                        }
                       }
                       // Se non c'è fermata selezionata, non fare nulla (autobus non selezionabile)
                     },
@@ -340,31 +346,26 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
         // Map
         mapWidget,
         
-        // Bus Details Sheet - show when a bus is selected
+        // Bus Details - navigate to full screen when a bus is selected
         if (busProvider.selectedBus != null)
           Positioned.fill(
-            child: DraggableScrollableSheet(
-              initialChildSize: 0.5, // Inizia a metà schermo
-              minChildSize: 0.3, // Minimo 30% dello schermo
-              maxChildSize: 0.95, // Massimo 95% dello schermo
-              builder: (context, scrollController) => BusDetailsSheet(
-                bus: busProvider.selectedBus!, 
-                scrollController: scrollController,
-                page: 'home',
+            child: GestureDetector(
+              onTap: () {},
+              child: Container(
+                color: Colors.transparent,
+                child: const SizedBox.shrink(),
               ),
             ),
           ),
 
-        // Stop Details Sheet - show when a stop is selected AND no bus is selected
+        // Stop Details - navigate to full screen when a stop is selected AND no bus is selected
         if (busProvider.selectedStop != null && busProvider.selectedBus == null)
           Positioned.fill(
-            child: DraggableScrollableSheet(
-              initialChildSize: 0.5, // Inizia a metà schermo
-              minChildSize: 0.3, // Minimo 30% dello schermo
-              maxChildSize: 0.95, // Massimo 95% dello schermo
-              builder: (context, scrollController) => BusStopDetailsSheet(
-                stop: busProvider.selectedStop!, 
-                scrollController: scrollController
+            child: GestureDetector(
+              onTap: () {},
+              child: Container(
+                color: Colors.transparent,
+                child: const SizedBox.shrink(),
               ),
             ),
           ),

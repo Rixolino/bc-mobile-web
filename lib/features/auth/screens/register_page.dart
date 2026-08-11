@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'login_page.dart';
 import 'dashboard_page.dart';
 import '../../../presentation/screens/home_screen.dart';
+import '../../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 
 class RegisterPage extends StatefulWidget {

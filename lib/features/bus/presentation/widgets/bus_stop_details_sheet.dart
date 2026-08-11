@@ -8,6 +8,7 @@ import '../../../../core/api_constants.dart';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import '../../../../presentation/providers/settings_provider.dart';
@@ -99,61 +100,93 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     final provider = Provider.of<BusProvider>(context);
     final theme = Provider.of<ThemeProvider>(context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.surfaceColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
-      ),
-      child: Column(
+    return Scaffold(
+      backgroundColor: theme.backgroundColor,
+      body: Column(
         children: [
-          // --- PARTE 1: AREA DI TRASCINAMENTO (Header + Azioni + Chips) ---
-          // Usiamo SingleChildScrollView con il controller dello sheet solo qui
-          // in modo che trascinando questa parte si muova lo sheet.
-          SingleChildScrollView(
-            controller: widget.scrollController,
-            physics: const ClampingScrollPhysics(),
-            child: Column(
-              children: [
-                _buildHandle(theme),
-                _buildHeader(theme, provider),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      _buildMainActions(theme, provider),
-                      const SizedBox(height: 16),
-                      _buildHorizontalInfoChips(theme, provider),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
+          // ── HERO HEADER ──
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTokens.busColor.withValues(alpha: theme.isDark ? 0.25 : 0.12),
+                  theme.backgroundColor,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
+                        Expanded(
+                          child: Text(
+                            widget.stop.stopName,
+                            style: AppTextStyle.headlineSmall(color: theme.textColor),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Stop ID badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: theme.surfaceColor,
+                        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                        border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tag_rounded, size: 14, color: theme.secondaryTextColor),
+                          const SizedBox(width: 6),
+                          Text('ID: ${widget.stop.stopId}', style: AppTextStyle.bodySmall(color: theme.secondaryTextColor).copyWith(fontFamily: 'monospace')),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
 
-          // --- PARTE 2: TITOLO LISTA (Fisso) ---
+          // ── ACTIONS ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _buildMainActions(theme, provider),
+          ),
+
+          // ── DEPARTURES TITLE ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(RuntimeLocalizations.t(context, 'upcoming_departures'), 
-                  style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                if (_isLoadingDepartures) 
+                Text(RuntimeLocalizations.t(context, 'upcoming_departures') ?? 'Prossime partenze', style: AppTextStyle.titleMedium(color: theme.textColor)),
+                if (_isLoadingDepartures)
                   SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor)),
               ],
             ),
           ),
 
-          // --- PARTE 3: LISTA BUS (Indipendente) ---
-          // Usando Expanded + ListView senza il controller dello sheet,
-          // la lista scorrerà liberamente.
+          // ── DEPARTURES LIST ──
           Expanded(
             child: _departures.isEmpty && !_isLoadingDepartures
                 ? _buildEmptyState(theme)
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     itemCount: _departures.length,
                     physics: const BouncingScrollPhysics(),
                     itemBuilder: (context, index) => _buildDepartureCard(_departures[index], theme, provider),
@@ -165,73 +198,6 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
   }
 
   // --- COMPONENTI UI ---
-
-  Widget _buildHandle(ThemeProvider theme) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.only(top: 12, bottom: 8),
-        width: 40, height: 4,
-        decoration: BoxDecoration(color: theme.secondaryTextColor.withOpacity(0.2), borderRadius: BorderRadius.circular(2)),
-      ),
-    );
-  }
-
-  Widget _buildHeader(ThemeProvider theme, BusProvider provider) {
-    // raccogliamo le linee uniche dalle partenze per mostrarle accanto al nome
-    final lines = _departures.map((d) => d.line).where((l) => l.trim().isNotEmpty).toSet().toList()
-      ..sort((a, b) => a.compareTo(b));
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.stop.stopName,
-                  style: TextStyle(color: theme.textColor, fontSize: 22, fontWeight: FontWeight.w900, height: 1.1)),
-                const SizedBox(height: 6),
-                // mostriamo le linee come piccoli badge se sono presenti
-                if (lines.isNotEmpty)
-                  SizedBox(
-                    height: 28,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      children: lines.map((ln) => Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: InkWell(
-                          onTap: () => _onLineTap(ln, provider),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: theme.surfaceColor,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
-                            ),
-                            child: Text(ln, style: TextStyle(color: theme.textColor, fontSize: 12, fontWeight: FontWeight.w800)),
-                          ),
-                        ),
-                      )).toList(),
-                    ),
-                  ),
-                const SizedBox(height: 6),
-                Text(RuntimeLocalizations.t(context, 'stop_of', params: {'provider': _capitalizeFirst(provider.selectedProvider?.name ?? 'Bus')}), 
-                  style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w600, fontSize: 13)),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.close_rounded, color: theme.secondaryTextColor),
-            onPressed: () => widget.scrollController == null ? Navigator.pop(context) : provider.clearStopSelection(),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildMainActions(ThemeProvider theme, BusProvider provider) {
     return Row(
@@ -441,10 +407,40 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     provider.setApiTripUpdates(stops);
     await provider.selectBus(bus);
     if (mounted) {
-      showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => BusDetailsSheet(bus: bus, page: 'details'));
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => BusDetailsSheet(bus: bus, page: 'details')),
+      );
     }
   }
 }
 
 // Helper: capitalize first letter (used in this file)
 String _capitalizeFirst(String? s) => (s == null || s.isEmpty) ? '' : s[0].toUpperCase() + s.substring(1).toLowerCase();
+
+// ─────────────────────────────────────────────────────────
+// Back button widget
+// ─────────────────────────────────────────────────────────
+class _BackButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final ThemeProvider theme;
+
+  const _BackButton({required this.icon, required this.onTap, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: theme.surfaceColor.withValues(alpha: 0.7),
+          shape: BoxShape.circle,
+          border: Border.all(color: theme.borderColor.withValues(alpha: 0.2)),
+        ),
+        child: Icon(icon, color: theme.textColor, size: 18),
+      ),
+    );
+  }
+}
