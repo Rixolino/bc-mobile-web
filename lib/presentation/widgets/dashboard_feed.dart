@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
@@ -290,7 +289,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(RuntimeLocalizations.t(context, 'explore_map'), style: GoogleFonts.syne(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1)),
+                                        Text(RuntimeLocalizations.t(context, 'explore_map'), style: TextStyle(fontFamily: 'Syne', fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1)),
                                         const SizedBox(height: 4),
                                         Text(RuntimeLocalizations.t(context, 'explore_map_desc'), style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 13)),
                                       ],
@@ -330,7 +329,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(RuntimeLocalizations.t(context, 'your_favorites'), style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
+                      Text(RuntimeLocalizations.t(context, 'your_favorites'), style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
                       if (authProvider.isAuthenticated)
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesPage())),
@@ -358,7 +357,7 @@ class _DashboardFeedState extends State<DashboardFeed>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(RuntimeLocalizations.t(context, 'service_status'), style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
+                  Text(RuntimeLocalizations.t(context, 'service_status'), style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
                   const SizedBox(height: 14),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -486,7 +485,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                             children: [
                               Text(
                                 w.condition,
-                                style: GoogleFonts.syne(fontSize: 19, fontWeight: FontWeight.w700, color: Colors.white, height: 1.1),
+                                style: TextStyle(fontFamily: 'Syne', fontSize: 19, fontWeight: FontWeight.w700, color: Colors.white, height: 1.1),
                               ),
                               const SizedBox(height: 8),
                               Row(
@@ -521,7 +520,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                             Text(w.icon, style: const TextStyle(fontSize: 36)),
                             Text(
                               '${w.temperature.toStringAsFixed(0)}°',
-                              style: GoogleFonts.syne(fontSize: 30, fontWeight: FontWeight.w800, color: Colors.white, height: 1.0),
+                              style: TextStyle(fontFamily: 'Syne', fontSize: 30, fontWeight: FontWeight.w800, color: Colors.white, height: 1.0),
                             ),
                           ],
                         ),
@@ -871,7 +870,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Seleziona città', style: GoogleFonts.syne(fontSize: 20, fontWeight: FontWeight.w800, color: theme.textColor)),
+                        Text('Seleziona città', style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w800, color: theme.textColor)),
                         Text('Cerca la tua città per il meteo', style: TextStyle(fontSize: 13, color: theme.secondaryTextColor)),
                       ],
                     ),

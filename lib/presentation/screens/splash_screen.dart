@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../../core/design_system.dart';
@@ -127,7 +126,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
                             child: Text(
                               'BC.TRANSPORTER',
-                              style: GoogleFonts.syne(
+                              style: TextStyle(fontFamily: 'Syne', 
                                 fontSize: screenWidth < 375 ? 15 : 20,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,

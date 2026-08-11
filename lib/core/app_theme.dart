@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'design_system.dart';
 
 class AppTheme {
@@ -9,6 +8,7 @@ class AppTheme {
     useMaterial3: true,
     scaffoldBackgroundColor: const Color(0xFF0D1117),
     primaryColor: const Color(0xFF3B82F6),
+    fontFamily: 'Inter',
 
     colorScheme: const ColorScheme.dark(
       primary: Color(0xFF3B82F6),
@@ -33,24 +33,22 @@ class AppTheme {
       inversePrimary: Color(0xFF1976D2),
     ),
 
-    textTheme: GoogleFonts.interTextTheme(
-      const TextTheme(
-        displayLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1.5, color: Color(0xFFE6EDF3)),
-        displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: Color(0xFFE6EDF3)),
-        displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: Color(0xFFE6EDF3)),
-        headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: Color(0xFFE6EDF3)),
-        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Color(0xFFE6EDF3)),
-        headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Color(0xFFE6EDF3)),
-        titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFFE6EDF3)),
-        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
-        titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
-        bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFFE6EDF3)),
-        bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFFE6EDF3)),
-        bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Color(0xFF8B949E)),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
-        labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8B949E)),
-        labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: Color(0xFF8B949E)),
-      ),
+    textTheme: const TextTheme(
+      displayLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1.5, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Color(0xFFE6EDF3), fontFamily: 'Syne'),
+      titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFFE6EDF3)),
+      titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
+      titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
+      bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFFE6EDF3)),
+      bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFFE6EDF3)),
+      bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Color(0xFF8B949E)),
+      labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFE6EDF3)),
+      labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8B949E)),
+      labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: Color(0xFF8B949E)),
     ),
 
     appBarTheme: const AppBarTheme(
@@ -195,6 +193,7 @@ class AppTheme {
     useMaterial3: true,
     scaffoldBackgroundColor: const Color(0xFFF8FAFC),
     primaryColor: const Color(0xFF1976D2),
+    fontFamily: 'Inter',
 
     colorScheme: const ColorScheme.light(
       primary: Color(0xFF1976D2),
@@ -219,24 +218,22 @@ class AppTheme {
       inversePrimary: Color(0xFF93C5FD),
     ),
 
-    textTheme: GoogleFonts.interTextTheme(
-      const TextTheme(
-        displayLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1.5, color: Color(0xFF1E293B)),
-        displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: Color(0xFF1E293B)),
-        displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: Color(0xFF1E293B)),
-        headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: Color(0xFF1E293B)),
-        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Color(0xFF1E293B)),
-        headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Color(0xFF1E293B)),
-        titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-        titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-        bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF1E293B)),
-        bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF1E293B)),
-        bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Color(0xFF64748B)),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-        labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-        labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: Color(0xFF64748B)),
-      ),
+    textTheme: const TextTheme(
+      displayLarge: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1.5, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: Color(0xFF1E293B), fontFamily: 'Syne'),
+      titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+      titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+      titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+      bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF1E293B)),
+      bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF1E293B)),
+      bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Color(0xFF64748B)),
+      labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+      labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+      labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: Color(0xFF64748B)),
     ),
 
     appBarTheme: const AppBarTheme(

@@ -28,7 +28,6 @@ dependencies:
   # UI
   sliding_up_panel: ^2.0.0+1
   glassmorphism: ^3.0.0
-  google_fonts: ^6.1.0
   cupertino_icons: ^1.0.2
 
   # Persistence & DB
@@ -68,3 +67,10 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/logos/
+  fonts:
+    - family: Syne
+      fonts:
+        - asset: assets/fonts/Syne.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

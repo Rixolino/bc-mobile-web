@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:glassmorphism/glassmorphism.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/config_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
@@ -348,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ShaderMask(
                 shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
                 child: Text('BC',
-                    style: GoogleFonts.syne(
+                    style: TextStyle(fontFamily: 'Syne', 
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: Colors.white)),
@@ -358,12 +357,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   children: [
                     Text('.',
-                        style: GoogleFonts.syne(
+                        style: TextStyle(fontFamily: 'Syne', 
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
                             color: theme.primaryColor)),
                     Text('T',
-                        style: GoogleFonts.syne(
+                        style: TextStyle(fontFamily: 'Syne', 
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
                             color: theme.textColor)),
@@ -972,7 +971,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(10)))),
                 const SizedBox(height: 24),
                 Text(AppLocalizations.of(ctx)?.quickActions ?? "Azioni Rapide",
-                    style: GoogleFonts.syne(
+                    style: TextStyle(fontFamily: 'Syne', 
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
