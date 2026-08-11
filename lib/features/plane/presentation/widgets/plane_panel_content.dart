@@ -98,13 +98,13 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
       ),
       child: Row(
         children: [
-          _buildToggleItem("LIVE", !_showSkyscanner, theme,
-              () => setState(() => _showSkyscanner = false)),
           _buildToggleItem(
               AppLocalizations.of(context)?.airports ?? "AEROPORTI",
               _showSkyscanner,
               theme,
               () => setState(() => _showSkyscanner = true)),
+          _buildToggleItem("LIVE", !_showSkyscanner, theme,
+              () => setState(() => _showSkyscanner = false)),
         ],
       ),
     );
@@ -327,30 +327,112 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
         if (provider.selectedAirport != null) ...[
-          Text(
-              AppLocalizations.of(context)?.searchResult ?? "RISULTATO RICERCA",
-              style: TextStyle(
-                  color: theme.secondaryTextColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2)),
-          const SizedBox(height: 12),
-          _buildAirportCard(provider.selectedAirport!, theme, mapState),
+          // Selected airport card
+          _buildSelectedAirportCard(theme, provider, mapState),
           const SizedBox(height: 16),
+          // Arrival/Departure toggle
           _buildArrivalDepartureToggle(theme, provider),
           const SizedBox(height: 16),
+          // Flights section
           _buildAirportFlightsSection(theme, provider, mapState),
           const SizedBox(height: 24),
         ],
-        Text(AppLocalizations.of(context)?.nearbyAirports ?? "AEROPORTI VICINI",
-            style: TextStyle(
+        // Nearby airports
+        _buildNearbyAirportsSection(theme, provider, mapState),
+      ],
+    );
+  }
+
+  Widget _buildSelectedAirportCard(
+      ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    final airport = provider.selectedAirport!;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTokens.brandBlue.withValues(alpha: theme.isDark ? 0.3 : 0.15),
+            AppTokens.brandPurple.withValues(alpha: theme.isDark ? 0.2 : 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        border: Border.all(color: AppTokens.brandBlue.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                ),
+                child: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      airport.iata.isNotEmpty ? airport.iata : '---',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      airport.name ?? RuntimeLocalizations.t(context, 'airport') ?? 'Aeroporto',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (airport.city.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        airport.city,
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNearbyAirportsSection(
+      ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.near_me_rounded, size: 16, color: theme.secondaryTextColor),
+            const SizedBox(width: 8),
+            Text(
+              AppLocalizations.of(context)?.nearbyAirports ?? RuntimeLocalizations.t(context, 'nearby_airports') ?? "AEROPORTI VICINI",
+              style: TextStyle(
                 color: theme.secondaryTextColor,
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2)),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
-        ...provider.airportSuggestions
-            .map((a) => _buildAirportCard(a, theme, mapState)),
+        ...provider.airportSuggestions.map((a) => _buildAirportCard(a, theme, mapState)),
       ],
     );
   }
@@ -361,94 +443,167 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.primaryColor.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.1)),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12)),
-          child: Icon(Icons.location_city_rounded, color: theme.primaryColor),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          onTap: () {
+            final airport = a as Airport;
+            Provider.of<PlaneProvider>(context, listen: false)
+                .selectAirport(airport);
+            if (a.lat != 0 && a.lng != 0) {
+              mapState.flyTo(a.lat, a.lng, zoom: 13);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTokens.brandBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  ),
+                  child: Icon(Icons.location_city_rounded, color: AppTokens.brandBlue, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        a.name ?? AppLocalizations.of(context)?.airport ?? "Aeroporto",
+                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700, fontSize: 15),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (a.iata.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: theme.primaryColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                a.iata,
+                                style: TextStyle(
+                                  color: theme.primaryColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Text(
+                            a.city,
+                            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor.withValues(alpha: 0.5), size: 20),
+              ],
+            ),
+          ),
         ),
-        title: Text(
-            a.name ?? AppLocalizations.of(context)?.airport ?? "Aeroporto",
-            style:
-                TextStyle(color: theme.textColor, fontWeight: FontWeight.bold)),
-        subtitle: Text(a.iata.isNotEmpty ? a.iata : a.city,
-            style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
-        trailing:
-            Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
-        onTap: () {
-          final airport = a as Airport;
-          Provider.of<PlaneProvider>(context, listen: false)
-              .selectAirport(airport);
-          if (a.lat != 0 && a.lng != 0) {
-            mapState.flyTo(a.lat, a.lng, zoom: 13);
-          }
-        },
       ),
     );
   }
 
   Widget _buildArrivalDepartureToggle(
       ThemeProvider theme, PlaneProvider provider) {
-    return Row(
-      children: [
-        Expanded(
-          child: GestureDetector(
-            onTap: () => provider.setArrivalMode(false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: provider.isArrivalMode
-                    ? theme.surfaceColor
-                    : theme.primaryColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  AppLocalizations.of(context)?.departures2 ?? 'Partenze',
-                  style: TextStyle(
-                    color:
-                        provider.isArrivalMode ? theme.textColor : Colors.white,
-                    fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => provider.setArrivalMode(false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: !provider.isArrivalMode
+                      ? AppTokens.brandBlue
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                  boxShadow: !provider.isArrivalMode
+                      ? [BoxShadow(color: AppTokens.brandBlue.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))]
+                      : [],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.flight_takeoff_rounded, size: 16, color: !provider.isArrivalMode ? Colors.white : theme.secondaryTextColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        AppLocalizations.of(context)?.departures2 ?? RuntimeLocalizations.t(context, 'departures') ?? 'Partenze',
+                        style: TextStyle(
+                          color: !provider.isArrivalMode ? Colors.white : theme.secondaryTextColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: GestureDetector(
-            onTap: () => provider.setArrivalMode(true),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: provider.isArrivalMode
-                    ? theme.primaryColor
-                    : theme.surfaceColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  AppLocalizations.of(context)?.arrivals2 ?? 'Arrivi',
-                  style: TextStyle(
-                    color:
-                        provider.isArrivalMode ? Colors.white : theme.textColor,
-                    fontWeight: FontWeight.w700,
+          Expanded(
+            child: GestureDetector(
+              onTap: () => provider.setArrivalMode(true),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: provider.isArrivalMode
+                      ? AppTokens.brandBlue
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                  boxShadow: provider.isArrivalMode
+                      ? [BoxShadow(color: AppTokens.brandBlue.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))]
+                      : [],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.flight_land_rounded, size: 16, color: provider.isArrivalMode ? Colors.white : theme.secondaryTextColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        AppLocalizations.of(context)?.arrivals2 ?? RuntimeLocalizations.t(context, 'arrivals') ?? 'Arrivi',
+                        style: TextStyle(
+                          color: provider.isArrivalMode ? Colors.white : theme.secondaryTextColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -457,18 +612,31 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
     if (provider.isLoadingAirports) {
       return const Center(
           child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+        padding: EdgeInsets.symmetric(vertical: 32),
         child: CircularProgressIndicator(),
       ));
     }
 
     if (provider.scheduledFlights.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(
-          AppLocalizations.of(context)?.noFlightsForAirport ??
-              'Nessun volo disponibile per questo aeroporto.',
-          style: TextStyle(color: theme.secondaryTextColor),
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: theme.surfaceColor,
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          border: Border.all(color: theme.borderColor.withValues(alpha: 0.1)),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.airplanemode_inactive_rounded, size: 40, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+            const SizedBox(height: 12),
+            Text(
+              AppLocalizations.of(context)?.noFlightsForAirport ??
+                  RuntimeLocalizations.t(context, 'no_flights_for_airport') ??
+                  'Nessun volo disponibile per questo aeroporto.',
+              style: TextStyle(color: theme.secondaryTextColor, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
@@ -476,18 +644,40 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          provider.isArrivalMode
-              ? (AppLocalizations.of(context)?.arrivals ?? 'ARRIVI')
-              : (AppLocalizations.of(context)?.departures ?? 'PARTENZE'),
-          style: TextStyle(
-            color: theme.secondaryTextColor,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2,
-          ),
+        Row(
+          children: [
+            Icon(
+              provider.isArrivalMode ? Icons.flight_land_rounded : Icons.flight_takeoff_rounded,
+              size: 14,
+              color: theme.secondaryTextColor,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              provider.isArrivalMode
+                  ? (AppLocalizations.of(context)?.arrivals ?? RuntimeLocalizations.t(context, 'arrivals') ?? 'ARRIVI')
+                  : (AppLocalizations.of(context)?.departures ?? RuntimeLocalizations.t(context, 'departures') ?? 'PARTENZE'),
+              style: TextStyle(
+                color: theme.secondaryTextColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTokens.planeColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+              ),
+              child: Text(
+                '${provider.scheduledFlights.length}',
+                style: TextStyle(color: AppTokens.planeColor, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         ...provider.scheduledFlights.map(
             (f) => _buildScheduledFlightCard(f, theme, provider, mapState)),
       ],
@@ -498,8 +688,9 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
       PlaneProvider provider, MapStateProvider mapState) {
     String fmt(DateTime? d) {
       if (d == null) return '--:--';
-      final hh = d.hour.toString().padLeft(2, '0');
-      final mm = d.minute.toString().padLeft(2, '0');
+      final local = d.toLocal();
+      final hh = local.hour.toString().padLeft(2, '0');
+      final mm = local.minute.toString().padLeft(2, '0');
       return '$hh:$mm';
     }
 
@@ -512,47 +703,80 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.08)),
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.08)),
       ),
-      child: ListTile(
-        leading: Icon(
-          provider.isArrivalMode
-              ? Icons.flight_land_rounded
-              : Icons.flight_takeoff_rounded,
-          color: theme.primaryColor,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          onTap: () {
+            provider.selectFlight(f);
+            if (f.latitude != null && f.longitude != null) {
+              mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => FlightDetailsSheet(flight: f)),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Flight icon
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTokens.planeColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  ),
+                  child: Icon(
+                    provider.isArrivalMode ? Icons.flight_land_rounded : Icons.flight_takeoff_rounded,
+                    color: AppTokens.planeColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                // Flight info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${f.flightNumber} • ${f.airline}',
+                        style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        provider.isArrivalMode ? f.origin : f.destination,
+                        style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Time
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      fmt(scheduled),
+                      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                    if (estimated != null && estimated != scheduled)
+                      Text(
+                        RuntimeLocalizations.t(context, 'est_prefix', params: {'time': fmt(estimated)}),
+                        style: TextStyle(color: theme.warningColor, fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
-        title: Text(
-          '${f.flightNumber} • ${f.airline}',
-          style: TextStyle(color: theme.textColor, fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text(
-          provider.isArrivalMode ? f.origin : f.destination,
-          style: TextStyle(color: theme.secondaryTextColor),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(fmt(scheduled),
-                style: TextStyle(
-                    color: theme.textColor, fontWeight: FontWeight.w700)),
-            if (estimated != null && estimated != scheduled)
-              Text(RuntimeLocalizations.t(context, 'est_prefix', params: {'time': fmt(estimated)}),
-                  style: TextStyle(color: theme.warningColor, fontSize: 12)),
-          ],
-        ),
-        onTap: () {
-          provider.selectFlight(f);
-
-          if (f.latitude != null && f.longitude != null) {
-            mapState.flyTo(f.latitude!, f.longitude!, zoom: 10);
-          }
-
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => FlightDetailsSheet(flight: f)),
-          );
-        },
       ),
     );
   }

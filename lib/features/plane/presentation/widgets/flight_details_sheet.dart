@@ -64,7 +64,8 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
 
     String fmt(DateTime? dt) {
       if (dt == null) return '--:--';
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      final local = dt.toLocal();
+      return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     }
 
     return Scaffold(

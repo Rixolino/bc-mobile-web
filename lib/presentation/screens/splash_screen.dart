@@ -128,10 +128,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             child: Text(
                               'BC.TRANSPORTER',
                               style: GoogleFonts.syne(
-                                fontSize: screenWidth < 375 ? 22 : 26,
+                                fontSize: screenWidth < 375 ? 15 : 20,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
-                                letterSpacing: 2,
+                                letterSpacing: 1,
                               ),
                             ),
                           ),

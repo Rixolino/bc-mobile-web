@@ -4,6 +4,7 @@ import '../../data/models/roadway_toll_model.dart';
 import '../../data/models/roadway_service_model.dart';
 import '../../data/services/roadway_service.dart';
 import '../../utils/brand_logos.dart';
+import 'roadway_area_service_screen.dart';
 
 class RoadwaysPage extends StatefulWidget {
   const RoadwaysPage({super.key});
@@ -1349,7 +1350,7 @@ class _GateStatus extends StatelessWidget {
 // CARD AREA DI SERVIZIO
 // =============================================================================
 
-class _AreaServiceCardItem extends StatefulWidget {
+class _AreaServiceCardItem extends StatelessWidget {
   final RoadwayAreaService area;
   final ThemeData theme;
   final bool isGerman;
@@ -1363,614 +1364,147 @@ class _AreaServiceCardItem extends StatefulWidget {
   });
 
   @override
-  State<_AreaServiceCardItem> createState() => _AreaServiceCardItemState();
-}
-
-class _AreaServiceCardItemState extends State<_AreaServiceCardItem> {
-  bool _isExpanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final theme = widget.theme;
-    final area = widget.area;
     final fuelBrand = area.fuelBrand;
     final foodBrands = area.foodBrands;
     final logoBrand = foodBrands.isNotEmpty
         ? foodBrands.first
-        : (fuelBrand.isNotEmpty ? fuelBrand : (area.brands.isNotEmpty ? (area.brands.first.name.isNotEmpty ? area.brands.first.name : area.brands.first.type) : null));
+        : (fuelBrand.isNotEmpty ? fuelBrand : null);
     final logoUrl = logoBrand != null ? BrandLogos.getLogoUrl(logoBrand) : null;
+    final localLogoPath = logoBrand != null ? BrandLogos.getLocalLogoPath(logoBrand) : null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: widget.decoration,
-      clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          onExpansionChanged: (expanded) => setState(() => _isExpanded = expanded),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          trailing: AnimatedRotation(
-            turns: _isExpanded ? 0.5 : 0.0,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RoadwayAreaServiceScreen(
+              area: area,
+              isGerman: isGerman,
             ),
           ),
-          leading: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  theme.colorScheme.primary.withValues(alpha: 0.18),
-                  theme.colorScheme.secondary.withValues(alpha: 0.12),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              Icons.local_gas_station_rounded,
-              color: theme.colorScheme.primary,
-              size: 24,
-            ),
-          ),
-          title: Padding(
-            padding: const EdgeInsets.only(bottom: 4.0),
-            child: Row(
-              children: [
-                if (logoUrl != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Image.network(
-                      logoUrl,
-                      width: 26,
-                      height: 26,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(width: 26, height: 26);
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        final localPath = BrandLogos.getLocalLogoPath(logoBrand ?? '');
-                        if (localPath != null) {
-                          return Image.asset(
-                            localPath,
-                            width: 26,
-                            height: 26,
-                            fit: BoxFit.contain,
-                          );
-                        }
-                        return const SizedBox(width: 26, height: 26);
-                      },
-                    ),
-                  ),
-                Expanded(
-                  child: Text(
-                    area.name,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.3,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: decoration,
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Brand logo or fallback icon
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
                 ),
-              ],
-            ),
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (area.highway.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      area.highway,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.primary,
+                padding: const EdgeInsets.all(8),
+                child: _buildLogo(logoUrl, localLogoPath, theme),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      area.name,
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
+                        letterSpacing: -0.3,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                if (area.km > 0)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.straighten_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 3),
-                      Text(
-                        'Km ${area.km.toStringAsFixed(1)}',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                if (fuelBrand.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.local_gas_station_outlined, size: 12, color: theme.colorScheme.onTertiaryContainer),
-                        const SizedBox(width: 3),
-                        Text(
-                          fuelBrand,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onTertiaryContainer,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  if (area.direction.isNotEmpty && area.direction.toLowerCase() != 'undefined')
-                    _infoRow(
-                      theme: theme,
-                      icon: Icons.navigation_rounded,
-                      color: theme.colorScheme.primary,
-                      text: '${widget.isGerman ? 'Richtung' : 'Direzione'}: ${area.direction}',
-                    ),
-                  if (area.from.isNotEmpty || area.to.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: _infoRow(
-                        theme: theme,
-                        icon: Icons.route_outlined,
-                        color: theme.colorScheme.onSurfaceVariant,
-                        text: '${widget.isGerman ? 'Strecke' : 'Tratta'}: ${area.from} → ${area.to}',
-                      ),
-                    ),
-                  if (area.descriptionAdsPmr.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: _infoRow(
-                        theme: theme,
-                        icon: Icons.accessible_rounded,
-                        color: theme.colorScheme.primary,
-                        text: 'PMR: ${area.descriptionAdsPmr}',
-                      ),
-                    ),
-                  if (area.parking != null &&
-                      (area.parking!.carSpaces != null || area.parking!.truckSpaces != null))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: _infoRow(
-                        theme: theme,
-                        icon: Icons.local_parking_rounded,
-                        color: theme.colorScheme.onSurfaceVariant,
-                        text: [
-                          if (area.parking!.carSpaces != null) 'PKW ${area.parking!.carSpaces}',
-                          if (area.parking!.truckSpaces != null) 'LKW ${area.parking!.truckSpaces}',
-                          if (area.parking!.isBlocked == true) 'gesperrt',
-                        ].join(' • '),
-                      ),
-                    ),
-
-                  if (area.fuelPrices.values.any((f) => f.price > 0)) ...[
-                    const SizedBox(height: 20),
-                    _sectionLabel(
-                      theme,
-                      widget.isGerman ? 'KRAFTSTOFFPREISE' : 'PREZZI CARBURANTE',
-                    ),
-                    const SizedBox(height: 12),
-                    ..._buildFuelPriceRows(area, theme),
-                  ],
-                ],
-              ),
-            ),
-
-            if (area.events.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.15)),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: area.events.map((event) {
-                    final text = event.title.isNotEmpty ? event.title : event.description;
-                    final date = event.createdAt ?? '';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.warning_rounded, size: 18, color: theme.colorScheme.error),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              date.isNotEmpty ? '$text ($date)' : text,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onErrorContainer,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-            if (area.services.isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _sectionLabel(
-                        theme,
-                        widget.isGerman ? 'AUSSTATTUNG' : 'SERVIZI',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 96,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: area.services.map((service) {
-                          final available = service.available ?? 0;
-                          final total = service.total ?? 0;
-                          return Container(
-                            width: 108,
-                            margin: const EdgeInsets.only(right: 10),
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: theme.brightness == Brightness.light
-                                  ? Colors.white
-                                  : theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  _serviceIcon(service.code, service.name),
-                                  size: 20,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  service.name.isNotEmpty ? service.name : service.code,
-                                  style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                if (total > 0 || available > 0)
-                                  Text(
-                                    total > 0 ? '$available / $total' : '$available',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: available > 0
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.outline,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            if (area.brands.isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel(
-                      theme,
-                      widget.isGerman ? 'ANBIETER' : 'ESERCENTI',
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 6),
                     Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                      spacing: 8,
+                      runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      children: area.brands.map((brand) {
-                        final label = brand.name.isNotEmpty
-                            ? brand.name
-                            : (brand.nameSecond.isNotEmpty ? brand.nameSecond : brand.type);
-                        final logoUrl = BrandLogos.getLogoUrl(label);
-                        final hasLogo = logoUrl != null;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                              width: 1,
+                      children: [
+                        if (area.highway.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              area.highway,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                          child: Row(
+                        if (area.km > 0)
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                               if (hasLogo)
-                                Image.network(
-                                  logoUrl,
-                                  height: 28,
-                                  width: 28,
-                                  fit: BoxFit.contain,
-                                  loadingBuilder: (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return const SizedBox(width: 28, height: 28);
-                                  },
-                                  errorBuilder: (context, error, stackTrace) {
-                                    final localPath = BrandLogos.getLocalLogoPath(label);
-                                    if (localPath != null) {
-                                      return Image.asset(
-                                        localPath,
-                                        height: 28,
-                                        width: 28,
-                                        fit: BoxFit.contain,
-                                      );
-                                    }
-                                    return _BrandIcon(type: brand.type, theme: theme);
-                                  },
-                                )
-                              else
-                                _BrandIcon(type: brand.type, theme: theme),
-                              const SizedBox(width: 10),
+                              Icon(Icons.straighten_rounded, size: 14,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 3),
                               Text(
-                                label,
+                                'Km ${area.km.toStringAsFixed(1)}',
                                 style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
+                        if (fuelBrand.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              fuelBrand,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              Icon(Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5), size: 20),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _sectionLabel(ThemeData theme, String text) {
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 20,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          text,
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
-            color: theme.colorScheme.primary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _infoRow({
-    required ThemeData theme,
-    required IconData icon,
-    required Color color,
-    required String text,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 15, color: color),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-              height: 1.4,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  IconData _serviceIcon(String code, String name) {
-    final s = '$code $name'.toUpperCase();
-    if (s.contains('TOILET') || s.contains('W.C.') || s.contains('SANIT') || s.contains('BAGNO')) {
-      return Icons.wc_rounded;
-    }
-    if (s.contains('RIPOSO') || s.contains('PARCHEGGIO') || s.contains('PARK')) {
-      return Icons.local_parking_rounded;
-    }
-    if (s.contains('BAR') || s.contains('RIST') || s.contains('FOOD')) {
-      return Icons.restaurant_rounded;
-    }
-    if (s.contains('ELETTR') || s.contains('EV ') || s.contains('CHARG')) {
-      return Icons.ev_station_rounded;
-    }
-    if (s.contains('BENZ') || s.contains('GASOL') || s.contains('DISTRIBUZ')) {
-      return Icons.local_gas_station_rounded;
-    }
-    return Icons.star_rounded;
-  }
-
-  List<Widget> _buildFuelPriceRows(RoadwayAreaService area, ThemeData theme) {
-    const labels = {
-      'benzina': 'Benzina',
-      'diesel': 'Diesel',
-      'gpl': 'GPL',
-      'metano': 'Metano',
-    };
-
-    final rows = <Widget>[];
-    for (final entry in labels.entries) {
-      final price = area.fuelPrices[entry.key];
-      if (price == null || price.price <= 0) continue;
-
-      final update = price.lastUpdate != null && price.lastUpdate!.isNotEmpty
-          ? _shortDate(price.lastUpdate!)
-          : '';
-
-      rows.add(
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _fuelIcon(entry.key),
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    entry.value,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '€${price.price.toStringAsFixed(3)}/L',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (update.isNotEmpty)
-                    Text(
-                      'Aggiornato: $update',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
+  Widget _buildLogo(String? logoUrl, String? localLogoPath, ThemeData theme) {
+    if (logoUrl != null) {
+      return Image.network(
+        logoUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const SizedBox(width: 20, height: 20);
+        },
+        errorBuilder: (context, error, stackTrace) {
+          if (localLogoPath != null) {
+            return Image.asset(localLogoPath, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Icon(Icons.local_gas_station_rounded, color: theme.colorScheme.primary, size: 20));
+          }
+          return Icon(Icons.local_gas_station_rounded, color: theme.colorScheme.primary, size: 20);
+        },
       );
     }
-    return rows;
-  }
-
-  IconData _fuelIcon(String key) {
-    switch (key) {
-      case 'benzina': return Icons.oil_barrel_rounded;
-      case 'diesel': return Icons.local_gas_station_rounded;
-      case 'gpl': return Icons.propane_tank_rounded;
-      case 'metano': return Icons.gas_meter_rounded;
-      default: return Icons.local_gas_station_rounded;
+    if (localLogoPath != null) {
+      return Image.asset(localLogoPath, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Icon(Icons.local_gas_station_rounded, color: theme.colorScheme.primary, size: 20));
     }
-  }
-
-  String _shortDate(String iso) {
-    try {
-      final dt = DateTime.parse(iso);
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} '
-             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return iso;
-    }
+    return Icon(Icons.local_gas_station_rounded, color: theme.colorScheme.primary, size: 20);
   }
 }
 
