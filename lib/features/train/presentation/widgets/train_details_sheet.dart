@@ -1075,12 +1075,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         }
       }
       if (currentIdx == -1) {
-        // Treno arrivato o in partenza
         progress = 1.0;
       } else if (currentIdx == 0) {
         progress = 0.0;
       } else {
-        // Calcola progresso tra la fermata precedente e quella attual
         final prevDep = stops[currentIdx - 1].estimatedDeparture?.toUtc() ?? stops[currentIdx - 1].departure?.toUtc();
         final nextArr = stops[currentIdx].estimatedArrival?.toUtc() ?? stops[currentIdx].arrival?.toUtc();
         if (prevDep != null && nextArr != null) {
@@ -1097,127 +1095,94 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: theme.surfaceColor.withValues(alpha: theme.isDark ? 0.5 : 0.7),
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Origin
-          Expanded(
+          // Timeline visual
+          SizedBox(
+            width: 24,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  RuntimeLocalizations.t(context, 'origin') ?? 'Partenza',
-                  style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
+                // Origin dot
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: theme.secondaryTextColor, width: 2),
+                    shape: BoxShape.circle,
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  origin,
-                  style: AppTextStyle.titleMedium(color: theme.textColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          // Progress line with train position
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+                // Connecting line with progress
                 SizedBox(
-                  width: double.infinity,
                   height: 60,
+                  width: 3,
                   child: Stack(
-                    alignment: Alignment.center,
+                    alignment: Alignment.topCenter,
                     children: [
-                      // Background line
-                      Container(
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: theme.borderColor.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                      ),
-                      // Progress line
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: progress,
-                          child: Container(
-                            height: 10,
-                            decoration: BoxDecoration(
-                              gradient: theme.progressGradient,
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Train position indicator
-                      Align(
-                        alignment: Alignment(-1.0 + (progress * 2), 0),
+                      Container(width: 3, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+                      FractionallySizedBox(
+                        heightFactor: progress,
                         child: Container(
-                          width: 32,
-                          height: 32,
+                          width: 3,
                           decoration: BoxDecoration(
-                            color: AppTokens.trainColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: theme.surfaceColor, width: 3),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTokens.trainColor.withValues(alpha: 0.5),
-                                blurRadius: 10,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.train_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
+                            gradient: theme.progressGradient,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                // Percentage text
-                Text(
-                  '${(progress * 100).toInt()}%',
-                  style: TextStyle(
+                // Destination dot
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
                     color: AppTokens.trainColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    shape: BoxShape.circle,
                   ),
                 ),
               ],
             ),
           ),
-          // Destination
+          const SizedBox(width: 12),
+          // Labels
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Origin label
+                Text(
+                  RuntimeLocalizations.t(context, 'origin') ?? 'Partenza',
+                  style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  origin,
+                  style: AppTextStyle.titleMedium(color: theme.textColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 20),
+                // Destination label
                 Text(
                   RuntimeLocalizations.t(context, 'destination') ?? 'Arrivo',
                   style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   dest,
                   style: AppTextStyle.titleMedium(color: theme.textColor),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
                 ),
+                const SizedBox(height: 8),
+                // Percentage pill
               ],
             ),
           ),
