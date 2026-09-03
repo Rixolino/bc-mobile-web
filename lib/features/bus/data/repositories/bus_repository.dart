@@ -229,11 +229,17 @@ class BusRepository {
       final country = _countryFromProviderConfig(provider);
       var url = "${ApiConstants.baseUrl}/api/$country/bus/${provider.name}/stops";
       if (offline) url += "?offline=true";
+      print("[Stops] GET $url (provider=${provider.name}, offline=$offline)");
       final response = await http.get(Uri.parse(url));
+      final head = response.body.substring(0, response.body.length.clamp(0, 120));
+      print("[Stops] HTTP ${response.statusCode}, bodyLen=${response.body.length}, head=$head");
       if (response.statusCode == 200) {
         // Use compute for parsing potentially large stop lists (like Turin)
-        return await compute(_parseBariStops, response.body);
+        final parsed = await compute(_parseBariStops, response.body);
+        print("[Stops] parsed ${parsed.length} stops for ${provider.name}");
+        return parsed;
       }
+      print("Error fetching stops for ${provider.name}: HTTP ${response.statusCode} - ${response.body.substring(0, response.body.length.clamp(0, 200))}");
       return [];
     } catch (e) {
       print("Error fetching stops for ${provider.name}: $e");
@@ -242,8 +248,33 @@ class BusRepository {
   }
 
   static List<BariStop> _parseBariStops(String responseBody) {
-    final List<dynamic> data = json.decode(responseBody);
-    return data.map((e) => BariStop.fromJson(Map<String, dynamic>.from(e))).toList();
+    // Tollerante a payload inattesi (es. "null", oggetti errore o wrapper):
+    // mai crashare, al massimo restituire lista vuota con diagnostica.
+    dynamic decoded;
+    try {
+      decoded = json.decode(responseBody);
+    } catch (e) {
+      print("Error parsing stops JSON: $e - head: ${responseBody.substring(0, responseBody.length.clamp(0, 200))}");
+      return [];
+    }
+    final List<dynamic> data;
+    if (decoded is List) {
+      data = decoded;
+    } else if (decoded is Map && decoded['stops'] is List) {
+      data = decoded['stops'];
+    } else {
+      print("Unexpected stops payload (not a list): ${responseBody.substring(0, responseBody.length.clamp(0, 200))}");
+      return [];
+    }
+    final stops = <BariStop>[];
+    for (final e in data) {
+      try {
+        if (e is Map) stops.add(BariStop.fromJson(Map<String, dynamic>.from(e)));
+      } catch (_) {
+        // salta singole voci malformate senza buttare tutta la lista
+      }
+    }
+    return stops;
   }
 
   Future<List<BariStop>> fetchBariStops() async {
@@ -343,11 +374,46 @@ class BusRepository {
     }
   }
 
-  Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId) async {
+  /// Dettaglio corsa via endpoint realtime generico, valido per tutti i provider:
+  /// `GET /api/{country}/bus/{provider}/realtime?vehicleId={id}&tripId={trip}&vehicles=true`.
+  /// Restituisce destinazione + fermate oppure null se non disponibili.
+  Future<BusRealtimeTrip?> fetchRealtimeVehicleTrip({
+    required String providerName,
+    required String vehicleId,
+    required String tripId,
+  }) async {
     try {
-      // Chiama l'endpoint realtime con vehicleId e routeId
+      if (vehicleId.isEmpty || vehicleId == '?' || tripId.isEmpty) return null;
+      final country = await _countryForProviderName(providerName);
+      final url = "${ApiConstants.baseUrl}/api/$country/bus/$providerName/realtime"
+          "?vehicleId=${Uri.encodeComponent(vehicleId)}"
+          "&tripId=${Uri.encodeComponent(tripId)}"
+          "&vehicles=true";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        if (json is Map<String, dynamic>) {
+          final trip = BusRealtimeTrip.fromJson(json);
+          if (trip.stops.isNotEmpty) return trip;
+        }
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching realtime vehicle trip: $e");
+      return null;
+    }
+  }
+
+  Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId, {String? tripId}) async {
+    try {
+      // Endpoint realtime generico: vehicleId + tripId (+ vehicles=true).
+      // Fallback legacy con routeId se il tripId non è disponibile.
       final bariCountry = await _countryForProviderName('bari');
-      final realtimeResponse = await http.get(Uri.parse("${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId"));
+      final realtimeResponse = await http.get(Uri.parse(
+        (tripId != null && tripId.isNotEmpty)
+            ? "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/realtime?vehicleId=$vehicleId&tripId=$tripId&vehicles=true"
+            : "${ApiConstants.baseUrl}/api/$bariCountry/bus/bari/realtime?vehicleId=$vehicleId&routeId=$routeId",
+      ));
       if (realtimeResponse.statusCode == 200) {
         final json = jsonDecode(realtimeResponse.body);
         final vehicles = json['vehicles'] as List?;
@@ -483,14 +549,19 @@ class BusRepository {
     }
   }
 
-  /// Fetch trip stops by calling the provider realtime endpoint with
-  /// `routeId` and `tripId`. Returns a `TripStopsData` constructed from
-  /// the realtime response when available.
-  Future<TripStopsData?> fetchRealtimeTripStops(String routeId, String tripId, {String? providerName}) async {
+  /// Fetch trip stops by calling the provider realtime endpoint.
+  /// Endpoint generico valido per tutti i provider:
+  /// `GET /api/{country}/bus/{provider}/realtime?vehicleId={id}&tripId={trip}&vehicles=true`.
+  /// Se [vehicleId] non è disponibile si usa il fallback legacy `routeId` + `tripId`.
+  /// Returns a `TripStopsData` constructed from the realtime response when available.
+  Future<TripStopsData?> fetchRealtimeTripStops(String routeId, String tripId, {String? providerName, String? vehicleId}) async {
     try {
       final prov = providerName ?? 'bari';
       final country = await _countryForProviderName(prov);
-      final url = "${ApiConstants.baseUrl}/api/$country/bus/$prov/realtime?routeId=${Uri.encodeComponent(routeId)}&tripId=${Uri.encodeComponent(tripId)}";
+      final hasVehicle = vehicleId != null && vehicleId.isNotEmpty && vehicleId != '?';
+      final url = hasVehicle
+          ? "${ApiConstants.baseUrl}/api/$country/bus/$prov/realtime?vehicleId=${Uri.encodeComponent(vehicleId!)}&tripId=${Uri.encodeComponent(tripId)}&vehicles=true"
+          : "${ApiConstants.baseUrl}/api/$country/bus/$prov/realtime?routeId=${Uri.encodeComponent(routeId)}&tripId=${Uri.encodeComponent(tripId)}";
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {

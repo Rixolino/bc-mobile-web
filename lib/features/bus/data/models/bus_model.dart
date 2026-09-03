@@ -557,6 +557,50 @@ class TripStop {
   }
 }
 
+/// Risultato dell'endpoint realtime generico
+/// `GET /api/{country}/bus/{provider}/realtime?vehicleId={id}&tripId={trip}&vehicles=true`,
+/// valido per tutti i provider bus (non solo Bari).
+class BusRealtimeTrip {
+  final String vehicleId;
+  final String tripId;
+  final String routeId;
+  final String? destination;
+  final List<BusTripUpdate> stops;
+  final bool isRealtime;
+
+  BusRealtimeTrip({
+    required this.vehicleId,
+    required this.tripId,
+    required this.routeId,
+    this.destination,
+    required this.stops,
+    this.isRealtime = false,
+  });
+
+  factory BusRealtimeTrip.fromJson(Map<String, dynamic> json) {
+    final vehiclesRaw = json['vehicles'];
+    final vehicles = vehiclesRaw is List
+        ? vehiclesRaw
+        : (vehiclesRaw != null ? [vehiclesRaw] : const []);
+    final v = vehicles.isNotEmpty && vehicles.first is Map
+        ? Map<String, dynamic>.from(vehicles.first as Map)
+        : <String, dynamic>{};
+    final stopsRaw = v['stops'] ?? json['stops'];
+    final stopsList = stopsRaw is List ? stopsRaw : const [];
+    return BusRealtimeTrip(
+      vehicleId: (v['vehicleId'] ?? v['id'] ?? '').toString(),
+      tripId: (v['tripId'] ?? json['tripId'] ?? '').toString(),
+      routeId: (v['routeId'] ?? '').toString(),
+      destination: v['destination']?.toString(),
+      stops: stopsList
+          .map((s) => BusTripUpdate.fromJson(
+              s is Map ? Map<String, dynamic>.from(s) : <String, dynamic>{}))
+          .toList(),
+      isRealtime: v['isRealtime'] == true,
+    );
+  }
+}
+
 class BusProviderConfig {
   final String name;
   final String provider;

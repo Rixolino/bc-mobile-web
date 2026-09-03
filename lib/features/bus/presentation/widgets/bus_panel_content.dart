@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:glassmorphism/glassmorphism.dart';
-import 'dart:convert';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/map_state_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
-import '../../../../core/api_constants.dart';
 import '../../../../core/design_system.dart';
 import '../../data/models/bus_model.dart';
 import 'shimmer_and_toggle.dart';
@@ -409,12 +406,17 @@ class _BusPanelContentState extends State<BusPanelContent> {
               theme.secondaryTextColor.withOpacity(0.1),
               theme.secondaryTextColor.withOpacity(0.05)
             ]),
-            child: TextField(
-              controller: _stopSearchController,
-              onChanged: (val) {
-                // Update global state
-                busProvider.setSavedStopSearchQuery(val);
-              },
+              child: TextField(
+                controller: _stopSearchController,
+                onChanged: (val) {
+                  // Update global state
+                  busProvider.setSavedStopSearchQuery(val);
+                  final q = val.toLowerCase();
+                  final hits = busProvider.stops
+                      .where((s) => s.stopName.toLowerCase().contains(q))
+                      .length;
+                  print("[Stops] search query='$val', stopsLoaded=${busProvider.stops.length}, loading=${busProvider.isLoadingStops}, hits=$hits");
+                },
               decoration: InputDecoration(
                 hintText: AppLocalizations.of(context)?.searchStopHint ??
                     "Cerca fermata...",
@@ -960,24 +962,81 @@ class _BusPanelContentState extends State<BusPanelContent> {
 
     // Search Results for Stops (Mode 0)
     if (_selectedMode == 0 && busProvider.savedStopSearchQuery.isNotEmpty) {
+      // Le fermate potrebbero essere ancora in caricamento: mostra un loader
+      // invece di un falso "nessun risultato".
+      if (busProvider.isLoadingStops && busProvider.stops.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: theme.primaryColor),
+              const SizedBox(height: 16),
+              Text(
+                  AppLocalizations.of(context)?.loading ?? "Caricamento...",
+                  style: TextStyle(color: theme.secondaryTextColor)),
+            ],
+          ),
+        );
+      }
       final filteredStops = busProvider.stops
           .where((s) => s.stopName
               .toLowerCase()
               .contains(busProvider.savedStopSearchQuery.toLowerCase()))
           .toList();
       if (filteredStops.isEmpty) {
+        final stopsError = busProvider.stopsError;
         return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.search_off,
-                  size: 48, color: theme.secondaryTextColor.withOpacity(0.5)),
-              const SizedBox(height: 16),
-              Text(
-                  AppLocalizations.of(context)?.noStopsFound ??
-                      "Nessuna fermata trovata",
-                  style: TextStyle(color: theme.secondaryTextColor)),
-            ],
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                    stopsError != null
+                        ? Icons.cloud_off_rounded
+                        : Icons.search_off,
+                    size: 48,
+                    color: stopsError != null
+                        ? theme.errorColor.withOpacity(0.7)
+                        : theme.secondaryTextColor.withOpacity(0.5)),
+                const SizedBox(height: 16),
+                Text(
+                    stopsError != null
+                        ? "Errore caricamento fermate"
+                        : (AppLocalizations.of(context)?.noStopsFound ??
+                            "Nessuna fermata trovata"),
+                    style: TextStyle(
+                        color: stopsError != null
+                            ? theme.errorColor
+                            : theme.secondaryTextColor,
+                        fontWeight: stopsError != null
+                            ? FontWeight.bold
+                            : FontWeight.normal),
+                    textAlign: TextAlign.center),
+                if (stopsError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    stopsError,
+                    style: TextStyle(
+                        color: theme.secondaryTextColor, fontSize: 12),
+                    textAlign: TextAlign.center,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => busProvider.fetchStops(),
+                  icon: Icon(Icons.refresh_rounded,
+                      size: 18, color: theme.primaryColor),
+                  label: Text(
+                      RuntimeLocalizations.t(context, 'retry') ?? "Riprova",
+                      style: TextStyle(
+                          color: theme.primaryColor,
+                          fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         );
       }
@@ -1106,47 +1165,24 @@ class _BusPanelContentState extends State<BusPanelContent> {
                 if (v.latitude != 0) {
                   mapState.flyTo(v.latitude, v.longitude, zoom: 15);
                 }
-                // Fetch bus details from API and show details sheet
+                // Fetch bus details from the generic realtime endpoint
+                // (`realtime?vehicleId={id}&tripId={trip}&vehicles=true`, valid
+                // for all providers) and show details sheet
                 try {
                   final tripId = v.tripId ?? '';
-                  final lineCode = v.line;
-                  final selected = busProvider.selectedProvider!;
-                  final apiPrefix = selected.apiPathPrefix;
-                  final url =
-                      '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}&lineCode=${Uri.encodeComponent(lineCode)}';
-                  print('Fetching bus details from URL: $url');
-
-                  final response = await http.get(Uri.parse(url));
-                  if (response.statusCode == 200) {
-                    final jsonData = jsonDecode(response.body);
-                    if (jsonData['vehicles'] != null &&
-                        jsonData['vehicles'].isNotEmpty) {
-                      final vehicleData = jsonData['vehicles'][0];
-                      final stops =
-                          vehicleData['stops'] as List<dynamic>? ?? [];
-
+                  busProvider.clearApiTripUpdates();
+                  if (tripId.isNotEmpty && v.id.isNotEmpty && v.id != '?') {
+                    final trip = await busProvider.fetchVehicleTripDetails(
+                      vehicleId: v.id,
+                      tripId: tripId,
+                    );
+                    if (trip != null) {
                       // Update bus destination if available
-                      final destination = vehicleData['destination'] as String?;
-                      if (destination != null && destination.isNotEmpty) {
-                        busProvider.updateBusDestination(v.id, destination);
+                      if (trip.destination != null && trip.destination!.isNotEmpty) {
+                        busProvider.updateBusDestination(v.id, trip.destination!);
                       }
-
-                      // Convert stops to BusTripUpdate
-                      final tripUpdates = stops.map((stop) {
-                        return BusTripUpdate(
-                          stopId: stop['stopId']?.toString() ?? '',
-                          stopName: stop['stopName'] ?? '',
-                          expectedTime: stop['scheduledTime'] ?? '',
-                          delay: stop['delay'] ?? 0,
-                          isRealtime: stop['isRealtime'] ?? false,
-                          status: stop['status'] ?? 'future',
-                          arrivalEstimate:
-                              stop['estimatedArrivalUnix']?.toString(),
-                        );
-                      }).toList();
-
                       // Set the trip updates in the provider
-                      busProvider.setApiTripUpdates(tripUpdates);
+                      busProvider.setApiTripUpdates(trip.stops);
                     }
                   }
                   // Select the bus to show details sheet

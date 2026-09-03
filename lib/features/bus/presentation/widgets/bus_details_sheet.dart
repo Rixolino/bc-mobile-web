@@ -251,17 +251,20 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                   ),
                   const SizedBox(height: 12),
                   if (provider.selectedProvider?.endpoints['trip_stops'] == true) ...[
-                    provider.isLoadingTripStops
-                        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
-                        : (provider.apiTripUpdates.isNotEmpty
-                            ? _buildBusTimeline(provider.apiTripUpdates, theme)
-                            : (hasTripStopsData
-                                ? _buildTripStopsTimeline(tripStopsData!.stops, theme)
-                                : (_isLoadingUpdates
-                                    ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
-                                    : _tripUpdates.isEmpty
-                                        ? _buildEmptyState(theme)
-                                        : _buildBusTimeline(_tripUpdates, theme)))),
+                    SizedBox(
+                      height: 400,
+                      child: (provider.isLoadingTripStops || provider.isLoadingRoutePath)
+                          ? const Center(child: CircularProgressIndicator())
+                          : (provider.apiTripUpdates.isNotEmpty
+                              ? _buildBusTimeline(provider.apiTripUpdates, theme)
+                              : (hasTripStopsData
+                                  ? _buildTripStopsTimeline(tripStopsData!.stops, theme)
+                                  : (_isLoadingUpdates
+                                      ? const Center(child: CircularProgressIndicator())
+                                      : _tripUpdates.isEmpty
+                                          ? _buildEmptyState(theme)
+                                          : _buildBusTimeline(_tripUpdates, theme)))),
+                    ),
                   ] else ...[
                     _buildUnavailableState(theme, provider),
                   ],
@@ -408,7 +411,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     return ListView.builder(
       controller: _internalScrollController, // Controller interno per lo scroll della lista
       itemCount: updates.length,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final update = updates[index];
@@ -464,7 +467,7 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     return ListView.builder(
       controller: _internalScrollController,
       itemCount: stops.length,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final stop = stops[index];
@@ -828,7 +831,11 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
         final apiPrefix = resolved?.apiPathPrefix ?? (providerParam != null ? 'it/bus/$providerParam' : 'it/bus/bari');
 
         if (tripId != null && tripId.isNotEmpty) {
-          final endpoint = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}';
+          final vehicleId = widget.bus.id;
+          final hasVehicle = vehicleId.isNotEmpty && vehicleId != '?';
+          final endpoint = hasVehicle
+              ? '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?vehicleId=${Uri.encodeComponent(vehicleId)}&tripId=${Uri.encodeComponent(tripId)}&vehicles=true'
+              : '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(tripId)}&vehicles=true';
           await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, endpoint: endpoint, intervalSeconds: settings.busRefreshSeconds);
         } else {
           await AndroidBackgroundService.scheduleBusesWorker(provider: providerParam, intervalSeconds: settings.busRefreshSeconds);
@@ -837,7 +844,7 @@ class _BusLineNotificationsButtonState extends State<_BusLineNotificationsButton
         String body = 'Riceverai aggiornamenti per la linea ${widget.bus.line}';
         try {
           final provider = Provider.of<BusProvider>(context, listen: false);
-          final List<BusTripUpdate> updates = await provider.fetchBariTripUpdates(widget.bus.id, widget.bus.line);
+          final List<BusTripUpdate> updates = await provider.fetchProviderTripUpdates(widget.bus);
           if (updates.isNotEmpty) {
             final now = DateTime.now();
             final next = updates.firstWhere((u) => u.status != 'passed', orElse: () => updates.first);

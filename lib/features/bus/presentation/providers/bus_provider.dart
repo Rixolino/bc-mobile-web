@@ -64,6 +64,8 @@ class BusProvider with ChangeNotifier {
 
   // Bari getters
   List<BariStop> get stops => _stops;
+  String? _stopsError;
+  String? get stopsError => _stopsError;
   List<BariStop> get bariStops => _stops; // Alias for backward compatibility
   List<BariRouteSolution> get bariSolutions => _bariSolutions;
   BariStop? get selectedFromStop => _selectedFromStop;
@@ -184,6 +186,17 @@ class BusProvider with ChangeNotifier {
       // load any stored preferences (will be empty in fallback)
       await _loadProviderPreferences();
       notifyListeners();
+    }
+
+    // Carica subito le fermate del provider selezionato di default.
+    // Senza questo, alla prima apertura la lista fermate resta vuota finché
+    // l'utente non tocca il chip (che sembra già selezionato), mentre i
+    // veicoli si caricano da soli via timer/schermata bus.
+    if (_selectedProvider != null &&
+        _selectedProvider!.endpoints['stops'] == true &&
+        _stops.isEmpty &&
+        !_isLoadingStops) {
+      fetchStops();
     }
   }
 
@@ -445,24 +458,30 @@ class BusProvider with ChangeNotifier {
   // Dynamic routing methods
   Future<void> fetchStops({bool offline = false}) async {
     final cityAtStart = _selectedCity;
+    print("[Stops] fetchStops called: city=$cityAtStart, provider=${_selectedProvider?.name}, endpoints.stops=${_selectedProvider?.endpoints['stops']}, offline=$offline");
     _isLoadingStops = true;
+    _stopsError = null;
     notifyListeners();
 
     try {
       if (_selectedProvider != null && _selectedCity == cityAtStart) {
         final fetchedStops = await _repository.fetchStops(_selectedProvider!, offline: offline);
+        print("[Stops] fetchStops done: got ${fetchedStops.length} stops for $cityAtStart");
         if (_selectedCity == cityAtStart) {
           _stops = fetchedStops;
         }
       } else {
+        print("[Stops] fetchStops SKIPPED: selectedProvider=${_selectedProvider?.name} (cityAtStart=$cityAtStart)");
         if (_selectedCity == cityAtStart) {
           _stops = [];
+          _stopsError = 'Provider non selezionato';
         }
       }
     } catch (e) {
       print("Error fetching stops for $cityAtStart: $e");
       if (_selectedCity == cityAtStart) {
         _stops = [];
+        _stopsError = e.toString();
       }
     } finally {
       if (_selectedCity == cityAtStart) {
@@ -591,8 +610,12 @@ class BusProvider with ChangeNotifier {
     final supportsRoutePath = _selectedProvider?.endpoints['route_path'] == true;
 
     // For bus details we no longer rely on the `route_path` endpoint.
-    // Instead request the realtime endpoint using `routeId` (line) + `tripId`.
-    if (bus.tripId != null && bus.tripId!.isNotEmpty && bus.line != null && bus.line!.isNotEmpty) {
+    // Endpoint realtime generico (tutti i provider):
+    // `realtime?vehicleId={id}&tripId={trip}&vehicles=true`.
+    final hasTrip = bus.tripId != null && bus.tripId!.isNotEmpty;
+    final hasLine = bus.line != null && bus.line!.isNotEmpty;
+    final hasVehicle = bus.id.isNotEmpty && bus.id != '?';
+    if (hasTrip && (hasLine || hasVehicle)) {
       _loadBusRoutePath(bus);
     }
 
@@ -615,7 +638,9 @@ class BusProvider with ChangeNotifier {
   }
 
   Future<void> _loadBusRoutePath(BusVehicle bus) async {
-    // Instead of using the route-path endpoint, call realtime with routeId + tripId
+    // Instead of using the route-path endpoint, call the generic realtime
+    // endpoint with vehicleId + tripId (+ vehicles=true) for all providers,
+    // with legacy routeId + tripId as fallback.
     _isLoadingRoutePath = true;
     _selectedBusRoutePath = null;
     notifyListeners();
@@ -623,12 +648,18 @@ class BusProvider with ChangeNotifier {
     try {
       final tripId = bus.tripId;
       final routeId = bus.line;
+      final vehicleId = bus.id;
 
-      if (tripId != null && tripId.isNotEmpty && routeId != null && routeId.isNotEmpty) {
-        final tripStops = await _repository.fetchRealtimeTripStops(routeId, tripId, providerName: _selectedProvider?.name);
+      if (tripId != null && tripId.isNotEmpty) {
+        final tripStops = await _repository.fetchRealtimeTripStops(
+          routeId ?? '',
+          tripId,
+          providerName: _selectedProvider?.name,
+          vehicleId: vehicleId,
+        );
         _selectedTripStops = tripStops;
       } else {
-        print("No tripId/routeId available for bus ${bus.id}");
+        print("No tripId available for bus ${bus.id}");
         _selectedTripStops = null;
       }
     } catch (e) {
@@ -638,6 +669,23 @@ class BusProvider with ChangeNotifier {
       _isLoadingRoutePath = false;
       notifyListeners();
     }
+  }
+
+  /// Dettaglio corsa via endpoint realtime generico, valido per tutti i provider:
+  /// `GET /api/{country}/bus/{provider}/realtime?vehicleId={id}&tripId={trip}&vehicles=true`.
+  /// Restituisce destinazione + fermate oppure null.
+  Future<BusRealtimeTrip?> fetchVehicleTripDetails({
+    required String vehicleId,
+    required String tripId,
+    String? providerName,
+  }) async {
+    final prov = providerName ?? _selectedProvider?.name ?? '';
+    if (prov.isEmpty) return null;
+    return _repository.fetchRealtimeVehicleTrip(
+      providerName: prov,
+      vehicleId: vehicleId,
+      tripId: tripId,
+    );
   }
 
   Future<void> _loadTripStops(BusVehicle bus) async {
@@ -672,28 +720,48 @@ class BusProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId) async {
+  Future<List<BusTripUpdate>> fetchBariTripUpdates(String vehicleId, String routeId, {String? tripId}) async {
     try {
-      return await _repository.fetchBariTripUpdates(vehicleId, routeId);
+      return await _repository.fetchBariTripUpdates(vehicleId, routeId, tripId: tripId);
     } catch (e) {
       print("Error fetching Bari trip updates: $e");
       return [];
     }
   }
 
-  /// Generic trip updates fetcher: for Bari uses the specialized endpoint,
-  /// otherwise attempts to load trip stops via tripId and convert them to
-  /// `BusTripUpdate` entries.
+  /// Generic trip updates fetcher, valido per tutti i provider.
+  /// Prova prima l'endpoint realtime generico
+  /// (`realtime?vehicleId={id}&tripId={trip}&vehicles=true`), poi i fallback
+  /// legacy (stime arrivi Bari, poi trip-stops via tripId).
   Future<List<BusTripUpdate>> fetchProviderTripUpdates(BusVehicle bus) async {
     try {
-      // Bari retains specialized realtime/trip update logic
-      if (_selectedProvider != null && _selectedProvider!.name.toLowerCase() == 'bari') {
-        return await fetchBariTripUpdates(bus.id, bus.line);
+      final tripId = bus.tripId ?? '';
+      final hasVehicle = bus.id.isNotEmpty && bus.id != '?';
+
+      // 1) Endpoint realtime generico per tutti i provider
+      if (tripId.isNotEmpty && hasVehicle) {
+        final trip = await fetchVehicleTripDetails(
+          vehicleId: bus.id,
+          tripId: tripId,
+        );
+        if (trip != null && trip.stops.isNotEmpty) {
+          // Per Bari arricchisci con le stime di arrivo
+          if (_selectedProvider != null &&
+              _selectedProvider!.name.toLowerCase() == 'bari') {
+            final enriched = await fetchBariTripUpdates(bus.id, bus.line, tripId: tripId);
+            if (enriched.isNotEmpty) return enriched;
+          }
+          return trip.stops;
+        }
       }
 
-      // Prefer tripId -> tripStops if available
-      final tripId = bus.tripId;
-      if (tripId != null && tripId.isNotEmpty) {
+      // 2) Bari: logica specializzata con stime di arrivo
+      if (_selectedProvider != null && _selectedProvider!.name.toLowerCase() == 'bari') {
+        return await fetchBariTripUpdates(bus.id, bus.line, tripId: tripId.isEmpty ? null : tripId);
+      }
+
+      // 3) Fallback: tripId -> tripStops convertiti in BusTripUpdate
+      if (tripId.isNotEmpty) {
         final tripStops = await _repository.fetchTripStops(tripId, providerName: _selectedProvider?.name);
         if (tripStops != null) {
           final updates = tripStops.stops.map((ts) {

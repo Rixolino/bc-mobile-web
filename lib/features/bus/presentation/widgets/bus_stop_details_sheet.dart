@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:flutter/services.dart';
-import '../../../../core/api_constants.dart';
 import '../../data/models/bus_model.dart';
 import '../providers/bus_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
@@ -392,14 +389,15 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
               ))
           .toList();
     } else {
-      final apiPrefix = selProv.apiPathPrefix;
-      final url = '${ApiConstants.baseUrl}/api/$apiPrefix/realtime?tripId=${Uri.encodeComponent(dep.tripId)}&lineCode=${Uri.encodeComponent(dep.line)}';
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        stops = (data['stops'] as List?)
-                ?.map((s) => BusTripUpdate.fromJson(s))
-                .toList() ?? [];
+      // Endpoint realtime generico, valido per tutti i provider:
+      // `realtime?vehicleId={id}&tripId={trip}&vehicles=true`.
+      final trip = await provider.fetchVehicleTripDetails(
+        vehicleId: dep.vehicleId,
+        tripId: dep.tripId,
+        providerName: selProv.name,
+      );
+      if (trip != null) {
+        stops = trip.stops;
       }
     }
 
