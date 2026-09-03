@@ -601,6 +601,276 @@ class BusRealtimeTrip {
   }
 }
 
+DateTime? _parseFlixbusDateTime(dynamic value) {
+  if (value == null) return null;
+  try {
+    return DateTime.parse(value.toString());
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Decodifica una polyline in formato Google Encoded Polyline in punti.
+/// Restituisce solo punti finiti (mai NaN/Infinity).
+List<LatLng> decodePolyline(String encoded) {
+  final points = <LatLng>[];
+  int index = 0;
+  int lat = 0;
+  int lng = 0;
+  while (index < encoded.length) {
+    int shift = 0;
+    int result = 0;
+    int b;
+    do {
+      if (index >= encoded.length) return points;
+      b = encoded.codeUnitAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    final dlat = ((result & 1) != 0) ? ~(result >> 1) : (result >> 1);
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      if (index >= encoded.length) return points;
+      b = encoded.codeUnitAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    final dlng = ((result & 1) != 0) ? ~(result >> 1) : (result >> 1);
+    lng += dlng;
+
+    final la = lat / 1e5;
+    final ln = lng / 1e5;
+    if (la.isFinite && ln.isFinite) {
+      points.add(LatLng(la, ln));
+    }
+  }
+  return points;
+}
+
+int _parseFlixbusDelay(dynamic value) {
+  if (value is int) return value;
+  return int.tryParse('${value ?? ''}') ?? 0;
+}
+
+/// Estremità di una corsa Flixbus (origine/destinazione).
+class FlixbusTripEndpoint {
+  final String stationId;
+  final String stationName;
+  final DateTime? scheduledTime;
+  final DateTime? estimatedTime;
+
+  FlixbusTripEndpoint({
+    required this.stationId,
+    required this.stationName,
+    this.scheduledTime,
+    this.estimatedTime,
+  });
+
+  factory FlixbusTripEndpoint.fromJson(Map<String, dynamic> json) {
+    return FlixbusTripEndpoint(
+      stationId: (json['stationId'] ?? '').toString(),
+      stationName: (json['stationName'] ?? '').toString(),
+      scheduledTime: _parseFlixbusDateTime(json['scheduledTime']),
+      estimatedTime: _parseFlixbusDateTime(json['estimatedTime']),
+    );
+  }
+}
+
+/// Singola fermata di una corsa Flixbus.
+class FlixbusTripStop {
+  final String stationId;
+  final String stationName;
+  final DateTime? scheduledArrival;
+  final DateTime? estimatedArrival;
+  final int arrivalDelay;
+  final DateTime? scheduledDeparture;
+  final DateTime? estimatedDeparture;
+  final int departureDelay;
+  final String? platform;
+  final double latitude;
+  final double longitude;
+
+  FlixbusTripStop({
+    required this.stationId,
+    required this.stationName,
+    this.scheduledArrival,
+    this.estimatedArrival,
+    this.arrivalDelay = 0,
+    this.scheduledDeparture,
+    this.estimatedDeparture,
+    this.departureDelay = 0,
+    this.platform,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
+  });
+
+  factory FlixbusTripStop.fromJson(Map<String, dynamic> json) {
+    final platformRaw = json['platform'];
+    String? platform;
+    if (platformRaw is Map) {
+      final actual = platformRaw['actual']?.toString();
+      final planned = platformRaw['planned']?.toString();
+      platform = (actual != null && actual.isNotEmpty && actual != 'null')
+          ? actual
+          : ((planned != null && planned.isNotEmpty && planned != 'null') ? planned : null);
+    } else if (platformRaw != null) {
+      platform = platformRaw.toString();
+    }
+    final location = json['location'];
+    double coord(dynamic v) {
+      final d =
+          v is num ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0.0;
+      // "NaN"/"Infinity" come stringhe passerebbero il filtro != 0.0
+      // e farebbero crashare flutter_map: normalizza a 0.0
+      return d.isFinite ? d : 0.0;
+    }
+
+    return FlixbusTripStop(
+      stationId: (json['stationId'] ?? '').toString(),
+      stationName: (json['stationName'] ?? '').toString(),
+      scheduledArrival: _parseFlixbusDateTime(json['scheduledArrival']),
+      estimatedArrival: _parseFlixbusDateTime(json['estimatedArrival']),
+      arrivalDelay: _parseFlixbusDelay(json['arrivalDelay']),
+      scheduledDeparture: _parseFlixbusDateTime(json['scheduledDeparture']),
+      estimatedDeparture: _parseFlixbusDateTime(json['estimatedDeparture']),
+      departureDelay: _parseFlixbusDelay(json['departureDelay']),
+      platform: (platform == null || platform.isEmpty) ? null : platform,
+      latitude: location is Map ? coord(location['latitude']) : 0.0,
+      longitude: location is Map ? coord(location['longitude']) : 0.0,
+    );
+  }
+
+  /// Ritardo di riferimento della fermata (partenza se presente, altrimenti arrivo).
+  int get delay => departureDelay != 0
+      ? departureDelay
+      : arrivalDelay;
+}
+
+/// Dettaglio corsa Flixbus da `GET /api/flixbus/trip?tripId={tripId}`.
+class FlixbusTrip {
+  final String id;
+  final String operatorName;
+  final String line;
+  final String category;
+  final String tripNumber;
+  final FlixbusTripEndpoint? origin;
+  final FlixbusTripEndpoint? destination;
+  final List<FlixbusTripStop> stops;
+  final String status;
+  final bool realtime;
+  final double? currentLatitude;
+  final double? currentLongitude;
+  final DateTime? currentTimestamp;
+
+  /// Segmenti polyline codificati (`metadata.polylineSegments`).
+  final List<String> polylineSegments;
+
+  FlixbusTrip({
+    required this.id,
+    required this.operatorName,
+    required this.line,
+    required this.category,
+    required this.tripNumber,
+    this.origin,
+    this.destination,
+    required this.stops,
+    this.status = '',
+    this.realtime = false,
+    this.currentLatitude,
+    this.currentLongitude,
+    this.currentTimestamp,
+    this.polylineSegments = const [],
+  });
+
+  factory FlixbusTrip.fromJson(Map<String, dynamic> json) {
+    double? coord(dynamic v) {
+      double? d;
+      if (v == null) return null;
+      if (v is num) {
+        d = v.toDouble();
+      } else {
+        d = double.tryParse(v.toString());
+      }
+      if (d == null || !d.isFinite) return null;
+      return d;
+    }
+
+    final originRaw = json['origin'];
+    final destinationRaw = json['destination'];
+    final stopsRaw = json['stops'];
+    final positionRaw = json['currentPosition'];
+    final metadataRaw = json['metadata'];
+    final segmentsRaw =
+        metadataRaw is Map ? metadataRaw['polylineSegments'] : null;
+    final segments = segmentsRaw is List
+        ? segmentsRaw.map((e) => e.toString()).toList()
+        : const <String>[];
+
+    return FlixbusTrip(
+      id: (json['id'] ?? '').toString(),
+      operatorName: (json['operator'] ?? '').toString(),
+      line: (json['line'] ?? json['tripNumber'] ?? '').toString(),
+      category: (json['category'] ?? '').toString(),
+      tripNumber: (json['tripNumber'] ?? json['line'] ?? '').toString(),
+      origin: originRaw is Map
+          ? FlixbusTripEndpoint.fromJson(Map<String, dynamic>.from(originRaw))
+          : null,
+      destination: destinationRaw is Map
+          ? FlixbusTripEndpoint.fromJson(Map<String, dynamic>.from(destinationRaw))
+          : null,
+      stops: stopsRaw is List
+          ? stopsRaw
+              .whereType<Map>()
+              .map((s) => FlixbusTripStop.fromJson(Map<String, dynamic>.from(s)))
+              .toList()
+          : const [],
+      status: (json['status'] ?? '').toString(),
+      realtime: json['realtime'] == true,
+      currentLatitude:
+          positionRaw is Map ? coord(positionRaw['latitude']) : null,
+      currentLongitude:
+          positionRaw is Map ? coord(positionRaw['longitude']) : null,
+      currentTimestamp: positionRaw is Map
+          ? _parseFlixbusDateTime(positionRaw['timestamp'])
+          : null,
+      polylineSegments: segments,
+    );
+  }
+
+  /// Punti del percorso reale dalle polyline codificate
+  /// (`metadata.polylineSegments`). Se assenti o non valide, fallback ai
+  /// segmenti rettilinei tra fermate con coordinate valide.
+  List<LatLng> get routePoints {
+    final pts = <LatLng>[];
+    for (final seg in polylineSegments) {
+      try {
+        pts.addAll(decodePolyline(seg));
+      } catch (_) {}
+    }
+    if (pts.length >= 2) return pts;
+    return stops
+        .where((s) =>
+            s.latitude.isFinite &&
+            s.longitude.isFinite &&
+            (s.latitude != 0.0 || s.longitude != 0.0))
+        .map((s) => LatLng(s.latitude, s.longitude))
+        .toList();
+  }
+
+  /// Ritardo generale della corsa (massimo rilevato sulle fermate).
+  int get delayMinutes {
+    var max = 0;
+    for (final s in stops) {
+      if (s.arrivalDelay > max) max = s.arrivalDelay;
+      if (s.departureDelay > max) max = s.departureDelay;
+    }
+    return max;
+  }
+}
+
 class BusProviderConfig {
   final String name;
   final String provider;

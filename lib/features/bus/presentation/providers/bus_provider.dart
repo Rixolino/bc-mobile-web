@@ -448,12 +448,92 @@ class BusProvider with ChangeNotifier {
   Future<void> searchFlixbus(String query) async {
     _isLoading = true;
     notifyListeners();
+    // Nuova ricerca: azzera stazione selezionata e relativo tabellone
+    _selectedFlixbusStation = null;
+    _flixbusDepartures = [];
     _flixbusStations = await _repository.searchFlixbusStations(query);
     _isLoading = false;
     notifyListeners();
   }
-  
+
   List<dynamic> get flixbusStations => _flixbusStations;
+
+  // Tabellone partenze della stazione Flixbus selezionata
+  Map<String, dynamic>? _selectedFlixbusStation;
+  List<Map<String, dynamic>> _flixbusDepartures = [];
+  bool _isLoadingFlixbusDepartures = false;
+
+  Map<String, dynamic>? get selectedFlixbusStation => _selectedFlixbusStation;
+  List<Map<String, dynamic>> get flixbusDepartures => _flixbusDepartures;
+  bool get isLoadingFlixbusDepartures => _isLoadingFlixbusDepartures;
+
+  Future<void> selectFlixbusStation(Map<String, dynamic> station) async {
+    _selectedFlixbusStation = station;
+    _flixbusDepartures = [];
+    _selectedFlixbusTrip = null;
+    _isLoadingFlixbusDepartures = true;
+    notifyListeners();
+    try {
+      final stationId = (station['id'] ?? '').toString();
+      if (stationId.isNotEmpty) {
+        _flixbusDepartures =
+            await _repository.fetchFlixbusDeparturesRaw(stationId);
+      }
+    } catch (e) {
+      print("Error loading Flixbus departures: $e");
+      _flixbusDepartures = [];
+    } finally {
+      _isLoadingFlixbusDepartures = false;
+      notifyListeners();
+    }
+  }
+
+  void clearFlixbusStation() {
+    _selectedFlixbusStation = null;
+    _flixbusDepartures = [];
+    _isLoadingFlixbusDepartures = false;
+    notifyListeners();
+  }
+
+  // Dettaglio corsa Flixbus selezionata dal tabellone
+  FlixbusTrip? _selectedFlixbusTrip;
+  bool _isLoadingFlixbusTrip = false;
+
+  FlixbusTrip? get selectedFlixbusTrip => _selectedFlixbusTrip;
+  bool get isLoadingFlixbusTrip => _isLoadingFlixbusTrip;
+
+  Future<void> selectFlixbusTrip(String tripId, {bool silent = false}) async {
+    if (!silent) {
+      _selectedFlixbusTrip = null;
+      if (tripId.isEmpty) {
+        notifyListeners();
+        return;
+      }
+      _isLoadingFlixbusTrip = true;
+      notifyListeners();
+    } else if (tripId.isEmpty) {
+      return;
+    }
+    try {
+      final trip = await _repository.fetchFlixbusTrip(tripId);
+      // In silent mode non sovrascrivere con null in caso di errore rete
+      if (trip != null || !silent) {
+        _selectedFlixbusTrip = trip;
+      }
+    } catch (e) {
+      print("Error loading Flixbus trip: $e");
+      if (!silent) _selectedFlixbusTrip = null;
+    } finally {
+      _isLoadingFlixbusTrip = false;
+      notifyListeners();
+    }
+  }
+
+  void clearFlixbusTrip() {
+    _selectedFlixbusTrip = null;
+    _isLoadingFlixbusTrip = false;
+    notifyListeners();
+  }
 
   // Dynamic routing methods
   Future<void> fetchStops({bool offline = false}) async {
@@ -595,6 +675,11 @@ class BusProvider with ChangeNotifier {
     _selectedToStop = null;
     _selectedStop = null;
     _flixbusStations = [];
+    _selectedFlixbusStation = null;
+    _flixbusDepartures = [];
+    _isLoadingFlixbusDepartures = false;
+    _selectedFlixbusTrip = null;
+    _isLoadingFlixbusTrip = false;
     _selectedBus = null;
     _selectedBusRoutePath = null;
     _isLoadingRoutePath = false;

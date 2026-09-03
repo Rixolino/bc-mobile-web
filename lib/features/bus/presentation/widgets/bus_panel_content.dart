@@ -10,6 +10,7 @@ import 'shimmer_and_toggle.dart';
 import 'scrolling_text.dart';
 import 'bus_details_sheet.dart';
 import 'bus_stop_details_sheet.dart';
+import 'flixbus_trip_details_sheet.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
 
@@ -596,6 +597,259 @@ class _BusPanelContentState extends State<BusPanelContent> {
     );
   }
 
+  String _formatFlixbusTime(dynamic value) {
+    if (value == null) return '--:--';
+    try {
+      final dt = DateTime.parse(value.toString()).toLocal();
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '--:--';
+    }
+  }
+
+  /// Tabellone partenze della stazione Flixbus selezionata.
+  Widget _buildFlixbusBoard(
+      BusProvider busProvider, MapStateProvider mapState, ThemeProvider theme) {
+    final station = busProvider.selectedFlixbusStation!;
+    final stationName = (station['name'] ?? '').toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header stazione con indietro
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back_rounded, color: theme.textColor),
+                tooltip: AppLocalizations.of(context)?.back ?? 'Indietro',
+                onPressed: () => busProvider.clearFlixbusStation(),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context)?.departures2 ?? 'Partenze',
+                      style: TextStyle(
+                          color: theme.secondaryTextColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      stationName,
+                      style: TextStyle(
+                          color: theme.textColor,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (!busProvider.isLoadingFlixbusDepartures &&
+                  busProvider.flixbusDepartures.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.lightGreen.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${busProvider.flixbusDepartures.length}',
+                    style: const TextStyle(
+                        color: Colors.lightGreen,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: busProvider.isLoadingFlixbusDepartures
+              ? const Center(child: CircularProgressIndicator())
+              : busProvider.flixbusDepartures.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.departure_board_outlined,
+                              size: 48,
+                              color: theme.secondaryTextColor
+                                  .withOpacity(0.5)),
+                          const SizedBox(height: 16),
+                          Text(
+                            AppLocalizations.of(context)
+                                    ?.noFlightsForAirport ??
+                                'Nessuna partenza disponibile per questa stazione.',
+                            textAlign: TextAlign.center,
+                            style:
+                                TextStyle(color: theme.secondaryTextColor),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: busProvider.flixbusDepartures.length,
+                      itemBuilder: (context, index) {
+                        final dep = busProvider.flixbusDepartures[index];
+                        final line =
+                            (dep['line'] ?? dep['tripNumber'] ?? '').toString();
+                        final destination =
+                            (dep['destination'] ?? '').toString();
+                        final scheduled =
+                            _formatFlixbusTime(dep['scheduledTime']);
+                        final estimated = dep['estimatedTime'] != null
+                            ? _formatFlixbusTime(dep['estimatedTime'])
+                            : null;
+                        final delay = dep['delay'] is int
+                            ? dep['delay'] as int
+                            : int.tryParse('${dep['delay'] ?? 0}') ?? 0;
+                        final showEstimated =
+                            estimated != null && estimated != scheduled;
+
+                        final tripId = (dep['tripId'] ?? '').toString();
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: theme.surfaceColor,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3))
+                            ],
+                            border: Border.all(
+                                color: theme.secondaryTextColor
+                                    .withOpacity(0.05)),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: tripId.isEmpty
+                                  ? null
+                                  : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              FlixbusTripDetailsSheet(
+                                                  tripId: tripId),
+                                        ),
+                                      );
+                                    },
+                              child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 52,
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 10),
+                                  decoration: BoxDecoration(
+                                      color: Colors.lightGreen
+                                          .withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                          color: Colors.lightGreen
+                                              .withOpacity(0.3),
+                                          width: 1.5)),
+                                  child: Text(
+                                    line.isNotEmpty ? line : 'FLX',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.lightGreen),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        destination.isNotEmpty
+                                            ? destination
+                                            : (RuntimeLocalizations.t(context,
+                                                    'destination') ??
+                                                'Destinazione'),
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.textColor),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.schedule_rounded,
+                                              size: 13,
+                                              color: theme
+                                                  .secondaryTextColor),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            scheduled,
+                                            style: TextStyle(
+                                                color: theme
+                                                    .secondaryTextColor,
+                                                fontSize: 12,
+                                                fontWeight:
+                                                    FontWeight.w600),
+                                          ),
+                                          if (showEstimated) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              estimated!,
+                                              style: TextStyle(
+                                                  color:
+                                                      theme.warningColor,
+                                                  fontSize: 12,
+                                                  fontWeight:
+                                                      FontWeight.bold),
+                                            ),
+                                          ],
+                                          if (delay > 0) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '+$delay min',
+                                              style: TextStyle(
+                                                  color:
+                                                      theme.warningColor,
+                                                  fontSize: 12,
+                                                  fontWeight:
+                                                      FontWeight.bold),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBariRouting(BusProvider busProvider) {
     final theme = Provider.of<ThemeProvider>(context, listen: false);
     return Card(
@@ -1085,30 +1339,48 @@ class _BusPanelContentState extends State<BusPanelContent> {
     }
 
     if (busProvider.selectedCity == "Flixbus") {
+      // Stazione selezionata -> tabellone partenze
+      if (busProvider.selectedFlixbusStation != null) {
+        return _buildFlixbusBoard(busProvider, mapState, theme);
+      }
       return ListView.builder(
         padding: const EdgeInsets.only(bottom: 100),
         itemCount: busProvider.flixbusStations.length,
         itemBuilder: (context, index) {
           final station = busProvider.flixbusStations[index];
+          final dynamic location = station['location'];
+          final address = (station['metadata'] is Map)
+              ? ((station['metadata']['address'] ?? '').toString())
+              : '';
+          final subtitle = [
+            (station['country'] ?? '').toString(),
+            address,
+          ].where((s) => s.isNotEmpty).join(' • ');
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: Colors.lightGreen.withOpacity(0.2),
               child: const Icon(Icons.directions_bus, color: Colors.lightGreen),
             ),
-            title: Text(station['name'] ?? '',
+            title: Text((station['name'] ?? '').toString(),
                 style: TextStyle(
                     color: theme.textColor, fontWeight: FontWeight.bold)),
-            subtitle: Text(station['country_code'] ?? '',
-                style: TextStyle(color: theme.secondaryTextColor)),
+            subtitle: subtitle.isNotEmpty
+                ? Text(subtitle,
+                    style: TextStyle(color: theme.secondaryTextColor))
+                : null,
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: theme.secondaryTextColor),
             onTap: () {
-              final dynamic coords = station['coords'];
-              if (coords != null &&
-                  coords['lat'] != null &&
-                  coords['lng'] != null) {
-                mapState.flyTo((coords['lat'] as num).toDouble(),
-                    (coords['lng'] as num).toDouble(),
+              if (location != null &&
+                  location['latitude'] != null &&
+                  location['longitude'] != null) {
+                mapState.flyTo(
+                    (location['latitude'] as num).toDouble(),
+                    (location['longitude'] as num).toDouble(),
                     zoom: 14);
               }
+              busProvider.selectFlixbusStation(
+                  Map<String, dynamic>.from(station as Map));
             },
           );
         },

@@ -224,6 +224,49 @@ class BusRepository {
     }
   }
 
+  /// Dettaglio corsa Flixbus da `GET /api/flixbus/trip?tripId={tripId}`.
+  /// Restituisce null se il trip non viene trovato o la risposta è vuota.
+  Future<FlixbusTrip?> fetchFlixbusTrip(String tripId) async {
+    try {
+      if (tripId.isEmpty) return null;
+      final response = await http.get(
+          Uri.parse("$flixbusBase/trip?tripId=${Uri.encodeComponent(tripId)}"));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final dynamic payload = data['data'] ?? data;
+        if (payload is Map<String, dynamic>) {
+          final trip = FlixbusTrip.fromJson(payload);
+          if (trip.stops.isNotEmpty) return trip;
+        }
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching Flixbus trip: $e");
+      return null;
+    }
+  }
+
+  /// Tabellone partenze Flixbus in formato grezzo (line, destination,
+  /// scheduledTime/estimatedTime, delay, status...), come restituito da
+  /// `GET $flixbusBase/departures?stationId={id}`.
+  Future<List<Map<String, dynamic>>> fetchFlixbusDeparturesRaw(String stationId) async {
+    try {
+      final response = await http.get(Uri.parse("$flixbusBase/departures?stationId=${Uri.encodeComponent(stationId)}"));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final List<dynamic> departures = data['data'] ?? [];
+        return departures
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching Flixbus departures: $e");
+      return [];
+    }
+  }
+
   Future<List<BariStop>> fetchStops(BusProviderConfig provider, {bool offline = false}) async {
     try {
       final country = _countryFromProviderConfig(provider);
