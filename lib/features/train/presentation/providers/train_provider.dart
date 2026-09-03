@@ -855,12 +855,16 @@ class TrainProvider with ChangeNotifier {
           }
         }
       }
+      // Il tripId cambia da stazione a stazione (suffisso timestamp diverso),
+      // quindi come fallback si matcha per numero treno + destinazione.
       if (match == null && (dep.trainNumber ?? '').isNotEmpty) {
+        final dest = (dep.destination ?? '').trim().toLowerCase();
         for (final d in board) {
-          if (d.trainNumber == dep.trainNumber) {
-            match = d;
-            break;
-          }
+          if (d.trainNumber != dep.trainNumber) continue;
+          final dDest = (d.destination ?? '').trim().toLowerCase();
+          if (dest.isNotEmpty && dDest.isNotEmpty && dDest != dest) continue;
+          match = d;
+          break;
         }
       }
       if (match == null) continue;
