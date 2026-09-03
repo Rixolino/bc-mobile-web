@@ -1558,7 +1558,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         initialChildSize: 0.7,
         maxChildSize: 0.9,
         minChildSize: 0.5,
-        builder: (ctx, sc) => Container(
+        builder: (ctx, sc) => StatefulBuilder(
+          builder: (ctx, setModalState) => Container(
           decoration: BoxDecoration(
             color: theme.backgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -1575,9 +1576,48 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                 ),
               ),
               const SizedBox(height: 20),
-              Text(
-                AppLocalizations.of(context)?.savedTrainsOffline ?? 'Treni Salvati (Offline)',
-                style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        AppLocalizations.of(context)?.savedTrainsOffline ?? 'Treni Salvati (Offline)',
+                        style: TextStyle(color: theme.textColor, fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: RuntimeLocalizations.t(context, 'delete_all_offline_trains') ?? 'Elimina tutti',
+                      icon: Icon(Icons.delete_sweep_outlined, color: theme.secondaryTextColor),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: ctx,
+                          builder: (dctx) => AlertDialog(
+                            title: Text(RuntimeLocalizations.t(ctx, 'delete_all_offline_trains_title') ?? 'Eliminare tutti i treni salvati?'),
+                            content: Text(RuntimeLocalizations.t(ctx, 'delete_all_offline_trains_desc') ?? 'Verranno rimossi tutti i treni salvati offline su questo dispositivo.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dctx, false),
+                                child: Text(RuntimeLocalizations.t(ctx, 'cancel') ?? 'Annulla'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(dctx, true),
+                                child: Text(
+                                  RuntimeLocalizations.t(ctx, 'delete') ?? 'Elimina',
+                                  style: const TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await provider.clearDownloadedTrains();
+                          setModalState(() {});
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
               Expanded(
@@ -1624,7 +1664,21 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                             '${train.origin ?? 'N/A'} → ${train.destination ?? 'N/A'}\n${station.name} (${item['mode'] == 'arrivals' ? (AppLocalizations.of(context)?.arrivals ?? 'Arrivi') : (AppLocalizations.of(context)?.departures ?? 'Partenze')})',
                             style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
                           ),
-                          trailing: Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: RuntimeLocalizations.t(context, 'delete') ?? 'Elimina',
+                                icon: Icon(Icons.delete_outline_rounded, color: theme.secondaryTextColor),
+                                onPressed: () async {
+                                  final id = item['id'] as String? ?? '';
+                                  await provider.deleteDownloadedTrain(id);
+                                  setModalState(() {});
+                                },
+                              ),
+                              Icon(Icons.chevron_right_rounded, color: theme.secondaryTextColor),
+                            ],
+                          ),
                           isThreeLine: true,
                           onTap: () {
                             Navigator.pop(ctx);
@@ -1638,6 +1692,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

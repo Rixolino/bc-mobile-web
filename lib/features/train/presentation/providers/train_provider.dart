@@ -960,4 +960,30 @@ class TrainProvider with ChangeNotifier {
     }
     return results;
   }
+
+  /// Elimina un singolo treno salvato offline tramite il suo identifier
+  /// (quello restituito in `getDownloadedTrains()` come `id`).
+  Future<bool> deleteDownloadedTrain(String identifier) async {
+    if (identifier.isEmpty) return false;
+    final ok = await OfflineSyncService.deleteTransportData(
+      transportType: 'train',
+      identifier: identifier,
+    );
+    notifyListeners();
+    return ok;
+  }
+
+  /// Elimina tutti i treni salvati offline, preservando le cache dei
+  /// tabelloni di stazione (identifier che non iniziano per `train_detail_`).
+  Future<void> clearDownloadedTrains() async {
+    final identifiers = await OfflineSyncService.getAllCachedIdentifiers('train');
+    for (final id in identifiers) {
+      if (!id.startsWith('train_detail_')) continue;
+      await OfflineSyncService.deleteTransportData(
+        transportType: 'train',
+        identifier: id,
+      );
+    }
+    notifyListeners();
+  }
 }

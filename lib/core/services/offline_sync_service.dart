@@ -115,6 +115,57 @@ class OfflineSyncService {
     }
   }
 
+  /// Deletes a single cached entry (file + metadata + last sync).
+  /// Returns true if something was actually removed.
+  static Future<bool> deleteTransportData({
+    required String transportType,
+    required String identifier,
+  }) async {
+    try {
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        var removed = false;
+        for (final key in [
+          _webDataKey(transportType, identifier),
+          '$_metadataPrefix${transportType}_${Uri.encodeComponent(identifier)}',
+          '$_lastSyncPrefix${transportType}_${Uri.encodeComponent(identifier)}',
+        ]) {
+          if (prefs.containsKey(key)) {
+            await prefs.remove(key);
+            removed = true;
+          }
+        }
+        debugPrint('[OfflineSync] Deleted $transportType/$identifier [web]: $removed');
+        return removed;
+      }
+
+      final cacheDir = await _getCacheDir();
+      final file = File('${cacheDir.path}/${transportType}_${_safeFileName(identifier)}.json');
+      var removed = false;
+      if (await file.exists()) {
+        await file.delete();
+        removed = true;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in [
+        '$_metadataPrefix${transportType}_$identifier',
+        '$_lastSyncPrefix${transportType}_$identifier',
+      ]) {
+        if (prefs.containsKey(key)) {
+          await prefs.remove(key);
+          removed = true;
+        }
+      }
+
+      debugPrint('[OfflineSync] Deleted $transportType/$identifier: $removed');
+      return removed;
+    } catch (e) {
+      debugPrint('[OfflineSync] Error deleting data: $e');
+      return false;
+    }
+  }
+
   /// Returns all cached identifiers for a specific transport type.
   static Future<List<String>> getAllCachedIdentifiers(String transportType) async {
     try {
