@@ -655,6 +655,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   final ScrollController _scrollController = ScrollController();
   bool _showScrollToCurrent = false;
 
+  // Evita fallback ritardo concorrenti
+  bool _isRefreshingDelayFallback = false;
+
   @override
   void initState() {
     super.initState();
@@ -909,13 +912,54 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       return;
     }
 
-    final index = _trainProvider.departures.indexWhere((d) => 
+    final index = _trainProvider.departures.indexWhere((d) =>
       (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
     );
     if (index != -1) {
-       _trainProvider.expandTrainDetails(index);
-     }
+      _trainProvider.expandTrainDetails(index).then((_) {
+        if (mounted) _refreshDelayFallback();
+      });
+    } else {
+      // Treno esterno al tabellone: prova comunque il fallback dalle stazioni
+      _refreshDelayFallback();
+    }
+  }
+
+  TrainDeparture? _findDisplayedDeparture() {
+    try {
+      return _trainProvider.departures.firstWhere(
+        (d) =>
+            (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
+            (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Se i minuti di ritardo non sono più ottenibili via trip endpoint
+  /// (refresh fallito -> error impostato, oppure delay assente), li cerca
+  /// nei tabelloni delle prossime stazioni della tratta.
+  Future<void> _refreshDelayFallback() async {
+    if (!mounted || _isRefreshingDelayFallback) return;
+    final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    // Minuti già disponibili: niente da fare
+    if (current.error == null && current.delayMinutes != null) return;
+
+    _isRefreshingDelayFallback = true;
+    try {
+      final delay = await _trainProvider.refreshDelayFromUpcomingStations(current);
+      if (!mounted || delay == null) return;
+      // Se la departure visualizzata è esterna al tabellone, aggiorna la copia locale
+      if (_externalDep != null && identical(current, _externalDep)) {
+        setState(() {
+          _externalDep = _externalDep!.copyWith(delayMinutes: delay);
+        });
+      }
+    } finally {
+      _isRefreshingDelayFallback = false;
+    }
   }
 
   void _syncDetailsAutoRefresh(bool isUsingOfflineCache) {

@@ -230,6 +230,7 @@ class TrainDeparture {
     Map<String, dynamic>? polyline,
     String? error,
     bool clearError = false,
+    int? delayMinutes,
   }) {
     return TrainDeparture(
       trainNumber: trainNumber,
@@ -239,7 +240,7 @@ class TrainDeparture {
       scheduledTime: scheduledTime,
       estimatedTime: estimatedTime,
       platform: platform,
-      delayMinutes: delayMinutes,
+      delayMinutes: delayMinutes ?? this.delayMinutes,
       status: status,
       tripId: tripId,
       stops: stops ?? this.stops,

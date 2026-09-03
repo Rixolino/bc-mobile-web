@@ -783,6 +783,108 @@ class TrainProvider with ChangeNotifier {
     }
   }
 
+  /// Fallback ritardo: se il refresh via trip endpoint non riesce più a
+  /// fornire i minuti di ritardo, li cerca nei tabelloni delle prossime
+  /// stazioni della tratta.
+  ///
+  /// 1. Salva gli ID di tutte le fermate della tratta.
+  /// 2. Interroga partenze (arrivi per l'ultima fermata) delle prossime
+  ///    fermate con ID valido, al massimo [maxStations].
+  /// 3. Se il treno compare nel tabellone, ne prende il delay e aggiorna
+  ///    la departure nel tabellone corrente.
+  ///
+  /// Non tocca loading flag, cache offline né la stazione selezionata:
+  /// le query sono silenziose e con timeout breve.
+  /// Restituisce il delay trovato oppure null.
+  Future<int?> refreshDelayFromUpcomingStations(TrainDeparture dep, {int maxStations = 3}) async {
+    final stops = dep.stops;
+    if (stops == null || stops.isEmpty) return null;
+
+    final now = DateTime.now().toUtc();
+
+    // Indici delle prossime fermate non cancellate (prima non ancora passata)
+    final indices = <int>[];
+    for (int i = 0; i < stops.length && indices.length < maxStations; i++) {
+      final s = stops[i];
+      if (s.cancelled) continue;
+      final depTime = s.estimatedDeparture?.toUtc() ?? s.departure?.toUtc();
+      if (depTime != null && depTime.isBefore(now.subtract(const Duration(minutes: 2)))) {
+        continue; // già passata
+      }
+      indices.add(i);
+    }
+    // Se risultano tutte passate (treno in arrivo), prova comunque le ultime
+    if (indices.isEmpty) {
+      for (int i = stops.length - 1; i >= 0 && indices.length < maxStations; i--) {
+        if (!stops[i].cancelled) indices.insert(0, i);
+      }
+    }
+    if (indices.isEmpty) return null;
+
+    for (final i in indices) {
+      final stop = stops[i];
+      final stationId = stop.id ?? '';
+      if (stationId.isEmpty) continue;
+      final country = stop.country.isNotEmpty
+          ? stop.country
+          : (dep.country.isNotEmpty ? dep.country : 'IT');
+      // Ultima fermata della tratta -> tabellone arrivi, le altre -> partenze
+      final isArrival = i == stops.length - 1;
+
+      List<TrainDeparture> board;
+      try {
+        board = await _repository
+            .fetchDepartures(
+              stationId,
+              country: country,
+              service: _selectedService,
+              isArrival: isArrival,
+            )
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        continue;
+      }
+
+      TrainDeparture? match;
+      final tripId = dep.tripId ?? '';
+      if (tripId.isNotEmpty) {
+        for (final d in board) {
+          if (d.tripId == tripId) {
+            match = d;
+            break;
+          }
+        }
+      }
+      if (match == null && (dep.trainNumber ?? '').isNotEmpty) {
+        for (final d in board) {
+          if (d.trainNumber == dep.trainNumber) {
+            match = d;
+            break;
+          }
+        }
+      }
+      if (match == null) continue;
+
+      final delay = match.delayMinutes;
+      if (delay == null) continue;
+
+      // Aggiorna la departure nel tabellone corrente
+      final idx = _departures.indexWhere((d) =>
+          (tripId.isNotEmpty && d.tripId == tripId) ||
+          (d.trainNumber == dep.trainNumber && d.destination == dep.destination));
+      if (idx != -1) {
+        _departures[idx] = _departures[idx].copyWith(
+          delayMinutes: delay,
+          clearError: true,
+        );
+        notifyListeners();
+      }
+      debugPrint('[TrainProvider] Delay fallback da stazione ${stop.stationName}: $delay min');
+      return delay;
+    }
+    return null;
+  }
+
   String _cacheIdentifier(String stationId, String country) {
     final mode = _isArrivalMode ? 'arrivals' : 'departures';
     return '${_selectedService}_${mode}_${stationId}_$country';
