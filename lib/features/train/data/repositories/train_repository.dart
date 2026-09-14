@@ -236,7 +236,11 @@ class TrainRepository {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final dynamic data = json.decode(response.body);
-        return TrainDeparture.fromJson(data);
+        final dep = TrainDeparture.fromJson(data);
+        if (dep.country.isEmpty && country.isNotEmpty) {
+          return dep.copyWith(country: country);
+        }
+        return dep;
       } else {
         throw Exception("Fetch Train Details Failed: ${response.statusCode}");
       }
@@ -291,7 +295,12 @@ class TrainRepository {
         
         // Ensure tripData is a Map before parsing
         if (tripData is Map<String, dynamic>) {
-            return TrainDeparture.fromJson(tripData);
+            final dep = TrainDeparture.fromJson(tripData);
+            // Inietta country se manca (l'API esterna non lo restituisce)
+            if (dep.country.isEmpty && country.isNotEmpty) {
+              return dep.copyWith(country: country);
+            }
+            return dep;
         }
       } else {
          print("Fetch Trip Failed: ${response.statusCode} | ${response.body}");

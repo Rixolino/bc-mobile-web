@@ -683,6 +683,15 @@ class TrainProvider with ChangeNotifier {
         }
       }
 
+      // Inietta country dalla stazione selezionata (l'API esterna non lo restituisce)
+      if (country.isNotEmpty) {
+        for (int i = 0; i < newDepartures.length; i++) {
+          if (newDepartures[i].country.isEmpty) {
+            newDepartures[i] = newDepartures[i].copyWith(country: country);
+          }
+        }
+      }
+
       _departures = newDepartures;
 
       if (shouldUseOfflineSync && _departures.isNotEmpty) {
