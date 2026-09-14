@@ -417,13 +417,19 @@ class TrainProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Saves a trip snapshot on the server and returns the public share URL
-  Future<String?> shareTripLink(TrainDeparture dep) async {
+  /// Saves a trip snapshot on the server and returns the public share URL.
+  /// Country chain: departure → explicit fallback → selected station.
+  Future<String?> shareTripLink(TrainDeparture dep, {String? countryFallback}) async {
     try {
       debugPrint('[TrainProvider] Sharing trip ${dep.category} ${dep.trainNumber}...');
+      final country = dep.country.isNotEmpty
+          ? dep.country
+          : (countryFallback ?? '').isNotEmpty
+              ? countryFallback!
+              : (selectedStation?.country ?? '');
       final payload = {
         'tripId': dep.tripId ?? '',
-        'country': dep.country,
+        'country': country,
         'category': dep.category ?? '',
         'tripNumber': dep.trainNumber ?? '',
         'origin': dep.origin ?? '',
@@ -433,7 +439,13 @@ class TrainProvider with ChangeNotifier {
         'delay': dep.delayMinutes ?? 0,
         'scheduledTime': dep.scheduledTime?.toIso8601String() ?? '',
         'estimatedTime': dep.estimatedTime?.toIso8601String() ?? '',
-        'stops': dep.stops?.map((s) => s.toJson()).toList() ?? [],
+        'stops': dep.stops?.map((s) {
+          final j = s.toJson();
+          if ((j['country'] ?? '').toString().isEmpty && country.isNotEmpty) {
+            j['country'] = country;
+          }
+          return j;
+        }).toList() ?? [],
       };
       final shareId = await _repository.shareTrip(payload);
       if (shareId == null || shareId.isEmpty) return null;
