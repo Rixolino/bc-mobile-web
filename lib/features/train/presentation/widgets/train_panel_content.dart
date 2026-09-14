@@ -1536,7 +1536,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
     final effectiveCountry = (dep is TrainDeparture && dep.country != null && dep.country!.isNotEmpty)
         ? dep.country!
-        : (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT');
+        : (_selectedCountry.isNotEmpty ? _selectedCountry : 'IT');
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -3213,7 +3213,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         final country = (train['country'] ??
                 train['countryCode'] ??
                 train['provider'] ??
-                (_selectedCountry.isNotEmpty && _selectedCountry != 'GLOBAL' ? _selectedCountry : 'IT'))
+                (_selectedCountry.isNotEmpty ? _selectedCountry : 'IT'))
             .toString();
 
         return Container(

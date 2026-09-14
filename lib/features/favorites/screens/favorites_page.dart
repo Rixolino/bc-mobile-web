@@ -926,6 +926,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
             builder: (_) => TrainDetailsSheet(
               departure: realTimeData,
               isArrivalMode: trainProvider.isArrivalMode,
+              selectedCountry: realTimeData.country.isNotEmpty
+                  ? realTimeData.country
+                  : trainProvider.selectedStation?.country,
             ),
           ),
         );
@@ -1055,6 +1058,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                     builder: (_) => TrainDetailsSheet(
                                       departure: result,
                                       isArrivalMode: provider.isArrivalMode,
+                                      selectedCountry: result.country.isNotEmpty
+                                          ? result.country
+                                          : provider.selectedStation?.country,
                                     ),
                                   ),
                                 );

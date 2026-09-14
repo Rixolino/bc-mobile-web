@@ -657,6 +657,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   bool _isCachedOffline = false;
   bool _manualOfflineSaved = false;
   bool _isSharing = false;
+  // Country effettivo del pannello, risolto una volta all'apertura e usato
+  // per condivisione link/DB e apertura pannello stazione
+  late String _sheetCountry;
 
   // Full details fetched locally for trains opened from outside the current timetable
   TrainDeparture? _externalDep;
@@ -681,6 +684,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     super.initState();
     _trainProvider = Provider.of<TrainProvider>(context, listen: false);
     _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    _sheetCountry = (widget.selectedCountry ?? '').isNotEmpty
+        ? widget.selectedCountry!
+        : (widget.departure.country.isNotEmpty
+            ? widget.departure.country
+            : (_trainProvider.selectedStation?.country ?? 'IT'));
     _startAutoRefresh();
     _startConnectivityMonitor();
     _checkCacheStatus();
@@ -954,14 +962,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
   }
 
-  /// Risolve il country con la stessa catena usata per gli share:
-  /// fermata → corsa → selectedCountry → stazione selezionata → 'IT'.
+  /// Risolve il country: fermata → corsa → country del pannello.
   String _resolveCountry(String stopCountry, String depCountry) {
     if (stopCountry.isNotEmpty) return stopCountry;
     if (depCountry.isNotEmpty) return depCountry;
-    final sel = widget.selectedCountry ?? '';
-    if (sel.isNotEmpty) return sel;
-    return _trainProvider.selectedStation?.country ?? 'IT';
+    return _sheetCountry;
   }
 
   TrainDeparture? _findDisplayedDeparture() {
@@ -1360,10 +1365,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               setState(() => _isSharing = true);
               try {
                 final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
-                // Il provider risolve il country (departure → selectedCountry → stazione)
+                // Il provider completa la catena col country del pannello
                 final url = await _trainProvider.shareTripLink(
                   currentDep,
-                  countryFallback: widget.selectedCountry,
+                  countryFallback: _sheetCountry,
                 );
                 if (!mounted) return;
                 if (url == null) {
