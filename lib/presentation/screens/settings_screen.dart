@@ -874,7 +874,7 @@ class SettingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Fonte Loghi',
+                  RuntimeLocalizations.t(context, 'logo_source', fallback: 'Fonte Loghi'),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -887,7 +887,7 @@ class SettingsScreen extends StatelessWidget {
                     Expanded(
                       child: _buildLogoSourceOption(
                         context, theme, settings,
-                        label: 'Ufficiali',
+                        label: RuntimeLocalizations.t(context, 'logos_official', fallback: 'Ufficiali'),
                         icon: Icons.verified_rounded,
                         source: 'official',
                       ),
@@ -896,7 +896,7 @@ class SettingsScreen extends StatelessWidget {
                     Expanded(
                       child: _buildLogoSourceOption(
                         context, theme, settings,
-                        label: 'Custom',
+                        label: RuntimeLocalizations.t(context, 'logos_custom', fallback: 'Custom'),
                         icon: Icons.palette_rounded,
                         source: 'custom',
                       ),

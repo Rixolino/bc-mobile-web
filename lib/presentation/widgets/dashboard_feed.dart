@@ -65,11 +65,11 @@ class _DashboardFeedState extends State<DashboardFeed>
     super.dispose();
   }
 
-  String _greeting() {
+  String _greeting(BuildContext context) {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Buongiorno';
-    if (hour < 18) return 'Buon pomeriggio';
-    return 'Buonasera';
+    if (hour < 12) return RuntimeLocalizations.t(context, 'greeting_morning', fallback: 'Buongiorno');
+    if (hour < 18) return RuntimeLocalizations.t(context, 'greeting_afternoon', fallback: 'Buon pomeriggio');
+    return RuntimeLocalizations.t(context, 'greeting_evening', fallback: 'Buonasera');
   }
 
   // ── apre il bottom sheet per selezionare la città ──
@@ -90,7 +90,7 @@ class _DashboardFeedState extends State<DashboardFeed>
       final data = await WeatherService.fetchWeatherForCoords(
         lat: selected.latitude,
         lon: selected.longitude,
-        cityName: 'La tua posizione',
+        cityName: RuntimeLocalizations.t(context, 'your_position', fallback: 'La tua posizione'),
       );
       if (mounted) setState(() { _weather = data; _weatherLoading = false; });
     } else {
@@ -112,7 +112,7 @@ class _DashboardFeedState extends State<DashboardFeed>
     final user = authProvider.currentUser;
     final userName = (user?.nickname != null)
         ? user!.nickname!
-        : (user?.email != null ? user!.email.split('@')[0] : 'Ospite');
+        : (user?.email != null ? user!.email.split('@')[0] : RuntimeLocalizations.t(context, 'guest', fallback: 'Ospite'));
     final isDark = theme.resolvedThemeMode == ThemeMode.dark;
 
     return Container(
@@ -135,7 +135,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                       children: [
                         const SizedBox(height: AppTokens.space8),
                         Text(
-                          _greeting(),
+                          _greeting(context),
                           style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor).copyWith(letterSpacing: 0.2),
                         ),
                         const SizedBox(height: AppTokens.space2),
@@ -196,17 +196,17 @@ class _DashboardFeedState extends State<DashboardFeed>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Azioni rapide',
+                    RuntimeLocalizations.t(context, 'quick_actions_title', fallback: 'Azioni rapide'),
                     style: AppTextStyle.labelMedium(color: theme.secondaryTextColor),
                   ),
                   const SizedBox(height: AppTokens.space12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildQuickAction(Icons.map_rounded, 'Mappa', theme, widget.onOpenMap, color: AppTokens.brandBlue),
-                      _buildQuickAction(Icons.confirmation_num_rounded, 'Ticket', theme, () {}, color: AppTokens.brandPurple),
-                      _buildQuickAction(Icons.alt_route_rounded, 'Percorsi', theme, () {}, color: AppTokens.brandIndigo),
-                      _buildQuickAction(Icons.campaign_rounded, 'Avvisi', theme, () {}, color: AppTokens.brandPink),
+                      _buildQuickAction(Icons.map_rounded, RuntimeLocalizations.t(context, 'action_map', fallback: 'Mappa'), theme, widget.onOpenMap, color: AppTokens.brandBlue),
+                      _buildQuickAction(Icons.confirmation_num_rounded, RuntimeLocalizations.t(context, 'action_ticket', fallback: 'Ticket'), theme, () {}, color: AppTokens.brandPurple),
+                      _buildQuickAction(Icons.alt_route_rounded, RuntimeLocalizations.t(context, 'action_routes', fallback: 'Percorsi'), theme, () {}, color: AppTokens.brandIndigo),
+                      _buildQuickAction(Icons.campaign_rounded, RuntimeLocalizations.t(context, 'action_alerts', fallback: 'Avvisi'), theme, () {}, color: AppTokens.brandPink),
                     ],
                   ),
                 ],
@@ -368,7 +368,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                         const SizedBox(width: 10),
                         _buildStatusPill(theme, AppLocalizations.of(context)?.buses ?? 'Bus', RuntimeLocalizations.t(context, 'status_delays'), Icons.directions_bus_rounded, const Color(0xFFFF9F1C)),
                         const SizedBox(width: 10),
-                        _buildStatusPill(theme, 'Aerei', 'Regolare', Icons.flight_takeoff_rounded, const Color(0xFF43AA8B)),
+                        _buildStatusPill(theme, RuntimeLocalizations.t(context, 'planes_label', fallback: 'Aerei'), RuntimeLocalizations.t(context, 'status_regular', fallback: 'Regolare'), Icons.flight_takeoff_rounded, const Color(0xFF43AA8B)),
                       ],
                     ),
                   ),
@@ -433,7 +433,7 @@ class _DashboardFeedState extends State<DashboardFeed>
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
                           ),
-                          child: const Text('OGGI', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                          child: Text(RuntimeLocalizations.t(context, 'today_badge', fallback: 'OGGI'), style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -463,10 +463,10 @@ class _DashboardFeedState extends State<DashboardFeed>
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.edit_location_alt_rounded, color: Colors.white, size: 12),
-                                SizedBox(width: 4),
-                                Text('Cambia', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                              children: [
+                                const Icon(Icons.edit_location_alt_rounded, color: Colors.white, size: 12),
+                                const SizedBox(width: 4),
+                                Text(RuntimeLocalizations.t(context, 'change_btn', fallback: 'Cambia'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                               ],
                             ),
                           ),
@@ -568,7 +568,7 @@ class _DashboardFeedState extends State<DashboardFeed>
         children: [
           Icon(Icons.cloud_off_rounded, color: theme.secondaryTextColor),
           const SizedBox(width: 10),
-          Text('Meteo non disponibile', style: TextStyle(color: theme.secondaryTextColor)),
+          Text(RuntimeLocalizations.t(context, 'weather_unavailable', fallback: 'Meteo non disponibile'), style: TextStyle(color: theme.secondaryTextColor)),
           const SizedBox(width: 10),
           GestureDetector(
             onTap: () { setState(() => _weatherLoading = true); _loadWeather(); },
@@ -681,12 +681,12 @@ class _DashboardFeedState extends State<DashboardFeed>
                               children: [
                                 Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)), child: Icon(isBus ? Icons.directions_bus_rounded : Icons.train_rounded, color: color, size: 12)),
                                 const SizedBox(width: 6),
-                                Text(isBus ? 'Fermata Bus' : 'Stazione', style: TextStyle(color: theme.secondaryTextColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(isBus ? RuntimeLocalizations.t(context, 'bus_stop_label', fallback: 'Fermata Bus') : RuntimeLocalizations.t(context, 'station_label', fallback: 'Stazione'), style: TextStyle(color: theme.secondaryTextColor, fontSize: 11, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const Spacer(),
                             Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.textColor)),
-                            Text(item.country ?? 'Locale', style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
+                            Text(item.country ?? RuntimeLocalizations.t(context, 'local_label', fallback: 'Locale'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                           ],
                         ),
                       ),
@@ -794,7 +794,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
           setState(() => _gpsLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Permesso posizione negato. Abilitalo nelle impostazioni.'),
+              content: Text(RuntimeLocalizations.t(context, 'permission_denied_location', fallback: 'Permesso posizione negato. Abilitalo nelle impostazioni.')),
               backgroundColor: Colors.red.shade700,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -811,7 +811,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
         // id = -1 è il sentinel che dice al parent di usare GPS
         Navigator.pop(context, CityResult(
           id: -1,
-          name: 'La tua posizione',
+          name: RuntimeLocalizations.t(context, 'your_position', fallback: 'La tua posizione'),
           latitude: pos.latitude,
           longitude: pos.longitude,
         ));
@@ -821,7 +821,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
         setState(() => _gpsLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Impossibile rilevare la posizione GPS'),
+            content: Text(RuntimeLocalizations.t(context, 'gps_unavailable', fallback: 'Impossibile rilevare la posizione GPS')),
             backgroundColor: Colors.orange.shade700,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -870,8 +870,8 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Seleziona città', style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w800, color: theme.textColor)),
-                        Text('Cerca la tua città per il meteo', style: TextStyle(fontSize: 13, color: theme.secondaryTextColor)),
+                        Text(RuntimeLocalizations.t(context, 'select_city', fallback: 'Seleziona città'), style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w800, color: theme.textColor)),
+                        Text(RuntimeLocalizations.t(context, 'search_city_weather', fallback: 'Cerca la tua città per il meteo'), style: TextStyle(fontSize: 13, color: theme.secondaryTextColor)),
                       ],
                     ),
                   ),
@@ -901,7 +901,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                   onChanged: _onSearchChanged,
                   style: TextStyle(color: theme.textColor, fontSize: 16),
                   decoration: InputDecoration(
-                    hintText: 'es. Milano, Parigi, London…',
+                    hintText: RuntimeLocalizations.t(context, 'city_search_hint', fallback: 'es. Milano, Parigi, London…'),
                     hintStyle: TextStyle(color: theme.secondaryTextColor, fontSize: 15),
                     prefixIcon: Icon(Icons.search_rounded, color: theme.secondaryTextColor),
                     suffixIcon: _searching
@@ -967,9 +967,9 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Usa la mia posizione', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+                            Text(RuntimeLocalizations.t(context, 'use_my_position', fallback: 'Usa la mia posizione'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
                             Text(
-                              _gpsLoading ? 'Rilevamento in corso…' : 'Rileva automaticamente via GPS',
+                              _gpsLoading ? RuntimeLocalizations.t(context, 'detecting_gps', fallback: 'Rilevamento in corso…') : RuntimeLocalizations.t(context, 'auto_detect_gps', fallback: 'Rileva automaticamente via GPS'),
                               style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.8)),
                             ),
                           ],
@@ -997,7 +997,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                     Expanded(child: Divider(color: theme.textColor.withValues(alpha: 0.08))),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Text('Risultati ricerca', style: TextStyle(fontSize: 11, color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
+                      child: Text(RuntimeLocalizations.t(context, 'search_results_label', fallback: 'Risultati ricerca'), style: TextStyle(fontSize: 11, color: theme.secondaryTextColor, fontWeight: FontWeight.w600)),
                     ),
                     Expanded(child: Divider(color: theme.textColor.withValues(alpha: 0.08))),
                   ],
@@ -1032,7 +1032,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
           Text(hasQuery ? '🔍' : '🌍', style: const TextStyle(fontSize: 48)),
           const SizedBox(height: 16),
           Text(
-            hasQuery ? 'Nessuna città trovata' : 'Inizia a digitare il nome\ndella città',
+            hasQuery ? RuntimeLocalizations.t(context, 'no_city_found', fallback: 'Nessuna città trovata') : RuntimeLocalizations.t(context, 'type_city_name', fallback: 'Inizia a digitare il nome\ndella città'),
             textAlign: TextAlign.center,
             style: TextStyle(color: theme.secondaryTextColor, fontSize: 15, height: 1.5),
           ),
