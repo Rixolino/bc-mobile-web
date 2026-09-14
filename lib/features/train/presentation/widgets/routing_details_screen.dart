@@ -1605,6 +1605,15 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
             Container(
               height: 18,
               constraints: const BoxConstraints(maxWidth: 50),
+              padding: theme.isDark
+                  ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                  : EdgeInsets.zero,
+              decoration: theme.isDark
+                  ? BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                  : null,
               child: Image.network(
                 logoUrl,
                 fit: BoxFit.contain,

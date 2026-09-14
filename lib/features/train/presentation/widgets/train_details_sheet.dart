@@ -2292,6 +2292,16 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             Container(
               height: 24 * scale,
               constraints: BoxConstraints(maxWidth: 80 * scale),
+              padding: theme.isDark
+                  ? EdgeInsets.symmetric(
+                      horizontal: 6 * scale, vertical: 2 * scale)
+                  : EdgeInsets.zero,
+              decoration: theme.isDark
+                  ? BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                  : null,
               child: Image.network(
                 logoUrl,
                 fit: BoxFit.contain,

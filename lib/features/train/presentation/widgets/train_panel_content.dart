@@ -3066,6 +3066,15 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
           Container(
             height: 20,
             constraints: const BoxConstraints(maxWidth: 60),
+            padding: theme.isDark
+                ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                : EdgeInsets.zero,
+            decoration: theme.isDark
+                ? BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                  )
+                : null,
             child: Image.network(
               logoUrl,
               fit: BoxFit.contain,
@@ -3605,6 +3614,15 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             Container(
               height: 20,
               constraints: const BoxConstraints(maxWidth: 60),
+              padding: theme.isDark
+                  ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                  : EdgeInsets.zero,
+              decoration: theme.isDark
+                  ? BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                  : null,
               child: Image.network(
                 logoUrl,
                 fit: BoxFit.contain,
