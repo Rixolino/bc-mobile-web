@@ -271,16 +271,20 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
         separatorBuilder: (_, __) => Divider(height: 1, color: theme.dividerColor),
         itemBuilder: (context, index) {
           final dep = items[index];
-          return _buildDepartureItem(dep, theme);
+          return _buildDepartureItem(dep, theme, _isArrivalsMode);
         },
       ),
     );
   }
 
-  Widget _buildDepartureItem(TrainDeparture dep, ThemeProvider theme) {
+  Widget _buildDepartureItem(TrainDeparture dep, ThemeProvider theme, bool isArrival) {
     final cat = (dep.category ?? '').trim();
     final num = (dep.trainNumber ?? '').trim();
-    final dest = (dep.destination ?? '').trim();
+    // Arrivi: mostra la provenienza (la destinazione è la stazione stessa).
+    // Partenze: mostra la destinazione.
+    final dest = isArrival
+        ? (dep.origin ?? '').trim()
+        : (dep.destination ?? '').trim();
     final delay = dep.delayMinutes ?? 0;
     final scheduled = dep.scheduledTime;
     final estimated = dep.estimatedTime;
