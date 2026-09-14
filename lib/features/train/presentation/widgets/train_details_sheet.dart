@@ -1350,7 +1350,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             _isSharing ? null : () async {
               setState(() => _isSharing = true);
               try {
-                final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+                var currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+                // Country sempre valorizzato (serve al backend per live/board)
+                if (currentDep.country.isEmpty && (widget.selectedCountry ?? '').isNotEmpty) {
+                  currentDep = currentDep.copyWith(country: widget.selectedCountry);
+                }
                 final url = await _trainProvider.shareTripLink(currentDep);
                 if (!mounted) return;
                 if (url == null) {
