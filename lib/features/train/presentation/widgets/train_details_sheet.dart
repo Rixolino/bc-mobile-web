@@ -80,7 +80,6 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     super.initState();
     _loadMonitoredState();
   }
-
   TrainDeparture _liveDeparture(BuildContext context) {
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     try {
@@ -955,6 +954,16 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
   }
 
+  /// Risolve il country con la stessa catena usata per gli share:
+  /// fermata → corsa → selectedCountry → stazione selezionata → 'IT'.
+  String _resolveCountry(String stopCountry, String depCountry) {
+    if (stopCountry.isNotEmpty) return stopCountry;
+    if (depCountry.isNotEmpty) return depCountry;
+    final sel = widget.selectedCountry ?? '';
+    if (sel.isNotEmpty) return sel;
+    return _trainProvider.selectedStation?.country ?? 'IT';
+  }
+
   TrainDeparture? _findDisplayedDeparture() {
     try {
       return _trainProvider.departures.firstWhere(
@@ -1701,7 +1710,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               MaterialPageRoute(
                 builder: (ctx) => StationDetailsScreen(
                   stationId: stop.id!,
-                  country: stop.country.isNotEmpty ? stop.country : (currentDep.country.isNotEmpty ? currentDep.country : 'IT'),
+                  country: _resolveCountry(stop.country, currentDep.country),
                   stationName: stop.stationName,
                 ),
               ),
