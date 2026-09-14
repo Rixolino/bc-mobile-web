@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:app_links/app_links.dart';
 import '../providers/theme_provider.dart';
 import '../../core/design_system.dart';
 import 'home_screen.dart';
@@ -36,6 +37,34 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
 
     _controller.forward();
+
+    _route();
+  }
+
+  /// Se l'app è stata aperta da un link condiviso (/share/?id=...),
+  /// salta l'intro e vai subito alla home (che aprirà il dettaglio viaggio).
+  Future<void> _route() async {
+    bool skipIntro = false;
+    try {
+      final uri = await AppLinks()
+          .getInitialLink()
+          .timeout(const Duration(seconds: 2));
+      if (uri != null &&
+          uri.scheme == 'https' &&
+          uri.host == 'betacloud-transporter.is-cool.dev' &&
+          uri.path.startsWith('/share') &&
+          (uri.queryParameters['id'] ?? '').isNotEmpty) {
+        skipIntro = true;
+      }
+    } catch (_) {}
+    if (!mounted) return;
+
+    if (skipIntro) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+      return;
+    }
 
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {

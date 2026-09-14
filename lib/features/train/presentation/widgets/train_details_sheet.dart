@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import 'package:bc_transporter/l10n/app_localizations.dart';
@@ -656,6 +657,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   bool _isHandlingConnectivityChange = false;
   bool _isCachedOffline = false;
   bool _manualOfflineSaved = false;
+  bool _isSharing = false;
 
   // Full details fetched locally for trains opened from outside the current timetable
   TrainDeparture? _externalDep;
@@ -672,6 +674,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   // Evita fallback ritardo concorrenti
   bool _isRefreshingDelayFallback = false;
+  // Ultimo aggiornamento ritardo via tabelloni (throttle = impostazioni refresh)
+  DateTime? _lastDelayFallbackAt;
 
   @override
   void initState() {
@@ -683,6 +687,16 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _checkCacheStatus();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
+    });
+
+    // Carica i loghi se attivi ma non ancora in memoria
+    // (es. sheet aperto da deep link senza passare dal pannello treni)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_settingsProvider.vectorLogosEnabled &&
+          _trainProvider.trainLogos.isEmpty) {
+        _trainProvider.loadTrainLogos(source: _settingsProvider.logoSource);
+      }
     });
     
     _maybeFetchExternalTripDetails();
@@ -959,17 +973,39 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   Future<void> _refreshDelayFallback() async {
     if (!mounted || _isRefreshingDelayFallback) return;
     final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
-    // Minuti già disponibili: niente da fare
-    if (current.error == null && current.delayMinutes != null) return;
+    // Ritardo già noto e aggiornato di recente: niente da fare.
+    // Il throttle segue le impostazioni (trainRefreshSeconds): i controlli
+    // viaggiano alla cadenza scelta dall'utente; in manuale (0) ricontrolla sempre.
+    final delayKnown = current.error == null && current.delayMinutes != null;
+    final refreshSeconds = _settingsProvider.trainRefreshSeconds;
+    final throttle = refreshSeconds > 0
+        ? Duration(seconds: refreshSeconds)
+        : Duration.zero;
+    final last = _lastDelayFallbackAt;
+    if (delayKnown &&
+        last != null &&
+        DateTime.now().difference(last) < throttle) {
+      return;
+    }
 
     _isRefreshingDelayFallback = true;
     try {
       final delay = await _trainProvider.refreshDelayFromUpcomingStations(current);
       if (!mounted || delay == null) return;
+      _lastDelayFallbackAt = DateTime.now();
       // Se la departure visualizzata è esterna al tabellone, aggiorna la copia locale
       if (_externalDep != null && identical(current, _externalDep)) {
+        if (_externalDep!.delayMinutes != delay) {
+          setState(() {
+            _externalDep = _externalDep!.copyWith(delayMinutes: delay);
+          });
+        }
+      } else if (_findDisplayedDeparture() == null &&
+          current.delayMinutes != delay) {
+        // Treno esterno (es. deep-link): salva copia aggiornata così
+        // tutti i punti che leggono _externalDep ?? widget.departure si aggiornano
         setState(() {
-          _externalDep = _externalDep!.copyWith(delayMinutes: delay);
+          _externalDep = current.copyWith(delayMinutes: delay);
         });
       }
     } finally {
@@ -1306,6 +1342,34 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             RuntimeLocalizations.t(context, 'update') ?? RuntimeLocalizations.t(context, 'update') ?? 'Aggiorna',
             theme,
             _refreshTrainDetails,
+          ),
+          _buildInfoChip(
+            _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
+            RuntimeLocalizations.t(context, 'share_trip', fallback: 'Condividi'),
+            theme,
+            _isSharing ? null : () async {
+              setState(() => _isSharing = true);
+              try {
+                final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+                final url = await _trainProvider.shareTripLink(currentDep);
+                if (!mounted) return;
+                if (url == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(RuntimeLocalizations.t(context, 'share_failed', fallback: 'Condivisione non riuscita, riprova')),
+                      backgroundColor: theme.errorColor,
+                    ),
+                  );
+                  return;
+                }
+                final cat = (currentDep.category ?? '').trim();
+                final num = (currentDep.trainNumber ?? '').trim();
+                final msg = "${RuntimeLocalizations.t(context, 'share_trip_msg', fallback: 'Segui il mio viaggio live')}: $cat $num\n$url";
+                await Share.share(msg, subject: '$cat $num'.trim());
+              } finally {
+                if (mounted) setState(() => _isSharing = false);
+              }
+            },
           ),
           Consumer<TrainProvider>(
             builder: (context, tp, _) {
@@ -2726,10 +2790,20 @@ class _TimelineRow extends StatelessWidget {
                   Row(children: [
                     Expanded(
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Flexible(
-                            child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600), overflow: TextOverflow.ellipsis),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Builder(
+                                builder: (_) {
+                                  // Più il nome è lungo, più il font si rimpicciolisce (16 → 10);
+                                  // il FittedBox garantisce che entri comunque su ogni schermo.
+                                  final size = (16.0 - (stop.stationName.length - 20) * 0.25).clamp(10.0, 16.0);
+                                  return Text(stop.stationName, maxLines: 1, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: size, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600), overflow: TextOverflow.ellipsis);
+                                },
+                              ),
+                            ),
                           ),
                           if (onStationTap != null)
                             GestureDetector(

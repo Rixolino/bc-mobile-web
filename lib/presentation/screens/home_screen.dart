@@ -1,7 +1,10 @@
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:provider/provider.dart';
+import 'package:app_links/app_links.dart';
+import '../../features/train/presentation/widgets/train_details_sheet.dart';
 import '../providers/config_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_page.dart';
@@ -11,6 +14,7 @@ import '../../features/plane/presentation/providers/plane_provider.dart';
 import '../../features/train/presentation/providers/train_provider.dart';
 import '../providers/map_state_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/settings_provider.dart';
 import '../../core/design_system.dart';
 import '../../features/train/presentation/screens/train_search_screen.dart';
 import '../../features/bus/presentation/screens/bus_search_screen.dart';
@@ -56,6 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
   double? _dockDragX; // posizione live della "goccia" mentre si trascina
   double _dockSegmentWidth = 0; // larghezza di uno slot icona, calcolata a runtime
 
+  // --- APP LINKS (viaggi condivisi /share/?id=...) ---
+  StreamSubscription<Uri>? _linkSub;
+  final Set<String> _openedShareIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -68,7 +76,91 @@ class _HomeScreenState extends State<HomeScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.addListener(_onAuthChange);
       _onAuthChange();
+      _initDeepLinks();
     });
+  }
+
+  Future<void> _initDeepLinks() async {
+    final appLinks = AppLinks();
+    _linkSub = appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    }, onError: (_) {});
+    try {
+      final initial = await appLinks.getInitialLink();
+      if (initial != null) _handleDeepLink(initial);
+    } catch (_) {}
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    // Accetta solo https://betacloud-transporter.is-cool.dev/share/?id=...
+    if (uri.scheme != 'https') return;
+    if (uri.host != 'betacloud-transporter.is-cool.dev') return;
+    if (!uri.path.startsWith('/share')) return;
+    final id = uri.queryParameters['id'] ?? '';
+    if (id.isEmpty || _openedShareIds.contains(id)) return;
+    _openedShareIds.add(id);
+    if (!mounted) return;
+
+    // Loader mentre si scarica lo snapshot condiviso
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final trainProvider =
+          Provider.of<TrainProvider>(context, listen: false);
+      var dep = await trainProvider.fetchSharedDeparture(id);
+      if (!mounted) return;
+      if (dep == null) {
+        Navigator.of(context).pop(); // chiudi loader
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(RuntimeLocalizations.t(context, 'trip_not_found',
+                fallback: 'Viaggio non trovato')),
+          ),
+        );
+        return;
+      }
+      // Ritardo live: simula l'apertura della schermata stazione,
+      // interrogando i tabelloni delle fermate della tratta
+      var liveDep = dep;
+      try {
+        final liveDelay = await trainProvider
+            .refreshDelayFromUpcomingStations(liveDep)
+            .timeout(const Duration(seconds: 12));
+        if (liveDelay != null) {
+          liveDep = liveDep.copyWith(delayMinutes: liveDelay);
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      Navigator.of(context).pop(); // chiudi loader
+      // Precarica i loghi (il pannello treni non viene aperto in questo flusso)
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      if (settings.vectorLogosEnabled && trainProvider.trainLogos.isEmpty) {
+        await trainProvider.loadTrainLogos(source: settings.logoSource);
+      }
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TrainDetailsSheet(
+            departure: liveDep,
+            isArrivalMode: false,
+            selectedCountry:
+                liveDep.country.isNotEmpty ? liveDep.country : null,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // chiudi loader
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(RuntimeLocalizations.t(context, 'trip_load_error',
+              fallback: 'Errore di rete, riprova')),
+        ),
+      );
+    }
   }
 
   // --- LOGICA ORIGINALE PRESERVATA ---
@@ -108,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _linkSub?.cancel();
     try {
       Provider.of<AuthProvider>(context, listen: false)
           .removeListener(_onAuthChange);

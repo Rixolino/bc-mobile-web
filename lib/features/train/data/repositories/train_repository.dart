@@ -56,6 +56,75 @@ class TrainRepository {
     return {};
   }
 
+  // Save a trip snapshot on the server and get back a short share id
+  Future<String?> shareTrip(Map<String, dynamic> payload) async {
+    try {
+      final url = "${ApiConstants.baseUrl}/api/share-trip";
+      debugPrint('[ShareRepo] POST $url');
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: json.encode(payload),
+      );
+      debugPrint('[ShareRepo] Status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final shareId = data['shareId']?.toString();
+        debugPrint('[ShareRepo] ✅ shareId=$shareId');
+        return shareId;
+      } else {
+        debugPrint('[ShareRepo] ❌ ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+      }
+    } catch (e) {
+      debugPrint('[ShareRepo] ❌ Error: $e');
+    }
+    return null;
+  }
+
+  // Fetch a shared trip snapshot and decode it into a TrainDeparture
+  Future<TrainDeparture?> fetchSharedDeparture(String shareId) async {
+    try {
+      final url = "${ApiConstants.baseUrl}/api/share-trip/${Uri.encodeComponent(shareId)}";
+      debugPrint('[ShareRepo] GET $url');
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        debugPrint('[ShareRepo] ❌ HTTP ${response.statusCode}');
+        return null;
+      }
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      DateTime? parseTime(dynamic t) =>
+          t == null || t.toString().isEmpty ? null : DateTime.tryParse(t.toString());
+
+      List<TrainStop>? stops;
+      if (data['stops'] is List) {
+        stops = (data['stops'] as List)
+            .whereType<Map>()
+            .map((s) => TrainStop.fromJson(Map<String, dynamic>.from(s)))
+            .toList();
+      }
+
+      return TrainDeparture(
+        tripId: data['tripId']?.toString(),
+        country: data['country']?.toString() ?? '',
+        category: data['category']?.toString(),
+        trainNumber: data['tripNumber']?.toString(),
+        origin: data['origin']?.toString(),
+        destination: data['destination']?.toString(),
+        platform: data['platform']?.toString(),
+        delayMinutes: data['delay'] is int
+            ? data['delay'] as int
+            : int.tryParse(data['delay']?.toString() ?? ''),
+        scheduledTime: parseTime(data['scheduledTime']),
+        estimatedTime: parseTime(data['estimatedTime']),
+        stops: stops,
+      );
+    } catch (e) {
+      debugPrint('[ShareRepo] ❌ fetchSharedDeparture: $e');
+      return null;
+    }
+  }
+
   Future<List<TrainStation>> searchStations(String query, {String country = 'IT', String? city, String service = 'trainboardeu'}) async {
     // If service is Direct and country is IT, use local proxy/JSON logic
     if (service == 'direct' && country == 'IT') {

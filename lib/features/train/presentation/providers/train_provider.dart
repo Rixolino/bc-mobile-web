@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/train_model.dart';
 import '../../data/repositories/train_repository.dart';
+import '../../../../core/api_constants.dart';
 import '../../../../core/services/offline_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:libsql_dart/libsql_dart.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
@@ -414,6 +415,45 @@ class TrainProvider with ChangeNotifier {
     _hasLoadedLogos = false;
     _isLoadingLogos = false;
     notifyListeners();
+  }
+
+  /// Saves a trip snapshot on the server and returns the public share URL
+  Future<String?> shareTripLink(TrainDeparture dep) async {
+    try {
+      debugPrint('[TrainProvider] Sharing trip ${dep.category} ${dep.trainNumber}...');
+      final payload = {
+        'tripId': dep.tripId ?? '',
+        'country': dep.country,
+        'category': dep.category ?? '',
+        'tripNumber': dep.trainNumber ?? '',
+        'origin': dep.origin ?? '',
+        'destination': dep.destination ?? '',
+        'operator': (dep.metadata?['operator'] ?? dep.metadata?['company'] ?? '').toString(),
+        'platform': dep.platform ?? '',
+        'delay': dep.delayMinutes ?? 0,
+        'scheduledTime': dep.scheduledTime?.toIso8601String() ?? '',
+        'estimatedTime': dep.estimatedTime?.toIso8601String() ?? '',
+        'stops': dep.stops?.map((s) => s.toJson()).toList() ?? [],
+      };
+      final shareId = await _repository.shareTrip(payload);
+      if (shareId == null || shareId.isEmpty) return null;
+      final url = "${ApiConstants.baseUrl}/share/?id=$shareId";
+      debugPrint('[TrainProvider] ✅ Share URL: $url');
+      return url;
+    } catch (e) {
+      debugPrint('[TrainProvider] ❌ Share error: $e');
+      return null;
+    }
+  }
+
+  /// Fetches a shared trip snapshot and decodes it into a TrainDeparture
+  Future<TrainDeparture?> fetchSharedDeparture(String shareId) async {
+    try {
+      return await _repository.fetchSharedDeparture(shareId);
+    } catch (e) {
+      debugPrint('[TrainProvider] ❌ fetchSharedDeparture: $e');
+      return null;
+    }
   }
 
   void updateAutoRefresh(int seconds, {bool offlineSyncEnabled = false}) {

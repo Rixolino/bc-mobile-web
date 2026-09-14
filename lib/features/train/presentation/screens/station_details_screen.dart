@@ -8,6 +8,7 @@ import 'package:bc_transporter/presentation/providers/theme_provider.dart';
 import 'package:bc_transporter/presentation/providers/settings_provider.dart';
 import 'package:bc_transporter/core/design_system.dart';
 import 'package:bc_transporter/core/services/runtime_localizations.dart';
+import 'package:bc_transporter/core/utils/country_time.dart';
 
 class StationDetailsScreen extends StatefulWidget {
   final String stationId;
@@ -300,11 +301,9 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
       logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
     }
 
-    final timeStr = scheduled != null
-        ? '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}'
-        : '--:--';
+    final timeStr = formatCountryTime(scheduled, widget.country);
     final estStr = estimated != null
-        ? '${estimated.hour.toString().padLeft(2, '0')}:${estimated.minute.toString().padLeft(2, '0')}'
+        ? formatCountryTime(estimated, widget.country)
         : null;
 
     return Padding(
