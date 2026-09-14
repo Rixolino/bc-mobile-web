@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bc_transporter/presentation/providers/theme_provider.dart';
 import 'package:bc_transporter/presentation/providers/settings_provider.dart';
+import '../providers/train_provider.dart';
 import 'package:bc_transporter/core/services/runtime_localizations.dart';
 import 'package:intl/intl.dart';
 import 'package:glassmorphism/glassmorphism.dart';
@@ -1575,6 +1576,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
 
   Widget _buildTrainBadge(String category, String number, ThemeProvider theme) {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     final cat = category.isNotEmpty ? category : 'TRN';
     final num = number.isNotEmpty ? number : '---';
 
@@ -1592,31 +1594,35 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final Color color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
 
     if (settings.vectorLogosEnabled) {
-      final fileName = cat.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            height: 18,
-            constraints: const BoxConstraints(maxWidth: 50),
-            child: Image.network(
-              logoUrl,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _buildColorBadge(cat, num, theme, color),
+      final key = cat.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      final logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
+
+      if (logoUrl != null) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 18,
+              constraints: const BoxConstraints(maxWidth: 50),
+              child: Image.network(
+                logoUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => _buildColorBadge(cat, num, theme, color),
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            num,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: theme.textColor,
-              fontSize: 11,
+            const SizedBox(width: 4),
+            Text(
+              num,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.textColor,
+                fontSize: 11,
+              ),
             ),
-          ),
-        ],
-      );
+          ],
+        );
+      }
     }
     return _buildColorBadge(cat, num, theme, color);
   }

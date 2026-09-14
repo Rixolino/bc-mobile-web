@@ -79,6 +79,18 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     _loadMonitoredState();
   }
 
+  TrainDeparture _liveDeparture(BuildContext context) {
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+    try {
+      return trainProvider.departures.firstWhere(
+        (d) => (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
+               (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
+      );
+    } catch (_) {
+      return widget.departure;
+    }
+  }
+
   Future<void> _loadMonitoredState() async {
     final tripKey = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
     if (tripKey.isEmpty) return;
@@ -361,7 +373,8 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
   }
 
   Future<void> _toggle() async {
-    final tripId = widget.departure.tripId ?? widget.departure.trainNumber ?? '';
+    final dep = _liveDeparture(context);
+    final tripId = dep.tripId ?? dep.trainNumber ?? '';
 
     await showModalBottomSheet(
       context: context,
@@ -371,10 +384,10 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
         String? selectedStop;
         return StatefulBuilder(
           builder: (ctx, sbSetState) {
-            final stops = widget.departure.stops ?? [];
+            final stops = dep.stops ?? [];
 
-            String previewTitle() => _buildTrainNotificationTitle(widget.departure);
-            String previewBody() => _buildTrainNotificationBody(widget.departure, userDestination: selectedStop);
+            String previewTitle() => _buildTrainNotificationTitle(dep);
+            String previewBody() => _buildTrainNotificationBody(dep, userDestination: selectedStop);
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -390,7 +403,7 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
                         shrinkWrap: true,
                         itemCount: stops.length,
                         itemBuilder: (c, i) {
-                          final s = stops[i];
+                           final s = stops[i];
                           final nowUtc = DateTime.now().toUtc();
                           final times = _estimateStopTimesGlobal(s, widget.departure.delayMinutes ?? 0);
                           final DateTime? arr = times['arr'] as DateTime?;
@@ -581,7 +594,8 @@ class __TrainNotificationsButtonState extends State<_TrainNotificationsButton> {
     }
 
     final settings = Provider.of<SettingsProvider>(ctx, listen: false);
-    String? startingStop = widget.departure.stops?.isNotEmpty == true ? widget.departure.stops!.first.stationName : null;
+    final liveDep = _liveDeparture(ctx);
+    String? startingStop = liveDep.stops?.isNotEmpty == true ? liveDep.stops!.first.stationName : null;
     await AndroidBackgroundService.scheduleTrainsWorker(
       tripId: tripId,
       country: usedCountry ?? countryFromMeta,
@@ -1072,18 +1086,23 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             children: [
-              Row(
-                children: [
-                  _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildTrainIdentifier(context, theme, widget.departure),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildProgressButton(context, theme, trainProvider),
-                  const SizedBox(width: 12),
-                  _buildModernDelayBadge(widget.departure.delayMinutes ?? 0, theme),
-                ],
+              Builder(
+                builder: (context) {
+                  final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+                  return Row(
+                    children: [
+                      _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTrainIdentifier(context, theme, currentDep),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildProgressButton(context, theme, trainProvider),
+                      const SizedBox(width: 12),
+                      _buildModernDelayBadge(currentDep.delayMinutes ?? 0, theme),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildRouteRow(context, theme, trainProvider),
@@ -1268,15 +1287,18 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             Icons.map_rounded,
             RuntimeLocalizations.t(context, 'map') ?? RuntimeLocalizations.t(context, 'map') ?? 'Mappa',
             theme,
-            () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (ctx) => TrainMapPage(
-                  departure: widget.departure,
-                  isArrivalMode: trainProvider.isArrivalMode,
-                  currentDelay: widget.departure.delayMinutes ?? 0,
+            () {
+              final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => TrainMapPage(
+                    departure: currentDep,
+                    isArrivalMode: trainProvider.isArrivalMode,
+                    currentDelay: currentDep.delayMinutes ?? 0,
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           _buildInfoChip(
             Icons.refresh_rounded,
@@ -2344,34 +2366,44 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
     final settings = Provider.of<SettingsProvider>(context);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     final category = (departure.category ?? 'TRN').trim();
     final number = (departure.trainNumber ?? '').trim();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final scale = (screenWidth / 400).clamp(0.65, 1.0);
 
     if (settings.vectorLogosEnabled) {
-      final fileName = category.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = "https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png";
+      final key = category.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      final logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
 
-      return Row(
-        children: [
-          Container(
-            height: 24,
-            constraints: const BoxConstraints(maxWidth: 80),
-            child: Image.network(
-              logoUrl,
-              fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              errorBuilder: (context, error, stackTrace) {
-                return _buildColorText(category, number, theme);
-              },
+      if (logoUrl != null) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 24 * scale,
+              constraints: BoxConstraints(maxWidth: 80 * scale),
+              child: Image.network(
+                logoUrl,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildColorText(category, number, theme);
+                },
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            number, 
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.textColor)
-          ),
-        ],
-      );
+            SizedBox(width: 8 * scale),
+            Flexible(
+              child: Text(
+                number,
+                style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.bold, color: theme.textColor),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      }
     }
 
     return _buildColorText(category, number, theme);
@@ -2819,35 +2851,39 @@ class _TrainLogoWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     final cat = (category ?? 'TRN').trim();
     
     if (settings.vectorLogosEnabled) {
-      final fileName = cat.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/.png';
-      
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppTokens.trainColor, AppTokens.trainColor.withValues(alpha: 0.7)],
+      final key = cat.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      final logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
+
+      if (logoUrl != null) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppTokens.trainColor, AppTokens.trainColor.withValues(alpha: 0.7)],
+            ),
+            borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+            boxShadow: [BoxShadow(color: AppTokens.trainColor.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
           ),
-          borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-          boxShadow: [BoxShadow(color: AppTokens.trainColor.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
-        ),
-        child: SizedBox(
-          height: 40,
-          width: 40,
-          child: Image.network(
-            logoUrl,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return _buildCategoryFallback(cat);
-            },
+          child: SizedBox(
+            height: 40,
+            width: 40,
+            child: Image.network(
+              logoUrl,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return _buildCategoryFallback(cat);
+              },
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
     
     return _buildCategoryFallback(cat);
