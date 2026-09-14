@@ -848,20 +848,123 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildVectorLogosToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
-    return _buildSimpleToggle(
-      context,
-      theme,
-      title: AppLocalizations.of(context)?.vectorTrainLogos ?? 'Loghi Treni Vettoriali',
-      description: AppLocalizations.of(context)?.vectorTrainLogosDesc ?? 'Scarica e visualizza loghi ufficiali per le categorie dei treni (es. Frecciarossa, Intercity).',
-      value: settings.vectorLogosEnabled,
-      onChanged: (value) async {
-        await settings.setVectorLogosEnabled(value);
-        if (value && context.mounted) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSimpleToggle(
+          context,
+          theme,
+          title: AppLocalizations.of(context)?.vectorTrainLogos ?? 'Loghi Treni Vettoriali',
+          description: AppLocalizations.of(context)?.vectorTrainLogosDesc ?? 'Scarica e visualizza loghi ufficiali per le categorie dei treni (es. Frecciarossa, Intercity).',
+          value: settings.vectorLogosEnabled,
+          onChanged: (value) async {
+            await settings.setVectorLogosEnabled(value);
+            if (value && context.mounted) {
+              try {
+                Provider.of<TrainProvider>(context, listen: false).loadTrainLogos(source: settings.logoSource);
+              } catch (_) {}
+            }
+          },
+        ),
+        if (settings.vectorLogosEnabled) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Fonte Loghi',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: theme.secondaryTextColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildLogoSourceOption(
+                        context, theme, settings,
+                        label: 'Ufficiali',
+                        icon: Icons.verified_rounded,
+                        source: 'official',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildLogoSourceOption(
+                        context, theme, settings,
+                        label: 'Custom',
+                        icon: Icons.palette_rounded,
+                        source: 'custom',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLogoSourceOption(
+    BuildContext context,
+    ThemeProvider theme,
+    SettingsProvider settings, {
+    required String label,
+    required IconData icon,
+    required String source,
+  }) {
+    final isSelected = settings.logoSource == source;
+
+    return GestureDetector(
+      onTap: () async {
+        await settings.setLogoSource(source);
+        if (context.mounted) {
           try {
-            Provider.of<TrainProvider>(context, listen: false).loadTrainLogos();
+            Provider.of<TrainProvider>(context, listen: false)
+              ..resetLogos()
+              ..loadTrainLogos(source: source);
           } catch (_) {}
         }
       },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.primaryColor.withOpacity(0.1)
+              : theme.surfaceColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? theme.primaryColor : theme.borderColor,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

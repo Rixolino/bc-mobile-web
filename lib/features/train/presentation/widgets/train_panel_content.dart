@@ -1773,8 +1773,9 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     final settings = Provider.of<SettingsProvider>(context);
 
     if (settings.vectorLogosEnabled && trainProvider.trainLogos.isEmpty) {
+      debugPrint('[LogoPanel] Triggering logo load: vectorEnabled=${settings.vectorLogosEnabled} source=${settings.logoSource}');
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) trainProvider.loadTrainLogos();
+        if (mounted) trainProvider.loadTrainLogos(source: settings.logoSource);
       });
     }
 
@@ -3046,13 +3047,20 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
   Widget _buildLiveTrainTypeBadge(String category, String number, String operator, ThemeProvider theme) {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     final cat = category.isNotEmpty ? category : 'TRN';
     final num = number.isNotEmpty ? number : '---';
 
     if (settings.vectorLogosEnabled) {
-      final fileName = cat.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
-      return Row(
+      final key = cat.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      String? logoUrl;
+      if (logo != null) {
+        logoUrl = logo['png'] ?? logo['svg'];
+      }
+      debugPrint('[LogoBadge] key="$key" found=${logo != null} url=$logoUrl logosCount=${trainProvider.trainLogos.length}');
+      if (logoUrl != null) {
+        return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
@@ -3085,6 +3093,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
           Text(num, style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)),
         ],
       );
+      }
     }
     return _buildLiveColorBadge(cat, num, theme);
   }
@@ -3577,45 +3586,53 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   Widget _buildTrainTypeBadge(dynamic dep, ThemeProvider theme) {
     if (dep == null) return const SizedBox.shrink();
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
     final category = (dep.category?.toString() ?? 'TRN').trim();
     final number = (dep.trainNumber?.toString() ?? '').trim();
 
     if (settings.vectorLogosEnabled) {
-      final fileName = category.toLowerCase().replaceAll(' ', '_');
-      final logoUrl = 'https://betacloud-transporter.is-cool.dev/assets/logos/trains/$fileName.png';
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            height: 20,
-            constraints: const BoxConstraints(maxWidth: 60),
-            child: Image.network(
-              logoUrl,
-              fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              errorBuilder: (_, __, ___) => _buildColorBadge(category, number, theme),
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return SizedBox(
-                  width: 20,
-                  child: Center(
-                    child: SizedBox(
-                      width: 10,
-                      height: 10,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+      final key = category.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      String? logoUrl;
+      if (logo != null) {
+        logoUrl = logo['png'] ?? logo['svg'];
+      }
+      debugPrint('[LogoBadge2] key="$key" found=${logo != null} url=$logoUrl');
+      if (logoUrl != null) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 20,
+              constraints: const BoxConstraints(maxWidth: 60),
+              child: Image.network(
+                logoUrl,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+                errorBuilder: (_, __, ___) => _buildColorBadge(category, number, theme),
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return SizedBox(
+                    width: 20,
+                    child: Center(
+                      child: SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(number, style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)),
-        ],
-      );
+            const SizedBox(width: 6),
+            Text(number, style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)),
+          ],
+        );
+      }
     }
     return _buildColorBadge(category, number, theme);
   }

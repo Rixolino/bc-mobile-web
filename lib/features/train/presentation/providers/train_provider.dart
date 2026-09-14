@@ -369,11 +369,11 @@ class TrainProvider with ChangeNotifier {
   String get selectedService => _selectedService;
   bool get isArrivalMode => _isArrivalMode;
 
-  // Train vector logos
-  Map<String, String> _trainLogos = {};
+  // Train vector logos — { "FR": { "svg": "/path.svg", "png": "/path.png" } }
+  Map<String, Map<String, String>> _trainLogos = {};
   bool _hasLoadedLogos = false;
   bool _isLoadingLogos = false;
-  Map<String, String> get trainLogos => _trainLogos;
+  Map<String, Map<String, String>> get trainLogos => _trainLogos;
 
   @override
   void dispose() {
@@ -382,24 +382,38 @@ class TrainProvider with ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> loadTrainLogos() async {
-    if (_hasLoadedLogos || _isLoadingLogos) return;
+  Future<void> loadTrainLogos({String source = 'official'}) async {
+    if (_hasLoadedLogos || _isLoadingLogos) {
+      debugPrint('[TrainProvider] loadTrainLogos skipped: loaded=$_hasLoadedLogos loading=$_isLoadingLogos');
+      return;
+    }
     _isLoadingLogos = true;
+    debugPrint('[TrainProvider] Loading train logos (source=$source)...');
     try {
-      final logos = await _repository.fetchTrainLogos();
+      final logos = await _repository.fetchTrainLogos(source: source);
+      debugPrint('[TrainProvider] Received ${logos.length} logos');
       if (logos.isNotEmpty) {
         _trainLogos = logos;
         _hasLoadedLogos = true;
+        debugPrint('[TrainProvider] Logo keys: ${logos.keys.toList()}');
         notifyListeners();
       } else {
+        debugPrint('[TrainProvider] ⚠️ Empty logos map');
         _hasLoadedLogos = false;
       }
     } catch (e) {
       _hasLoadedLogos = false;
-      debugPrint("Error loading train logos: $e");
+      debugPrint("[TrainProvider] ❌ Error loading train logos: $e");
     } finally {
       _isLoadingLogos = false;
     }
+  }
+
+  void resetLogos() {
+    _trainLogos = {};
+    _hasLoadedLogos = false;
+    _isLoadingLogos = false;
+    notifyListeners();
   }
 
   void updateAutoRefresh(int seconds, {bool offlineSyncEnabled = false}) {

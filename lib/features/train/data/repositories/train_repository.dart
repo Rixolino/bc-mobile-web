@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/api_constants.dart';
 import '../models/train_model.dart';
@@ -8,28 +9,49 @@ class TrainRepository {
   static const String falBaseUrl = "https://fal.ferrovieappulolucane.it"; 
   
   // Fetch available train vector logos from our server
-  Future<Map<String, String>> fetchTrainLogos() async {
+  // Returns { "FR": { "svg": "/path.svg", "png": "/path.png" }, ... }
+  Future<Map<String, Map<String, String>>> fetchTrainLogos({String source = 'official'}) async {
     try {
       final url = "${ApiConstants.baseUrl}/api/train-logos";
+      debugPrint('[LogoRepo] Fetching logos from: $url (source=$source)');
       final response = await http.get(Uri.parse(url));
+      
+      debugPrint('[LogoRepo] Status: ${response.statusCode}');
+      debugPrint('[LogoRepo] Body (first 500): ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
       
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        // Convert to Map<String, String>, prepending base URL if relative
-        final Map<String, String> logos = {};
-        data.forEach((key, value) {
-          if (value is String) {
-            if (value.startsWith('http')) {
-              logos[key] = value;
-            } else {
-              logos[key] = "${ApiConstants.baseUrl}$value";
-            }
+        debugPrint('[LogoRepo] Top keys: ${data.keys.toList()}');
+        
+        final Map<String, dynamic> sourceData = data[source] ?? data['official'] ?? {};
+        debugPrint('[LogoRepo] Source="$source" → ${sourceData.length} entries');
+        
+        final Map<String, Map<String, String>> logos = {};
+        sourceData.forEach((key, value) {
+          if (value is Map<String, dynamic>) {
+            final Map<String, String> paths = {};
+            value.forEach((fmt, p) {
+              if (p is String) {
+                paths[fmt] = p.startsWith('http') ? p : "${ApiConstants.baseUrl}$p";
+              }
+            });
+            if (paths.isNotEmpty) logos[key] = paths;
+          } else {
+            debugPrint('[LogoRepo] ⚠️ Key "$key" value is ${value.runtimeType}, expected Map');
           }
         });
+        
+        debugPrint('[LogoRepo] ✅ Parsed ${logos.length} logos: ${logos.keys.toList()}');
+        if (logos.isNotEmpty) {
+          final first = logos.entries.first;
+          debugPrint('[LogoRepo] Sample: ${first.key} → ${first.value}');
+        }
         return logos;
+      } else {
+        debugPrint('[LogoRepo] ❌ HTTP ${response.statusCode}');
       }
     } catch (e) {
-      print("Error fetching train logos: $e");
+      debugPrint('[LogoRepo] ❌ Error: $e');
     }
     return {};
   }
