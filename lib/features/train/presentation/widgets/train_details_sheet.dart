@@ -2807,10 +2807,10 @@ class _TimelineRow extends StatelessWidget {
                               alignment: Alignment.centerLeft,
                               child: Builder(
                                 builder: (_) {
-                                  // Più il nome è lungo, più il font si rimpicciolisce (16 → 10);
+                                  // Più il nome è lungo, più il font si rimpicciolisce (16 → 9, senza limite intermedio);
                                   // il FittedBox garantisce che entri comunque su ogni schermo.
-                                  final size = (16.0 - (stop.stationName.length - 20) * 0.25).clamp(10.0, 16.0);
-                                  return Text(stop.stationName, maxLines: 1, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: size, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600), overflow: TextOverflow.ellipsis);
+                                  final size = (16.0 - (stop.stationName.length - 20) * 0.25).clamp(9.0, 16.0);
+                                  return Text(stop.stationName, maxLines: 1, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: size, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600));
                                 },
                               ),
                             ),

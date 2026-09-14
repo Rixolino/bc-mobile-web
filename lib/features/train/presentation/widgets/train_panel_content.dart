@@ -3445,11 +3445,21 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      station.name,
-                      style: TextStyle(color: theme.textColor, fontSize: 20, fontWeight: FontWeight.w900),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Builder(
+                      builder: (_) {
+                        // Più il nome è lungo, più il font si rimpicciolisce (20 → 9);
+                        // il FittedBox garantisce che entri comunque, senza "…"
+                        final size = (20.0 - (station.name.length - 20) * 0.25).clamp(9.0, 20.0);
+                        return FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            station.name,
+                            style: TextStyle(color: theme.textColor, fontSize: size, fontWeight: FontWeight.w900),
+                            maxLines: 1,
+                          ),
+                        );
+                      },
                     ),
                     Text(
                       station.country,
@@ -3850,7 +3860,9 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
     final String text = widget.isArrivalMode
         ? (widget.departure.origin ?? AppLocalizations.of(context)?.loading ?? 'Caricamento...')
         : (widget.departure.destination ?? 'N/A');
-    final style = TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: widget.theme.textColor);
+    // Più il nome è lungo, più il font si rimpicciolisce (17 → 9, senza limite intermedio)
+    final double size = (17.0 - (text.length - 20) * 0.25).clamp(9.0, 17.0);
+    final style = TextStyle(fontSize: size, fontWeight: FontWeight.bold, color: widget.theme.textColor);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -3878,7 +3890,11 @@ class _SmartTrainRouteTextState extends State<_SmartTrainRouteText> {
             ),
           );
         } else {
-          return Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis);
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(text, style: style, maxLines: 1),
+          );
         }
       },
     );
