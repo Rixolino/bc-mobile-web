@@ -24,6 +24,7 @@ import '../../../../core/services/android_background_service.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
+import '../screens/station_details_screen.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import 'dart:convert';
 
@@ -1448,27 +1449,27 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     return GestureDetector(
       onTap: () => _showProgressDialog(context, theme, trainProvider),
       child: Container(
-        width: 36,
-        height: 36,
+        width: 28,
+        height: 28,
         decoration: BoxDecoration(
           color: AppTokens.trainColor.withValues(alpha: theme.isDark ? 0.3 : 0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: AppTokens.trainColor.withValues(alpha: 0.5), width: 1.5),
+          border: Border.all(color: AppTokens.trainColor.withValues(alpha: 0.5), width: 1),
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
             SizedBox(
-              width: 24,
-              height: 24,
+              width: 20,
+              height: 20,
               child: CircularProgressIndicator(
                 value: progress,
-                strokeWidth: 3,
+                strokeWidth: 2.5,
                 backgroundColor: theme.borderColor.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(AppTokens.trainColor),
               ),
             ),
-            Icon(Icons.train_rounded, color: AppTokens.trainColor, size: 12),
+            Icon(Icons.train_rounded, color: AppTokens.trainColor, size: 10),
           ],
         ),
       ),
@@ -1476,185 +1477,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 
   void _showProgressDialog(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
-    final dep = trainProvider.departures.firstWhere(
-      (d) => (d.tripId != null && d.tripId == widget.departure.tripId) ||
-             (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
-      orElse: () => widget.departure,
-    );
-    final stops = dep.stops ?? [];
-    final origin = _getEffectiveOrigin(dep);
-    final dest = _getEffectiveDestination(dep);
-
-    // Calcola progresso
-    double progress = 0.0;
-    int currentIdx = -1;
-    bool isAtStation = false;
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      for (int i = 0; i < stops.length; i++) {
-        final arrUtc = stops[i].estimatedArrival?.toUtc() ?? stops[i].arrival?.toUtc();
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx == 0) {
-        progress = 0.0;
-      } else {
-        final prevDep = stops[currentIdx - 1].estimatedDeparture?.toUtc() ?? stops[currentIdx - 1].departure?.toUtc();
-        final nextArr = stops[currentIdx].estimatedArrival?.toUtc() ?? stops[currentIdx].arrival?.toUtc();
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
-
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: theme.surfaceColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTokens.radius2Xl)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Title
-              Text(
-                RuntimeLocalizations.t(ctx, 'progress_title') ?? 'Progresso Viaggio',
-                style: AppTextStyle.titleLarge(color: theme.textColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${dep.trainNumber ?? dep.category ?? "Treno"} - ${(progress * 100).toInt()}%',
-                style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor),
-              ),
-              const SizedBox(height: 24),
-              // Progress visualization
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: theme.backgroundColor,
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                  border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
-                ),
-                child: Column(
-                  children: [
-                    // Route with progress
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            origin,
-                            style: AppTextStyle.bodyMedium(color: theme.textColor),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            dest,
-                            style: AppTextStyle.bodyMedium(color: theme.textColor),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Progress bar
-                    SizedBox(
-                      height: 80,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Background line
-                          Container(
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: theme.borderColor.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                          // Progress line
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: progress,
-                              child: Container(
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  gradient: theme.progressGradient,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Train position indicator
-                          Align(
-                            alignment: Alignment(-1.0 + (progress * 2), 0),
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: AppTokens.trainColor,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: theme.surfaceColor, width: 4),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTokens.trainColor.withValues(alpha: 0.5),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.train_rounded,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Percentage
-                    Text(
-                      '${(progress * 100).toInt()}%',
-                      style: TextStyle(
-                        color: AppTokens.trainColor,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Close button
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(
-                  RuntimeLocalizations.t(ctx, 'close') ?? 'Chiudi',
-                  style: TextStyle(color: theme.primaryColor),
-                ),
-              ),
-            ],
-          ),
+        child: _ProgressDialogBody(
+          resolveCurrent: () => _findDisplayedDeparture() ?? _externalDep ?? widget.departure,
+          originOf: _getEffectiveOrigin,
+          destOf: _getEffectiveDestination,
         ),
       ),
     );
@@ -1783,8 +1614,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       itemCount: stops.length,
       itemBuilder: (context, index) {
         final isFuture = index > currentSegmentIndex;
+        final stop = stops[index];
+        final hasStationId = stop.id != null && stop.id!.isNotEmpty;
         return _TimelineRow(
-          stop: stops[index],
+          stop: stop,
           index: index,
           isLast: index == stops.length - 1,
           isCompleted: index < currentSegmentIndex,
@@ -1795,6 +1628,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           isFuture: isFuture,
           totalDelay: currentDep.delayMinutes ?? 0,
           theme: theme,
+          onStationTap: hasStationId ? () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (ctx) => StationDetailsScreen(
+                  stationId: stop.id!,
+                  country: stop.country.isNotEmpty ? stop.country : (currentDep.country.isNotEmpty ? currentDep.country : 'IT'),
+                  stationName: stop.stationName,
+                ),
+              ),
+            );
+          } : null,
         );
       },
     );
@@ -2447,18 +2291,18 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.2), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -2612,6 +2456,217 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 }
 
+class _ProgressDialogBody extends StatefulWidget {
+  final TrainDeparture Function() resolveCurrent;
+  final String Function(TrainDeparture) originOf;
+  final String Function(TrainDeparture) destOf;
+
+  const _ProgressDialogBody({
+    required this.resolveCurrent,
+    required this.originOf,
+    required this.destOf,
+  });
+
+  @override
+  State<_ProgressDialogBody> createState() => _ProgressDialogBodyState();
+}
+
+class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
+    // Rebuild anche quando il provider aggiorna partenze/ritardi
+    context.watch<TrainProvider>();
+
+    final dep = widget.resolveCurrent();
+    final stops = dep.stops ?? [];
+    final origin = widget.originOf(dep);
+    final dest = widget.destOf(dep);
+
+    // Calcola progresso (stessa logica del bottone header)
+    double progress = 0.0;
+    if (stops.isNotEmpty) {
+      final DateTime nowUtc = DateTime.now().toUtc();
+      int currentIdx = -1;
+      for (int i = 0; i < stops.length; i++) {
+        final arrUtc = stops[i].estimatedArrival?.toUtc() ?? stops[i].arrival?.toUtc();
+        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
+          currentIdx = i;
+          break;
+        }
+      }
+      if (currentIdx == -1) {
+        progress = 1.0;
+      } else if (currentIdx == 0) {
+        progress = 0.0;
+      } else {
+        final prevDep = stops[currentIdx - 1].estimatedDeparture?.toUtc() ?? stops[currentIdx - 1].departure?.toUtc();
+        final nextArr = stops[currentIdx].estimatedArrival?.toUtc() ?? stops[currentIdx].arrival?.toUtc();
+        if (prevDep != null && nextArr != null) {
+          final totalDuration = nextArr.difference(prevDep).inSeconds;
+          final elapsed = nowUtc.difference(prevDep).inSeconds;
+          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
+          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
+        } else {
+          progress = currentIdx / (stops.length - 1);
+        }
+      }
+      progress = progress.clamp(0.0, 1.0);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Title
+          Text(
+            RuntimeLocalizations.t(context, 'progress_title', fallback: 'Progresso Viaggio'),
+            style: AppTextStyle.titleLarge(color: theme.textColor),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${dep.trainNumber ?? dep.category ?? "Treno"} - ${(progress * 100).toInt()}%',
+            style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor),
+          ),
+          const SizedBox(height: 24),
+          // Progress visualization
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: theme.backgroundColor,
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
+            ),
+            child: Column(
+              children: [
+                // Route with progress
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        origin,
+                        style: AppTextStyle.bodyMedium(color: theme.textColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        dest,
+                        style: AppTextStyle.bodyMedium(color: theme.textColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Progress bar
+                SizedBox(
+                  height: 80,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Background line
+                      Container(
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: theme.borderColor.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      // Progress line
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: progress,
+                          child: Container(
+                            height: 12,
+                            decoration: BoxDecoration(
+                              gradient: theme.progressGradient,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Train position indicator
+                      Align(
+                        alignment: Alignment(-1.0 + (progress * 2), 0),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppTokens.trainColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.surfaceColor, width: 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTokens.trainColor.withValues(alpha: 0.5),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.train_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Percentage
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: const TextStyle(
+                    color: AppTokens.trainColor,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Close button
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              RuntimeLocalizations.t(context, 'close', fallback: 'Chiudi'),
+              style: TextStyle(color: theme.primaryColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TimelineRow extends StatelessWidget {
   final TrainStop stop;
   final int index;
@@ -2624,12 +2679,14 @@ class _TimelineRow extends StatelessWidget {
   final bool isFuture;
   final int totalDelay;
   final ThemeProvider theme;
+  final VoidCallback? onStationTap;
 
   const _TimelineRow({
     required this.stop, required this.index, required this.isLast, 
     required this.isCompleted, required this.isTraversing, 
     required this.isActiveStop, required this.progress, required this.timeFormatter,
     required this.isFuture, required this.totalDelay, required this.theme,
+    this.onStationTap,
   });
 
   @override
@@ -2668,7 +2725,29 @@ class _TimelineRow extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(children: [
                     Expanded(
-                      child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(stop.stationName, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: 16, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600), overflow: TextOverflow.ellipsis),
+                          ),
+                          if (onStationTap != null)
+                            GestureDetector(
+                              onTap: onStationTap,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Container(
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: theme.primaryColor.withOpacity(0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.train_rounded, size: 14, color: theme.primaryColor),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                         if (stop.cancelled)
                       Container(
