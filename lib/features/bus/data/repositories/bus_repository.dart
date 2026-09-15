@@ -82,7 +82,13 @@ class BusRepository {
 
   Future<List<BusVehicle>> fetchVehicles(BusProviderConfig provider) async {
     try {
-      final response = await http.get(Uri.parse(provider.gpsUrl ?? ''));
+      final rawUrl = provider.gpsUrl ?? '';
+      // Su web i gps_url esterni (es. AMTAB, GTT, TPER) sono bloccati dal
+      // browser (CORS assente / mixed-content): si passa dal proxy backend.
+      final url = (kIsWeb && rawUrl.isNotEmpty && !rawUrl.startsWith(ApiConstants.baseUrl))
+          ? '${ApiConstants.baseUrl}/api/${_countryFromProviderConfig(provider)}/bus/${provider.name}/vehicles'
+          : rawUrl;
+      final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
