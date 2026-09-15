@@ -7,7 +7,7 @@ import '../../data/repositories/train_repository.dart';
 import '../../../../core/api_constants.dart';
 import '../../../../core/services/offline_sync_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:libsql_dart/libsql_dart.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
+import '../../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 
 class TrainProvider with ChangeNotifier {
   final TrainRepository _repository = TrainRepository();

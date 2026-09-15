@@ -9,6 +9,7 @@ class SessionService {
   static const String _sessionPrefix = 'user_session_';
   static const String _sessionDataKey = '${_sessionPrefix}data';
   static const String _sessionTimestampKey = '${_sessionPrefix}timestamp';
+  static const String _authTokenKey = '${_sessionPrefix}auth_token';
 
   /// Salva la sessione utente offline
   static Future<void> saveSession(User user) async {
@@ -60,16 +61,38 @@ class SessionService {
     }
   }
 
-  /// Cancella la sessione utente offline
+  /// Cancella la sessione utente offline (incluso l'auth token)
   static Future<void> clearSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_sessionDataKey);
       await prefs.remove(_sessionTimestampKey);
-      
+      await prefs.remove(_authTokenKey);
+
       debugPrint('[SessionService] Sessione cancellata');
     } catch (e) {
       debugPrint('[SessionService] Errore nel cancellamento sessione: $e');
+    }
+  }
+
+  /// Salva il token di autenticazione del backend (serve alle API protette su web)
+  static Future<void> saveAuthToken(String token) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_authTokenKey, token);
+    } catch (e) {
+      debugPrint('[SessionService] Errore nel salvataggio token: $e');
+    }
+  }
+
+  /// Carica il token di autenticazione salvato, null se assente
+  static Future<String?> loadAuthToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_authTokenKey);
+      return (token != null && token.isNotEmpty) ? token : null;
+    } catch (e) {
+      return null;
     }
   }
 

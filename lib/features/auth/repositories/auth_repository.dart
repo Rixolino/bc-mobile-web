@@ -1,5 +1,9 @@
 import '../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 import 'package:bcrypt/bcrypt.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../../../core/api_constants.dart';
 import '../models/user.dart';
 import '../../../core/services/session_service.dart';
 
@@ -49,7 +53,25 @@ class AuthRepository {
     print('Users table created/verified in Turso');
   }
 
+  String get _authBase => '${ApiConstants.baseUrl}/api/auth';
+
+  /// Costruisce uno User dalla risposta JSON del server
+  /// (che non include mai l'hash della password).
+  User _userFromApi(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] is int ? json['id'] : int.tryParse('${json['id']}'),
+      email: '${json['email'] ?? ''}',
+      password: '',
+      nickname: json['nickname']?.toString(),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse('${json['created_at']}')
+          : null,
+    );
+  }
+
   Future<User?> login(String email, String password) async {
+    // Su web libsql non è disponibile: si usa l'API HTTP del backend.
+    if (kIsWeb) return _loginViaApi(email, password);
     try {
       print('Starting login for email: $email');
       final client = await _getClient();
@@ -87,7 +109,40 @@ class AuthRepository {
     }
   }
 
+  /// Login via API HTTP (usato su web dove libsql non è disponibile).
+  Future<User?> _loginViaApi(String email, String password) async {
+    try {
+      print('Starting login via API for email: $email');
+      final response = await http.post(
+        Uri.parse('$_authBase/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email.trim(), 'password': password}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final userJson = data['user'];
+        if (userJson is Map<String, dynamic>) {
+          final user = _userFromApi(userJson);
+          print('Login successful via API for user: $email');
+          await SessionService.saveSession(user);
+          final token = data['token']?.toString();
+          if (token != null && token.isNotEmpty) {
+            await SessionService.saveAuthToken(token);
+          }
+          return user;
+        }
+      }
+      print('Login via API failed: ${response.statusCode} ${response.body}');
+      return null;
+    } catch (e) {
+      print('Login via API error: $e');
+      return null;
+    }
+  }
+
   Future<User?> register(String email, String password, String nickname) async {
+    // Su web libsql non è disponibile: si usa l'API HTTP del backend.
+    if (kIsWeb) return _registerViaApi(email, password, nickname);
     try {
       print('Starting registration for email: $email');
 
@@ -140,7 +195,42 @@ class AuthRepository {
     }
   }
 
+  /// Registrazione via API HTTP (usata su web dove libsql non è disponibile).
+  Future<User?> _registerViaApi(
+      String email, String password, String nickname) async {
+    print('Starting registration via API for email: $email');
+    final response = await http.post(
+      Uri.parse('$_authBase/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(
+          {'email': email.trim(), 'password': password, 'nickname': nickname}),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final userJson = data['user'];
+      if (userJson is Map<String, dynamic>) {
+        final user = _userFromApi(userJson);
+        print('Registration successful via API for user: $email');
+        final token = data['token']?.toString();
+        if (token != null && token.isNotEmpty) {
+          await SessionService.saveAuthToken(token);
+        }
+        return user;
+      }
+      throw Exception('Failed to retrieve created user');
+    }
+    if (response.statusCode == 409) {
+      throw Exception('Email già registrata');
+    }
+    print(
+        'Registration via API failed: ${response.statusCode} ${response.body}');
+    throw Exception('Registrazione fallita (${response.statusCode})');
+  }
+
   Future<bool> checkEmailExists(String email) async {
+    // Su web non c'è un endpoint dedicato: il conflitto viene rilevato
+    // dalla registrazione (409 Email già registrata).
+    if (kIsWeb) return false;
     try {
       print('Checking if email exists: $email');
       final client = await _getClient();
@@ -162,6 +252,9 @@ class AuthRepository {
   }
 
   Future<User?> getUserById(int id) async {
+    // Su web la sessione viene ripristinata da SessionService
+    // (SharedPreferences); il lookup diretto richiede libsql.
+    if (kIsWeb) return null;
     try {
       print('Getting user by ID: $id');
       final client = await _getClient();
