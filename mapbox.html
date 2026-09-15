@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BC Transporter Map</title>
+    
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css' rel='stylesheet' />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .mapboxgl-popup-content {
+            background: #1c1c1e;
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        
+        .mapboxgl-popup-close-button {
+            color: #aeaeb2;
+        }
+        
+        .mapboxgl-popup-close-button:hover {
+            color: #ffffff;
+        }
+        
+        .popup-info {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .popup-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        .popup-detail {
+            font-size: 12px;
+            color: #aeaeb2;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <script>
+        // Mapbox Token (stesso di HTML Bari Bus)
+        mapboxgl.accessToken = 'pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g';
+        
+        // Inizializza mappa
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [12.4964, 41.9028], // Rome
+            zoom: 6,
+            projection: 'mercator'
+        });
+        
+        // Store per marker
+        let busMarkers = {};
+        let planeMarkers = {};
+        
+        // Funzione per aggiungere/aggiornare marker bus
+        window.updateBusMarkers = function(busesJSON) {
+            try {
+                const buses = JSON.parse(busesJSON);
+                
+                // Rimuovi marker bus vecchi che non sono più nei dati
+                const currentBusIds = new Set(buses.map(b => b.id));
+                Object.keys(busMarkers).forEach(busId => {
+                    if (!currentBusIds.has(busId)) {
+                        busMarkers[busId].remove();
+                        delete busMarkers[busId];
+                    }
+                });
+                
+                // Aggiungi/aggiorna marker bus
+                buses.forEach(bus => {
+                    if (bus.latitude === 0 || bus.longitude === 0) return;
+                    
+                    const busId = bus.id;
+                    const el = document.createElement('div');
+                    el.style.width = '36px';
+                    el.style.height = '36px';
+                    el.style.backgroundImage = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27%23FF9500%27%3E%3Cpath d=%27M18 18.5a1.5 1.5 0 0 1-1.5-1.5 1.5 1.5 0 0 1 1.5-1.5 1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5M16.5 6h-9a1.5 1.5 0 0 0-1.5 1.5v10h2a2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5h5V7.5a1.5 1.5 0 0 0-1.5-1.5M6 18.5a1.5 1.5 0 0 1-1.5-1.5 1.5 1.5 0 0 1 1.5-1.5 1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5M17 10.5h-10v-2h10v2z%27/%3E%3C/svg%3E")';
+                    el.style.backgroundSize = 'contain';
+                    el.style.backgroundRepeat = 'no-repeat';
+                    el.style.backgroundPosition = 'center';
+                    el.style.cursor = 'pointer';
+                    
+                    // Popup
+                    const popup = new mapboxgl.Popup({ offset: 25 })
+                        .setHTML(`
+                            <div class="popup-info">
+                                <div class="popup-title">🚌 Linea ${bus.line}</div>
+                                <div class="popup-detail">Velocità: ${Math.round(bus.speed || 0)} km/h</div>
+                            </div>
+                        `);
+                    
+                    // Update marker esistente o crea nuovo
+                    if (busMarkers[busId]) {
+                        busMarkers[busId].setLngLat([bus.longitude, bus.latitude]);
+                    } else {
+                        const marker = new mapboxgl.Marker({ element: el })
+                            .setLngLat([bus.longitude, bus.latitude])
+                            .setPopup(popup)
+                            .addTo(map);
+                        busMarkers[busId] = marker;
+                    }
+                    
+                    el.addEventListener('click', () => {
+                        // Invia evento a Flutter
+                        window.flutterChannel?.postMessage('bus_selected:' + busId);
+                    });
+                });
+            } catch (e) {
+                console.error('Error updating bus markers:', e);
+            }
+        };
+        
+        // Funzione per aggiungere/aggiornare marker aerei
+        window.updatePlaneMarkers = function(planesJSON) {
+            try {
+                const planes = JSON.parse(planesJSON);
+                
+                // Rimuovi marker aerei vecchi
+                const currentPlaneIds = new Set(planes.map(p => p.id));
+                Object.keys(planeMarkers).forEach(planeId => {
+                    if (!currentPlaneIds.has(planeId)) {
+                        planeMarkers[planeId].remove();
+                        delete planeMarkers[planeId];
+                    }
+                });
+                
+                // Aggiungi/aggiorna marker aerei
+                planes.forEach(plane => {
+                    if (plane.latitude === 0 || plane.longitude === 0) return;
+                    
+                    const planeId = plane.id;
+                    const el = document.createElement('div');
+                    el.style.width = '32px';
+                    el.style.height = '32px';
+                    el.style.backgroundImage = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27%23FFEB3B%27%3E%3Cpath d=%27M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5v2.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-2.5l8 2.5z%27/%3E%3C/svg%3E")';
+                    el.style.backgroundSize = 'contain';
+                    el.style.backgroundRepeat = 'no-repeat';
+                    el.style.backgroundPosition = 'center';
+                    el.style.cursor = 'pointer';
+                    
+                    // Ruota l'aereo in base all'heading
+                    if (plane.heading) {
+                        el.style.transform = `rotate(${plane.heading}deg)`;
+                    }
+                    
+                    // Popup
+                    const popup = new mapboxgl.Popup({ offset: 25 })
+                        .setHTML(`
+                            <div class="popup-info">
+                                <div class="popup-title">✈️ ${plane.callsign || 'N/A'}</div>
+                                <div class="popup-detail">Altitudine: ${Math.round(plane.altitude || 0)} m</div>
+                                <div class="popup-detail">Velocità: ${Math.round(plane.speed || 0)} km/h</div>
+                            </div>
+                        `);
+                    
+                    // Update marker
+                    if (planeMarkers[planeId]) {
+                        planeMarkers[planeId].setLngLat([plane.longitude, plane.latitude]);
+                    } else {
+                        const marker = new mapboxgl.Marker({ element: el })
+                            .setLngLat([plane.longitude, plane.latitude])
+                            .setPopup(popup)
+                            .addTo(map);
+                        planeMarkers[planeId] = marker;
+                    }
+                    
+                    el.addEventListener('click', () => {
+                        window.flutterChannel?.postMessage('plane_selected:' + planeId);
+                    });
+                });
+            } catch (e) {
+                console.error('Error updating plane markers:', e);
+            }
+        };
+        
+        // Funzione per centrare mappa
+        window.centerMap = function(lng, lat, zoom) {
+            map.flyTo({
+                center: [parseFloat(lng), parseFloat(lat)],
+                zoom: parseFloat(zoom) || 12,
+                duration: 1000
+            });
+        };
+        
+        // Funzione per aggiungere layer per rotte (opzionale)
+        window.addRouteLayer = function(coordinatesJSON) {
+            try {
+                const coordinates = JSON.parse(coordinatesJSON);
+                
+                if (map.getSource('route')) {
+                    map.removeLayer('route');
+                    map.removeSource('route');
+                }
+                
+                map.addSource('route', {
+                    type: 'geojson',
+                    data: {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: coordinates
+                        }
+                    }
+                });
+                
+                map.addLayer({
+                    id: 'route',
+                    type: 'line',
+                    source: 'route',
+                    layout: {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    paint: {
+                        'line-color': '#0A84FF',
+                        'line-width': 3
+                    }
+                });
+            } catch (e) {
+                console.error('Error adding route layer:', e);
+            }
+        };
+        
+        // Utility: cambia lo stile della mappa a runtime.
+        // Chiamalo da Flutter con `webviewController.runJavascript(
+        //   "setMapStyle('mapbox://styles/mapbox/streets-v11')");`
+        // I link di stile ufficiali Mapbox (v3+) includono:
+        //   mapbox://styles/mapbox/streets-v11
+        //   mapbox://styles/mapbox/outdoors-v11
+        //   mapbox://styles/mapbox/light-v10
+        //   mapbox://styles/mapbox/dark-v10
+        //   mapbox://styles/mapbox/satellite-v9
+        //   mapbox://styles/mapbox/satellite-streets-v11
+        //   mapbox://styles/mapbox/navigation-day-v1
+        //   mapbox://styles/mapbox/navigation-night-v1
+        // Puoi anche usare uno stile personalizzato creato su Mapbox Studio
+        // (dal sito https://studio.mapbox.com/styles) oppure un url HTTP
+        // valido per uno stile JSON.
+        window.setMapStyle = function(styleUrl) {
+            try {
+                map.setStyle(styleUrl);
+            } catch (e) {
+                console.error('Failed to set map style:', e);
+            }
+        };
+
+        // Segnala a Flutter che mappa è pronta
+        map.on('load', () => {
+            if (window.flutterChannel) {
+                window.flutterChannel.postMessage('map_ready');
+            }
+        });
+    </script>
+</body>
+</html>

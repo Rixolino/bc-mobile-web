@@ -1,0 +1,3 @@
+.vercel/
+.env.local
+.last_build_id
