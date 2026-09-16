@@ -8,6 +8,7 @@ class RegionalProvider {
   final String webPath;
   final Coordinates? coordinates;
   final ProviderEndpoints endpoints;
+  final ProviderShareInfo share;
 
   RegionalProvider({
     required this.name,
@@ -19,6 +20,7 @@ class RegionalProvider {
     required this.webPath,
     this.coordinates,
     required this.endpoints,
+    required this.share,
   });
 
   factory RegionalProvider.fromJson(Map<String, dynamic> json) {
@@ -34,6 +36,7 @@ class RegionalProvider {
           ? Coordinates.fromJson(json['coordinates'])
           : null,
       endpoints: ProviderEndpoints.fromJson(json['endpoints'] ?? {}),
+      share: ProviderShareInfo.fromJson(json['share'] ?? {}),
     );
   }
 
@@ -48,11 +51,49 @@ class RegionalProvider {
       'web_path': webPath,
       'coordinates': coordinates?.toJson(),
       'endpoints': endpoints.toJson(),
+      'share': share.toJson(),
     };
   }
 
   String get fullApiUrl => 'https://betacloud-transporter.is-cool.dev/api/$apiPrefix';
   String get fullWebUrl => 'https://betacloud-transporter.is-cool.dev/$webPath';
+}
+
+/// Nuova colonna "share" del backend: identifica il provider nelle
+/// condivisioni e gestisce l'apertura dei link nell'app.
+class ProviderShareInfo {
+  /// Chiave stabile del provider (es. "trenord"), salvata nello snapshot
+  /// condiviso come campo `regionalProvider`.
+  final String key;
+
+  /// Nome del provider da scrivere nei messaggi di condivisione.
+  final String providerName;
+
+  /// Deep link del provider (es. bctransporter://regional/it/trenord).
+  final String deepLink;
+
+  ProviderShareInfo({
+    required this.key,
+    required this.providerName,
+    required this.deepLink,
+  });
+
+  factory ProviderShareInfo.fromJson(Map<String, dynamic> json) {
+    final map = Map<String, dynamic>.from(json);
+    return ProviderShareInfo(
+      key: map['key']?.toString() ?? '',
+      providerName: map['providerName']?.toString() ?? '',
+      deepLink: map['deepLink']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'key': key,
+      'providerName': providerName,
+      'deepLink': deepLink,
+    };
+  }
 }
 
 class Coordinates {

@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 import '../../data/models/regional_provider_model.dart';
 import '../screens/regional_station_details_screen.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../presentation/providers/theme_provider.dart';
+import '../../../../core/api_constants.dart';
 import '../../../../core/design_system.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import 'dart:convert';
@@ -106,6 +108,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   bool _fetchAttempted = false;
   bool _hasLoadedData = false;
   String? _error;
+  bool _isSharing = false;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -320,6 +323,100 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     });
     _fetchTimeoutTimer?.cancel();
     _fetchTripDetails();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Condivisione treno (stesso algoritmo di TrainProvider.shareTripLink +
+  // TrainRepository.shareTrip: snapshot sul server -> URL pubblico /share/?id=)
+  // ---------------------------------------------------------------------------
+
+  String _isoTime(dynamic raw) {
+    final dt = _parseRegionalTime(raw);
+    if (dt == null) return '';
+    return dt.toIso8601String();
+  }
+
+  /// Copia di shareTripLink: salva uno snapshot della corsa sul server
+  /// (POST /api/share-trip) e restituisce l'URL pubblico di condivisione.
+  Future<String?> _shareTripLink() async {
+    try {
+      final current = _current;
+      final meta = current['metadata'] is Map ? Map<String, dynamic>.from(current['metadata'] as Map) : <String, dynamic>{};
+      final origin = current['origin'];
+      final originMap = origin is Map ? Map<String, dynamic>.from(origin) : <String, dynamic>{};
+      debugPrint('[RegionalTrip] Sharing trip $_category $_trainNumber...');
+      // Colonna "share" del backend: chiave stabile per ritrovare il provider
+      // all'apertura del link + nome da scrivere nella condivisione.
+      final shareKey = widget.provider.share.key.isNotEmpty
+          ? widget.provider.share.key
+          : widget.provider.name;
+      final payload = {
+        'tripId': _tripId,
+        'country': widget.provider.country,
+        'category': _category,
+        'tripNumber': _trainNumber,
+        'origin': _getEffectiveOrigin(current),
+        'destination': _getEffectiveDestination(current),
+        'operator': _asStr(meta['operator'] ?? meta['company'] ?? current['operator'] ?? widget.provider.provider),
+        'regionalProvider': shareKey,
+        'platform': _asStr(current['platform'] ?? originMap['platform']),
+        'delay': _delay,
+        'scheduledTime': _isoTime(current['scheduledTime'] ?? originMap['scheduledTime']),
+        'estimatedTime': _isoTime(current['estimatedTime'] ?? originMap['estimatedTime']),
+        'stops': _stops.map((s) {
+          final j = Map<String, dynamic>.from(s);
+          if ((j['country'] ?? '').toString().isEmpty && widget.provider.country.isNotEmpty) {
+            j['country'] = widget.provider.country;
+          }
+          return j;
+        }).toList(),
+      };
+      final url = '${ApiConstants.baseUrl}/api/share-trip';
+      debugPrint('[RegionalShare] POST $url');
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: json.encode(payload),
+      );
+      debugPrint('[RegionalShare] Status: ${response.statusCode}');
+      if (response.statusCode != 200) return null;
+      final Map<String, dynamic> data = json.decode(response.body);
+      final shareId = data['shareId']?.toString();
+      if (shareId == null || shareId.isEmpty) return null;
+      final shareUrl = '${ApiConstants.baseUrl}/share/?id=$shareId';
+      debugPrint('[RegionalTrip] Share URL: $shareUrl');
+      return shareUrl;
+    } catch (e) {
+      debugPrint('[RegionalTrip] Share error: $e');
+      return null;
+    }
+  }
+
+  /// Stesso flusso del chip Condividi dell'originale: snapshot -> URL -> Share.
+  Future<void> _shareTrip(ThemeProvider theme) async {
+    setState(() => _isSharing = true);
+    try {
+      final url = await _shareTripLink();
+      if (!mounted) return;
+      if (url == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(RuntimeLocalizations.t(context, 'share_failed', fallback: 'Condivisione non riuscita, riprova')),
+            backgroundColor: theme.errorColor,
+          ),
+        );
+        return;
+      }
+      final cat = _category;
+      final num = _trainNumber;
+      final providerName = widget.provider.share.providerName.isNotEmpty
+          ? widget.provider.share.providerName
+          : widget.provider.provider;
+      final msg = "${RuntimeLocalizations.t(context, 'share_trip_msg', fallback: 'Segui il mio viaggio live')}: $providerName $cat $num\n$url";
+      await SharePlus.instance.share(ShareParams(text: msg, subject: '$providerName $cat $num'.trim()));
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -584,6 +681,12 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             RuntimeLocalizations.t(context, 'update') ?? 'Aggiorna',
             theme,
             _refreshTrainDetails,
+          ),
+          _buildInfoChip(
+            _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
+            RuntimeLocalizations.t(context, 'share_trip', fallback: 'Condividi'),
+            theme,
+            _isSharing ? null : () => _shareTrip(theme),
           ),
           _buildInfoChip(
             _autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded,

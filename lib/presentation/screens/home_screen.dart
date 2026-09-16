@@ -1,10 +1,16 @@
 import 'dart:ui';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:glassmorphism/glassmorphism.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:app_links/app_links.dart';
 import '../../features/train/presentation/widgets/train_details_sheet.dart';
+import '../../features/train/presentation/widgets/regional_train_details_sheet.dart';
+import '../../features/train/data/models/regional_provider_model.dart';
+import '../../features/train/data/repositories/regional_providers_repository.dart';
+import '../../core/api_constants.dart';
 import '../providers/config_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_page.dart';
@@ -91,8 +97,50 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _handleDeepLink(Uri uri) async {
-    // Accetta solo https://betacloud-transporter.is-cool.dev/share/?id=...
+  /// Snapshot condiviso marcato come regionale (campo `regionalProvider`
+  /// = colonna "share.key" del backend)? Risolve il provider e apre il
+  /// details sheet regionale. Ritorna true se il link e stato gestito
+  /// (il loader e gia mostrato dal chiamante e viene chiuso qui).
+  Future<bool> _openRegionalSharedTrip(String id) async {
+    try {
+      final resp = await http
+          .get(Uri.parse('${ApiConstants.baseUrl}/api/share-trip/${Uri.encodeComponent(id)}'))
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return false;
+      final decoded = json.decode(resp.body);
+      if (decoded is! Map<String, dynamic>) return false;
+      final marker = decoded['regionalProvider']?.toString().trim() ?? '';
+      if (marker.isEmpty) return false;
+      final tripId = decoded['tripId']?.toString().trim() ?? '';
+      if (tripId.isEmpty) return false;
+      final rawCountry = decoded['country']?.toString().trim() ?? '';
+      final country = rawCountry.isNotEmpty ? rawCountry : 'it';
+      final providers = await RegionalProvidersRepository().fetchProviders(country);
+      RegionalProvider? match;
+      for (final p in providers) {
+        if (p.share.key == marker || p.name == marker || p.provider == marker) {
+          match = p;
+          break;
+        }
+      }
+      if (match == null || !mounted) return match != null;
+      Navigator.of(context).pop(); // chiudi loader
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RegionalTrainDetailsSheet(
+            provider: match!,
+            tripId: tripId,
+            trainNumber: decoded['tripNumber']?.toString(),
+          ),
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {    // Accetta solo https://betacloud-transporter.is-cool.dev/share/?id=...
     if (uri.scheme != 'https') return;
     if (uri.host != 'betacloud-transporter.is-cool.dev') return;
     if (!uri.path.startsWith('/share')) return;
@@ -108,6 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
     try {
+      // Snapshot con marcatura regionale (colonna "share" del backend)?
+      // Se si, apri il details sheet regionale invece di quello nazionale.
+      if (await _openRegionalSharedTrip(id)) return;
       final trainProvider =
           Provider.of<TrainProvider>(context, listen: false);
       var dep = await trainProvider.fetchSharedDeparture(id);
