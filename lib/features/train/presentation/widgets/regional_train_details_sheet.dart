@@ -45,16 +45,26 @@ DateTime? _parseRegionalTime(dynamic raw) {
 /// Equivalente di _estimateStopTimesGlobal dell'originale ma su Map.
 /// Risolve arrivo/partenza effettivi: stimati prima, poi programmati + ritardo.
 /// Se uno dei due manca lo sintetizza dall'altro (+/- 1 minuto).
-Map<String, DateTime?> _estimateRegionalStopTimes(Map<String, dynamic> s, int trainDelay) {
-  final schedArr = _parseRegionalTime(s['scheduledArrival'] ?? s['scheduledTime']);
-  final schedDep = _parseRegionalTime(s['scheduledDeparture'] ?? s['scheduledTime']);
+Map<String, DateTime?> _estimateRegionalStopTimes(
+    Map<String, dynamic> s, int trainDelay) {
+  final schedArr =
+      _parseRegionalTime(s['scheduledArrival'] ?? s['scheduledTime']);
+  final schedDep =
+      _parseRegionalTime(s['scheduledDeparture'] ?? s['scheduledTime']);
   final estArr = _parseRegionalTime(s['estimatedArrival']);
   final estDep = _parseRegionalTime(s['estimatedDeparture']);
 
-  DateTime? arr = estArr?.toUtc() ?? (schedArr != null ? schedArr.toUtc().add(Duration(minutes: trainDelay)) : null);
-  DateTime? dep = estDep?.toUtc() ?? (schedDep != null ? schedDep.toUtc().add(Duration(minutes: trainDelay)) : null);
+  DateTime? arr = estArr?.toUtc() ??
+      (schedArr != null
+          ? schedArr.toUtc().add(Duration(minutes: trainDelay))
+          : null);
+  DateTime? dep = estDep?.toUtc() ??
+      (schedDep != null
+          ? schedDep.toUtc().add(Duration(minutes: trainDelay))
+          : null);
 
-  if (arr == null && dep != null) arr = dep.subtract(const Duration(minutes: 1));
+  if (arr == null && dep != null)
+    arr = dep.subtract(const Duration(minutes: 1));
   if (dep == null && arr != null) dep = arr.add(const Duration(minutes: 1));
 
   return {'arr': arr, 'dep': dep};
@@ -102,7 +112,8 @@ class RegionalTrainDetailsSheet extends StatefulWidget {
   });
 
   @override
-  State<RegionalTrainDetailsSheet> createState() => _RegionalTrainDetailsSheetState();
+  State<RegionalTrainDetailsSheet> createState() =>
+      _RegionalTrainDetailsSheetState();
 }
 
 class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
@@ -174,13 +185,20 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
   String get _trainNumber {
     final t = _current;
-    final meta = t['metadata'] is Map ? Map<String, dynamic>.from(t['metadata'] as Map) : <String, dynamic>{};
-    return _asStr(t['tripNumber'] ?? t['trainNumber'] ?? meta['numeroTreno'] ?? meta['codiceTrasporto'] ?? widget.trainNumber);
+    final meta = t['metadata'] is Map
+        ? Map<String, dynamic>.from(t['metadata'] as Map)
+        : <String, dynamic>{};
+    return _asStr(t['tripNumber'] ??
+        t['trainNumber'] ??
+        meta['numeroTreno'] ??
+        meta['codiceTrasporto'] ??
+        widget.trainNumber);
   }
 
   String get _category {
     final t = _current;
-    return _asStr(t['category'] ?? t['operator'] ?? widget.provider.provider).isNotEmpty
+    return _asStr(t['category'] ?? t['operator'] ?? widget.provider.provider)
+            .isNotEmpty
         ? _asStr(t['category'] ?? t['operator'] ?? widget.provider.provider)
         : 'TRN';
   }
@@ -191,7 +209,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   String _getEffectiveOrigin(Map<String, dynamic> d) {
     final stops = d['stops'];
     if (stops is List && stops.isNotEmpty) {
-      final maps = stops.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      final maps = stops
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
       try {
         final firstValid = maps.firstWhere((s) => s['cancelled'] != true);
         final n = _asStr(firstValid['stationName']);
@@ -215,7 +236,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   String _getEffectiveDestination(Map<String, dynamic> d) {
     final stops = d['stops'];
     if (stops is List && stops.isNotEmpty) {
-      final maps = stops.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      final maps = stops
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
       try {
         final lastValid = maps.lastWhere((s) => s['cancelled'] != true);
         final n = _asStr(lastValid['stationName']);
@@ -277,7 +301,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     try {
       for (final url in candidates) {
         debugPrint('[RegionalTrip] Fetching: $url');
-        final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+        final resp =
+            await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
         if (resp.statusCode != 200) continue;
         final decoded = json.decode(resp.body);
         if (decoded is! Map<String, dynamic>) continue;
@@ -289,13 +314,15 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         }
         if (trip is Map) {
           final tripMap = Map<String, dynamic>.from(trip);
-          final freshStops = tripMap['stops'] is List ? (tripMap['stops'] as List).length : 0;
+          final freshStops =
+              tripMap['stops'] is List ? (tripMap['stops'] as List).length : 0;
           _fetchTimeoutTimer?.cancel();
           if (!mounted) return;
           if (freshStops == 0 && _stops.isNotEmpty) {
             // Il treno e sparito dall'upstream (risposta senza fermate):
             // non sovrascrivere mai i dati gia caricati col vuoto.
-            debugPrint('[RegionalTrip] Trip $_tripId senza fermate, tengo i dati esistenti');
+            debugPrint(
+                '[RegionalTrip] Trip $_tripId senza fermate, tengo i dati esistenti');
             setState(() {
               _isLoading = false;
               _hasLoadedData = true;
@@ -303,7 +330,17 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             });
           } else {
             setState(() {
-              _tripData = tripMap;
+              _tripData = {
+                ...tripMap,
+                'delay': _current['delay'] ??
+                    _current['delayMinutes'] ??
+                    tripMap['delay'] ??
+                    tripMap['delayMinutes'],
+                'delayMinutes': _current['delayMinutes'] ??
+                    _current['delay'] ??
+                    tripMap['delayMinutes'] ??
+                    tripMap['delay']
+              };
               _isLoading = false;
               _hasLoadedData = true;
               _error = null;
@@ -360,7 +397,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       if (s['cancelled'] == true) continue;
       final times = _estimateRegionalStopTimes(s, _delay);
       final depTime = times['dep'];
-      if (depTime != null && depTime.isBefore(nowUtc.subtract(const Duration(minutes: 2)))) {
+      if (depTime != null &&
+          depTime.isBefore(nowUtc.subtract(const Duration(minutes: 2)))) {
         continue; // già passata
       }
       if (_asStr(s['stationId'] ?? s['id']).isEmpty) continue;
@@ -368,7 +406,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     // Se risultano tutte passate (treno in arrivo), prova comunque le ultime
     if (indices.isEmpty) {
-      for (int i = stops.length - 1; i >= 0 && indices.length < maxStations; i--) {
+      for (int i = stops.length - 1;
+          i >= 0 && indices.length < maxStations;
+          i--) {
         if (stops[i]['cancelled'] == true) continue;
         if (_asStr(stops[i]['stationId'] ?? stops[i]['id']).isEmpty) continue;
         indices.insert(0, i);
@@ -388,77 +428,109 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         .map((s) => _asStr(s['stationName']))
         .where((n) => n.isNotEmpty)
         .toList();
-    debugPrint('[RegionalDelay] Treno $tripNumber (delay attuale $_delay): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
+    debugPrint(
+        '[RegionalDelay] Treno $tripNumber (delay attuale $_delay): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
 
     for (final i in indices) {
       final stop = stops[i];
       final stationId = _asStr(stop['stationId'] ?? stop['id']);
-      // Ultima fermata della tratta -> tabellone arrivi, le altre -> partenze
-      final mode = i == stops.length - 1 ? 'arrivals' : 'departures';
+      final modes =
+          i == stops.length - 1 ? ['arrivals'] : ['departures', 'arrivals'];
+      bool matchFound = false;
 
-      List<Map<String, dynamic>> board;
-      try {
-        final url = '$_baseUrl/$mode?stationId=${Uri.encodeComponent(stationId)}';
-        debugPrint('[RegionalDelay] Fetch $mode stazione ${_asStr(stop['stationName'])} ($stationId): $url');
-        final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
-        if (resp.statusCode != 200) {
-          debugPrint('[RegionalDelay] HTTP ${resp.statusCode} da $stationId, passo alla prossima');
+      for (final mode in modes) {
+        List<Map<String, dynamic>> board;
+        try {
+          final url =
+              '$_baseUrl/$mode?stationId=${Uri.encodeComponent(stationId)}';
+          debugPrint(
+              '[RegionalDelay] Fetch $mode stazione ${_asStr(stop['stationName'])} ($stationId): $url');
+          final resp = await http
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 8));
+          if (resp.statusCode != 200) {
+            debugPrint(
+                '[RegionalDelay] HTTP ${resp.statusCode} da $stationId, provo altro modo');
+            continue;
+          }
+          final decoded = json.decode(resp.body);
+          final list =
+              (decoded is Map ? decoded['data'] as List<dynamic>? : null) ?? [];
+          board = list
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          debugPrint(
+              '[RegionalDelay] Tabellone $stationId ($mode): ${board.length} corse');
+        } catch (e) {
+          debugPrint('[RegionalDelay] Errore fetch $stationId ($mode): $e');
           continue;
         }
-        final decoded = json.decode(resp.body);
-        final list = (decoded is Map ? decoded['data'] as List<dynamic>? : null) ?? [];
-        board = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-        debugPrint('[RegionalDelay] Tabellone $stationId: ${board.length} corse');
-      } catch (e) {
-        debugPrint('[RegionalDelay] Errore fetch $stationId: $e');
-        continue;
-      }
 
-      Map<String, dynamic>? match;
-      String matchBy = '';
-      if (_tripId.isNotEmpty) {
-        for (final b in board) {
-          if (_asStr(b['tripId']) == _tripId) {
+        Map<String, dynamic>? match;
+        String matchBy = '';
+        if (_tripId.isNotEmpty) {
+          for (final b in board) {
+            if (_asStr(b['tripId']) == _tripId) {
+              match = b;
+              matchBy = 'tripId';
+              break;
+            }
+          }
+        }
+        if (match == null && tripNumber.isNotEmpty) {
+          for (final b in board) {
+            if (_asStr(b['tripNumber'] ?? b['trainNumber']) != tripNumber)
+              continue;
+            final bDest = _asStr(b['destination']).trim().toLowerCase();
+            if (dest.isNotEmpty && bDest.isNotEmpty && bDest != dest) continue;
             match = b;
-            matchBy = 'tripId';
+            matchBy = 'numero+destinazione';
             break;
           }
         }
-      }
-      if (match == null && tripNumber.isNotEmpty) {
-        for (final b in board) {
-          if (_asStr(b['tripNumber'] ?? b['trainNumber']) != tripNumber) continue;
-          final bDest = _asStr(b['destination']).trim().toLowerCase();
-          if (dest.isNotEmpty && bDest.isNotEmpty && bDest != dest) continue;
-          match = b;
-          matchBy = 'numero+destinazione';
-          break;
+        if (match == null) {
+          debugPrint(
+              '[RegionalDelay] Treno non trovato nel tabellone $stationId ($mode), provo altro modo/stazione');
+          continue;
         }
-      }
-      if (match == null) {
-        debugPrint('[RegionalDelay] Treno non trovato nel tabellone $stationId, passo alla prossima');
-        continue;
-      }
-      debugPrint('[RegionalDelay] Match via $matchBy nel tabellone $stationId');
-      if (match['delay'] == null) {
-        debugPrint('[RegionalDelay] Match senza delay, passo alla prossima');
-        continue;
+        debugPrint(
+            '[RegionalDelay] Match via $matchBy nel tabellone $stationId ($mode)');
+        if (match['delay'] == null) {
+          debugPrint(
+              '[RegionalDelay] Match senza delay, provo altro modo/stazione');
+          continue;
+        }
+        if (match['realtime'] == false) {
+          debugPrint(
+              '[RegionalDelay] Bacheca non live ($stationId, $mode), salto');
+          continue;
+        }
+
+        final delay = _asInt(match['delay']);
+        matchFound = true;
+        if (!mounted) return;
+        final oldDelay = _delay;
+        if (delay != oldDelay && _tripData != null) {
+          setState(() {
+            _tripData = {..._current, 'delay': delay};
+          });
+          debugPrint(
+              '[RegionalDelay] Aggiornato: $oldDelay -> $delay min (da ${_asStr(stop['stationName'])})');
+        } else {
+          debugPrint(
+              '[RegionalDelay] Invariato: $delay min (da ${_asStr(stop['stationName'])})');
+        }
+        return; // Trovato, esce da entrambe le liste
       }
 
-      final delay = _asInt(match['delay']);
-      if (!mounted) return;
-      final oldDelay = _delay;
-      if (delay != oldDelay && _tripData != null) {
-        setState(() {
-          _tripData = {..._current, 'delay': delay};
-        });
-        debugPrint('[RegionalDelay] Aggiornato: $oldDelay -> $delay min (da ${_asStr(stop['stationName'])})');
-      } else {
-        debugPrint('[RegionalDelay] Invariato: $delay min (da ${_asStr(stop['stationName'])})');
+      if (!matchFound) {
+        debugPrint(
+            '[RegionalDelay] Nessun match trovato a $stationId, passo alla prossima stazione');
       }
-      return;
     }
-    debugPrint('[RegionalDelay] Nessun tabellone utile, ritardo invariato ($_delay min)');
+    debugPrint(
+        '[RegionalDelay] Nessun tabellone utile, ritardo invariato ($_delay min)');
   }
 
   void _retry() {
@@ -489,9 +561,13 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   Future<String?> _shareTripLink() async {
     try {
       final current = _current;
-      final meta = current['metadata'] is Map ? Map<String, dynamic>.from(current['metadata'] as Map) : <String, dynamic>{};
+      final meta = current['metadata'] is Map
+          ? Map<String, dynamic>.from(current['metadata'] as Map)
+          : <String, dynamic>{};
       final origin = current['origin'];
-      final originMap = origin is Map ? Map<String, dynamic>.from(origin) : <String, dynamic>{};
+      final originMap = origin is Map
+          ? Map<String, dynamic>.from(origin)
+          : <String, dynamic>{};
       debugPrint('[RegionalTrip] Sharing trip $_category $_trainNumber...');
       // Colonna "share" del backend: chiave stabile per ritrovare il provider
       // all'apertura del link + nome da scrivere nella condivisione.
@@ -505,15 +581,21 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         'tripNumber': _trainNumber,
         'origin': _getEffectiveOrigin(current),
         'destination': _getEffectiveDestination(current),
-        'operator': _asStr(meta['operator'] ?? meta['company'] ?? current['operator'] ?? widget.provider.provider),
+        'operator': _asStr(meta['operator'] ??
+            meta['company'] ??
+            current['operator'] ??
+            widget.provider.provider),
         'regionalProvider': shareKey,
         'platform': _asStr(current['platform'] ?? originMap['platform']),
         'delay': _delay,
-        'scheduledTime': _isoTime(current['scheduledTime'] ?? originMap['scheduledTime']),
-        'estimatedTime': _isoTime(current['estimatedTime'] ?? originMap['estimatedTime']),
+        'scheduledTime':
+            _isoTime(current['scheduledTime'] ?? originMap['scheduledTime']),
+        'estimatedTime':
+            _isoTime(current['estimatedTime'] ?? originMap['estimatedTime']),
         'stops': _stops.map((s) {
           final j = Map<String, dynamic>.from(s);
-          if ((j['country'] ?? '').toString().isEmpty && widget.provider.country.isNotEmpty) {
+          if ((j['country'] ?? '').toString().isEmpty &&
+              widget.provider.country.isNotEmpty) {
             j['country'] = widget.provider.country;
           }
           return j;
@@ -549,7 +631,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       if (url == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(RuntimeLocalizations.t(context, 'share_failed', fallback: 'Condivisione non riuscita, riprova')),
+            content: Text(RuntimeLocalizations.t(context, 'share_failed',
+                fallback: 'Condivisione non riuscita, riprova')),
             backgroundColor: theme.errorColor,
           ),
         );
@@ -560,8 +643,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       final providerName = widget.provider.share.providerName.isNotEmpty
           ? widget.provider.share.providerName
           : widget.provider.provider;
-      final msg = "${RuntimeLocalizations.t(context, 'share_trip_msg', fallback: 'Segui il mio viaggio live')}: $providerName $cat $num\n$url";
-      await SharePlus.instance.share(ShareParams(text: msg, subject: '$providerName $cat $num'.trim()));
+      final msg =
+          "${RuntimeLocalizations.t(context, 'share_trip_msg', fallback: 'Segui il mio viaggio live')}: $providerName $cat $num\n$url";
+      await SharePlus.instance.share(
+          ShareParams(text: msg, subject: '$providerName $cat $num'.trim()));
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
@@ -582,7 +667,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   void _startAutoRefresh() {
     final interval = _settingsProvider.trainRefreshSeconds;
     if (interval > 0) {
-      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _autoRefreshTick());
+      _autoRefreshTimer = Timer.periodic(
+          Duration(seconds: interval), (_) => _autoRefreshTick());
     }
   }
 
@@ -592,7 +678,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       _autoRefreshTimer!.cancel();
       _autoRefreshTimer = null;
     } else if (interval > 0) {
-      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _autoRefreshTick());
+      _autoRefreshTimer = Timer.periodic(
+          Duration(seconds: interval), (_) => _autoRefreshTick());
     }
     if (mounted) setState(() {});
   }
@@ -667,7 +754,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             children: [
               Row(
                 children: [
-                  _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
+                  _BackButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      onTap: () => Navigator.of(context).pop(),
+                      theme: theme),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildTrainIdentifier(context, theme, current),
@@ -713,14 +803,17 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       } else if (currentIdx == 0) {
         progress = 0.0;
       } else {
-        final prevTimes = _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
+        final prevTimes =
+            _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
         final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], _delay);
         final prevDep = prevTimes['dep'];
         final nextArr = nextTimes['arr'];
         if (prevDep != null && nextArr != null) {
           final totalDuration = nextArr.difference(prevDep).inSeconds;
           final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
+          final segmentProgress = totalDuration > 0
+              ? (elapsed / totalDuration).clamp(0.0, 1.0)
+              : 0.0;
           progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
         } else {
           progress = currentIdx / (stops.length - 1);
@@ -750,7 +843,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    border: Border.all(color: theme.secondaryTextColor, width: 2),
+                    border:
+                        Border.all(color: theme.secondaryTextColor, width: 2),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -761,7 +855,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                   child: Stack(
                     alignment: Alignment.topCenter,
                     children: [
-                      Container(width: 3, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+                      Container(
+                          width: 3,
+                          color:
+                              theme.secondaryTextColor.withValues(alpha: 0.3)),
                       FractionallySizedBox(
                         heightFactor: progress,
                         child: Container(
@@ -795,7 +892,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                 // Origin label
                 Text(
                   RuntimeLocalizations.t(context, 'origin') ?? 'Partenza',
-                  style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
+                  style:
+                      AppTextStyle.labelSmall(color: theme.secondaryTextColor),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -808,7 +906,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                 // Destination label
                 Text(
                   RuntimeLocalizations.t(context, 'destination') ?? 'Arrivo',
-                  style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
+                  style:
+                      AppTextStyle.labelSmall(color: theme.secondaryTextColor),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -840,12 +939,15 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
-            RuntimeLocalizations.t(context, 'share_trip', fallback: 'Condividi'),
+            RuntimeLocalizations.t(context, 'share_trip',
+                fallback: 'Condividi'),
             theme,
             _isSharing ? null : () => _shareTrip(theme),
           ),
           _buildInfoChip(
-            _autoRefreshTimer != null ? Icons.timer_rounded : Icons.timer_off_rounded,
+            _autoRefreshTimer != null
+                ? Icons.timer_rounded
+                : Icons.timer_off_rounded,
             RuntimeLocalizations.t(context, 'live') ?? 'LIVE',
             theme,
             () => _toggleAutoRefresh(),
@@ -865,14 +967,17 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String label, ThemeProvider theme, VoidCallback? onTap, {bool isActive = false, bool isWarning = false}) {
+  Widget _buildInfoChip(
+      IconData icon, String label, ThemeProvider theme, VoidCallback? onTap,
+      {bool isActive = false, bool isWarning = false}) {
     final Color iconColor = isWarning ? theme.warningColor : theme.primaryColor;
     final Color labelColor = isWarning ? theme.warningColor : theme.textColor;
 
-    final Color bgColor = isActive ? theme.primaryColor.withOpacity(0.08) : theme.surfaceColor;
+    final Color bgColor =
+        isActive ? theme.primaryColor.withOpacity(0.08) : theme.surfaceColor;
     final BorderSide side = isActive
-       ? BorderSide(color: theme.primaryColor.withOpacity(0.3))
-       : BorderSide(color: theme.secondaryTextColor.withOpacity(0.1));
+        ? BorderSide(color: theme.primaryColor.withOpacity(0.3))
+        : BorderSide(color: theme.secondaryTextColor.withOpacity(0.1));
 
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -882,29 +987,29 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         side: side,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         avatar: Icon(icon, size: 14, color: iconColor),
-        label: Text(label, style: TextStyle(color: labelColor, fontSize: 11, fontWeight: FontWeight.w600)),
+        label: Text(label,
+            style: TextStyle(
+                color: labelColor, fontSize: 11, fontWeight: FontWeight.w600)),
       ),
     );
   }
 
-  Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, Map<String, dynamic> departure) {
+  Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme,
+      Map<String, dynamic> departure) {
     final category = _category;
     final number = _trainNumber;
     return _buildColorText(category, number, theme);
   }
 
   Widget _buildColorText(String category, String number, ThemeProvider theme) {
-    final isHighSpeed = category.toLowerCase().contains('fr') || category.toLowerCase().contains('freccia');
+    final isHighSpeed = category.toLowerCase().contains('fr') ||
+        category.toLowerCase().contains('freccia');
     final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
 
     final label = '${category.isNotEmpty ? '$category ' : ''}$number'.trim();
     return Text(
       label.isNotEmpty ? label : 'Treno',
-      style: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.w900,
-        color: color
-      ),
+      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color),
     );
   }
 
@@ -915,7 +1020,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
     if (delay < 0) {
       color = theme.successColor;
-      text = RuntimeLocalizations.t(context, 'trainEarly', params: {'delay': (-delay).toString()}) ?? "Anticipo ${-delay}'";
+      text = RuntimeLocalizations.t(context, 'trainEarly',
+              params: {'delay': (-delay).toString()}) ??
+          "Anticipo ${-delay}'";
       icon = Icons.fast_forward_rounded;
     } else if (delay == 0) {
       color = theme.successColor;
@@ -923,11 +1030,15 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       icon = Icons.check_circle_rounded;
     } else if (delay <= 5) {
       color = const Color(0xFFFFA000);
-      text = RuntimeLocalizations.t(context, 'trainDelayed', params: {'delay': delay.toString()}) ?? "+$delay min";
+      text = RuntimeLocalizations.t(context, 'trainDelayed',
+              params: {'delay': delay.toString()}) ??
+          "+$delay min";
       icon = Icons.access_time_rounded;
     } else {
       color = theme.errorColor;
-      text = RuntimeLocalizations.t(context, 'trainDelayed', params: {'delay': delay.toString()}) ?? "+$delay min";
+      text = RuntimeLocalizations.t(context, 'trainDelayed',
+              params: {'delay': delay.toString()}) ??
+          "+$delay min";
       icon = Icons.warning_rounded;
     }
 
@@ -943,7 +1054,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         children: [
           Icon(icon, color: color, size: 13),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+          Text(text,
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -966,14 +1079,17 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       if (currentIdx == -1) {
         progress = 1.0;
       } else if (currentIdx > 0) {
-        final prevTimes = _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
+        final prevTimes =
+            _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
         final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], _delay);
         final prevDep = prevTimes['dep'];
         final nextArr = nextTimes['arr'];
         if (prevDep != null && nextArr != null) {
           final totalDuration = nextArr.difference(prevDep).inSeconds;
           final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
+          final segmentProgress = totalDuration > 0
+              ? (elapsed / totalDuration).clamp(0.0, 1.0)
+              : 0.0;
           progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
         } else {
           progress = currentIdx / (stops.length - 1);
@@ -988,9 +1104,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: AppTokens.trainColor.withValues(alpha: theme.isDark ? 0.3 : 0.15),
+          color:
+              AppTokens.trainColor.withValues(alpha: theme.isDark ? 0.3 : 0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: AppTokens.trainColor.withValues(alpha: 0.5), width: 1),
+          border: Border.all(
+              color: AppTokens.trainColor.withValues(alpha: 0.5), width: 1),
         ),
         child: Stack(
           alignment: Alignment.center,
@@ -1017,7 +1135,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: theme.surfaceColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTokens.radius2Xl)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTokens.radius2Xl)),
         child: _ProgressDialogBody(
           resolveCurrent: () => _current,
           originOf: _getEffectiveOrigin,
@@ -1032,23 +1151,35 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       return Center(child: _buildTimelineShimmer(theme));
     }
 
-    if (_hasLoadedData && _error != null && _error!.isNotEmpty && _stops.isEmpty) {
+    if (_hasLoadedData &&
+        _error != null &&
+        _error!.isNotEmpty &&
+        _stops.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.cloud_off_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+              Icon(Icons.cloud_off_rounded,
+                  size: 64,
+                  color: theme.secondaryTextColor.withValues(alpha: 0.5)),
               const SizedBox(height: 24),
-              Text(RuntimeLocalizations.t(context, 'something_went_wrong') ?? 'Qualcosa è andato storto', style: AppTextStyle.titleLarge(color: theme.textColor)),
+              Text(
+                  RuntimeLocalizations.t(context, 'something_went_wrong') ??
+                      'Qualcosa è andato storto',
+                  style: AppTextStyle.titleLarge(color: theme.textColor)),
               const SizedBox(height: 8),
-              Text(_error!, textAlign: TextAlign.center, style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor)),
+              Text(_error!,
+                  textAlign: TextAlign.center,
+                  style:
+                      AppTextStyle.bodyMedium(color: theme.secondaryTextColor)),
               const SizedBox(height: 32),
               ElevatedButton.icon(
                 onPressed: _retry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(RuntimeLocalizations.t(context, 'retry') ?? 'Riprova'),
+                label:
+                    Text(RuntimeLocalizations.t(context, 'retry') ?? 'Riprova'),
               ),
             ],
           ),
@@ -1063,16 +1194,26 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.train_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
+              Icon(Icons.train_rounded,
+                  size: 64,
+                  color: theme.secondaryTextColor.withValues(alpha: 0.3)),
               const SizedBox(height: 24),
-              Text(RuntimeLocalizations.t(context, 'noStopsAvailable') ?? 'Nessuna fermata disponibile', style: AppTextStyle.titleMedium(color: theme.textColor)),
+              Text(
+                  RuntimeLocalizations.t(context, 'noStopsAvailable') ??
+                      'Nessuna fermata disponibile',
+                  style: AppTextStyle.titleMedium(color: theme.textColor)),
               const SizedBox(height: 8),
-              Text(RuntimeLocalizations.t(context, 'noStopsAvailableDesc') ?? 'I dettagli di questo treno non sono stati caricati.', style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor)),
+              Text(
+                  RuntimeLocalizations.t(context, 'noStopsAvailableDesc') ??
+                      'I dettagli di questo treno non sono stati caricati.',
+                  style:
+                      AppTextStyle.bodyMedium(color: theme.secondaryTextColor)),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _retry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(RuntimeLocalizations.t(context, 'reloadStops') ?? 'Ricarica'),
+                label: Text(RuntimeLocalizations.t(context, 'reloadStops') ??
+                    'Ricarica'),
               ),
             ],
           ),
@@ -1095,7 +1236,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         final arrCurrent = curTimes['arr'];
         final arrNext = nextTimes['arr'];
 
-        if (depCurrent != null && arrNext != null && nowUtc.isAfter(depCurrent) && nowUtc.isBefore(arrNext)) {
+        if (depCurrent != null &&
+            arrNext != null &&
+            nowUtc.isAfter(depCurrent) &&
+            nowUtc.isBefore(arrNext)) {
           currentSegmentIndex = i;
           isAtStation = false;
           final total = arrNext.difference(depCurrent).inSeconds;
@@ -1103,12 +1247,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           segmentProgress = total > 0 ? (elapsed / total).clamp(0.0, 1.0) : 1.0;
           break;
         }
-        if (arrCurrent != null && depCurrent != null && !nowUtc.isBefore(arrCurrent) && !nowUtc.isAfter(depCurrent)) {
+        if (arrCurrent != null &&
+            depCurrent != null &&
+            !nowUtc.isBefore(arrCurrent) &&
+            !nowUtc.isAfter(depCurrent)) {
           currentSegmentIndex = i;
           isAtStation = true;
           break;
         }
-        if (arrNext != null && nowUtc.isAfter(arrNext)) currentSegmentIndex = i + 1;
+        if (arrNext != null && nowUtc.isAfter(arrNext))
+          currentSegmentIndex = i + 1;
       }
     }
 
@@ -1130,30 +1278,37 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           index: index,
           isLast: index == stops.length - 1,
           isCompleted: index < currentSegmentIndex,
-          isTraversing: (index == currentSegmentIndex) && !isAtStation && index < stops.length - 1,
+          isTraversing: (index == currentSegmentIndex) &&
+              !isAtStation &&
+              index < stops.length - 1,
           isActiveStop: (index == currentSegmentIndex) && isAtStation,
           progress: segmentProgress,
           timeFormatter: _formatStationTime,
           isFuture: isFuture,
           totalDelay: _delay,
           theme: theme,
-          onStationTap: stopStationId.isNotEmpty ? () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (ctx) => RegionalStationDetailsScreen(
-                  provider: widget.provider,
-                  stationId: stopStationId,
-                  stationName: stopStationName.isNotEmpty ? stopStationName : stopStationId,
-                ),
-              ),
-            );
-          } : null,
+          onStationTap: stopStationId.isNotEmpty
+              ? () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (ctx) => RegionalStationDetailsScreen(
+                        provider: widget.provider,
+                        stationId: stopStationId,
+                        stationName: stopStationName.isNotEmpty
+                            ? stopStationName
+                            : stopStationId,
+                      ),
+                    ),
+                  );
+                }
+              : null,
         );
       },
     );
   }
 
-  Widget _buildScrollToCurrentButton(BuildContext context, ThemeProvider theme) {
+  Widget _buildScrollToCurrentButton(
+      BuildContext context, ThemeProvider theme) {
     final stops = _stops;
     if (stops.isEmpty) return const SizedBox.shrink();
 
@@ -1165,7 +1320,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       final arrTime = times['arr'];
       final depTime = times['dep'];
 
-      if (arrTime != null && depTime != null && nowUtc.isAfter(arrTime) && nowUtc.isBefore(depTime)) {
+      if (arrTime != null &&
+          depTime != null &&
+          nowUtc.isAfter(arrTime) &&
+          nowUtc.isBefore(depTime)) {
         currentIdx = i;
         break;
       }
@@ -1185,7 +1343,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         onPressed: () {
           const itemHeight = 72.0;
           if (!_scrollController.hasClients) return;
-          final targetOffset = (currentIdx * itemHeight).clamp(0.0, _scrollController.position.maxScrollExtent);
+          final targetOffset = (currentIdx * itemHeight)
+              .clamp(0.0, _scrollController.position.maxScrollExtent);
           _scrollController.animateTo(
             targetOffset,
             duration: const Duration(milliseconds: 400),
@@ -1215,7 +1374,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               Column(
                 children: [
                   Container(
-                    width: 12, height: 12,
+                    width: 12,
+                    height: 12,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
@@ -1235,18 +1395,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                       width: double.infinity,
                       margin: const EdgeInsets.only(right: 80),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4)
-                      ),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4)),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       height: 12,
                       width: 120,
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4)
-                      ),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4)),
                     ),
                   ],
                 ),
@@ -1259,18 +1417,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                     height: 14,
                     width: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4)
-                    ),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4)),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     height: 12,
                     width: 60,
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4)
-                    ),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4)),
                   ),
                 ],
               )
@@ -1287,16 +1443,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
     final tripMsgs = t['messages'];
     if (tripMsgs is List && tripMsgs.isNotEmpty) {
-      out.addAll(tripMsgs.whereType<Map>().map((m) => Map<String, dynamic>.from(m)));
+      out.addAll(
+          tripMsgs.whereType<Map>().map((m) => Map<String, dynamic>.from(m)));
     }
 
     final meta = t['metadata'];
     if (meta is Map) {
       final raw = meta['messages'] ?? meta['alerts'] ?? meta['notes'];
       if (raw is List && raw.isNotEmpty) {
-        out.addAll(raw.map<Map<String, dynamic>>((e) => e is Map
-            ? Map<String, dynamic>.from(e)
-            : {'text': e?.toString()}));
+        out.addAll(raw.map<Map<String, dynamic>>((e) =>
+            e is Map ? Map<String, dynamic>.from(e) : {'text': e?.toString()}));
       }
     }
 
@@ -1326,12 +1482,18 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               children: [
                 Row(
                   children: [
-                    Text(RuntimeLocalizations.t(context, 'messages') ?? 'Messaggi', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(
+                        RuntimeLocalizations.t(context, 'messages') ??
+                            'Messaggi',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
                     const Spacer(),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(RuntimeLocalizations.t(context, 'messages_count', params: {'count': msgs.length.toString()}) ?? '${msgs.length} messaggi'),
+                        Text(RuntimeLocalizations.t(context, 'messages_count',
+                                params: {'count': msgs.length.toString()}) ??
+                            '${msgs.length} messaggi'),
                         if (priCounts.isNotEmpty) const SizedBox(height: 6),
                         if (priCounts.isNotEmpty)
                           Wrap(
@@ -1340,10 +1502,23 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                               final key = e.key;
                               final count = e.value;
                               final bg = key == 'high'
-                                  ? Theme.of(context).colorScheme.error.withOpacity(0.12)
-                                  : (key == 'medium' ? Colors.amber.withOpacity(0.12) : Theme.of(context).primaryColor.withOpacity(0.12));
-                              final textColor = key == 'high' ? Theme.of(context).colorScheme.error : Theme.of(context).primaryColor;
-                              return Chip(label: Text('$key: $count', style: TextStyle(color: textColor, fontSize: 12)), backgroundColor: bg);
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .error
+                                      .withOpacity(0.12)
+                                  : (key == 'medium'
+                                      ? Colors.amber.withOpacity(0.12)
+                                      : Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.12));
+                              final textColor = key == 'high'
+                                  ? Theme.of(context).colorScheme.error
+                                  : Theme.of(context).primaryColor;
+                              return Chip(
+                                  label: Text('$key: $count',
+                                      style: TextStyle(
+                                          color: textColor, fontSize: 12)),
+                                  backgroundColor: bg);
                             }).toList(),
                           ),
                       ],
@@ -1358,49 +1533,82 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                     separatorBuilder: (_, __) => const Divider(),
                     itemBuilder: (c, i) {
                       final m = msgs[i];
-                      final type = (m['type'] ?? 'info').toString().toLowerCase();
+                      final type =
+                          (m['type'] ?? 'info').toString().toLowerCase();
                       final title = (m['title'] ?? '').toString();
                       final text = (m['text'] ?? '').toString();
-                      final icon = type == 'warning' ? Icons.warning_rounded : Icons.info_outline;
-                      final color = type == 'warning' ? Theme.of(context).colorScheme.error : Theme.of(context).primaryColor;
+                      final icon = type == 'warning'
+                          ? Icons.warning_rounded
+                          : Icons.info_outline;
+                      final color = type == 'warning'
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).primaryColor;
                       final station = (m['station'] ?? '').toString();
-                      final priority = (m['priority'] ?? '').toString().toLowerCase();
+                      final priority =
+                          (m['priority'] ?? '').toString().toLowerCase();
                       final subtitleWidget = station.isNotEmpty
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(station, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                              const SizedBox(height: 8),
-                              Text(text, style: const TextStyle(fontSize: 13)),
-                            ],
-                          )
-                        : Text(text);
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(station,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12)),
+                                const SizedBox(height: 8),
+                                Text(text,
+                                    style: const TextStyle(fontSize: 13)),
+                              ],
+                            )
+                          : Text(text);
 
                       final Color priColor = priority == 'high'
-                        ? Theme.of(context).colorScheme.error
-                        : (priority == 'medium' ? Colors.amber : Theme.of(context).primaryColor);
+                          ? Theme.of(context).colorScheme.error
+                          : (priority == 'medium'
+                              ? Colors.amber
+                              : Theme.of(context).primaryColor);
 
                       final bgColor = priority == 'high'
-                        ? Theme.of(context).colorScheme.error.withOpacity(0.04)
-                        : (priority == 'medium' ? Colors.amber.withOpacity(0.04) : Theme.of(context).primaryColor.withOpacity(0.02));
+                          ? Theme.of(context)
+                              .colorScheme
+                              .error
+                              .withOpacity(0.04)
+                          : (priority == 'medium'
+                              ? Colors.amber.withOpacity(0.04)
+                              : Theme.of(context)
+                                  .primaryColor
+                                  .withOpacity(0.02));
 
                       return Container(
                         decoration: BoxDecoration(
                           color: bgColor,
-                          border: Border(left: BorderSide(color: priColor, width: priority.isNotEmpty ? 4 : 0)),
+                          border: Border(
+                              left: BorderSide(
+                                  color: priColor,
+                                  width: priority.isNotEmpty ? 4 : 0)),
                         ),
                         child: ListTile(
                           leading: Icon(icon, color: color),
                           title: Row(children: [
-                            Expanded(child: Text(title.isNotEmpty ? title : (station.isNotEmpty ? station : ''), style: const TextStyle(fontWeight: FontWeight.w700))),
+                            Expanded(
+                                child: Text(
+                                    title.isNotEmpty
+                                        ? title
+                                        : (station.isNotEmpty ? station : ''),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700))),
                             if (priority.isNotEmpty)
                               Container(
                                 margin: const EdgeInsets.only(left: 8),
                                 child: Chip(
-                                  label: Text(priority.toUpperCase(), style: TextStyle(color: priColor, fontSize: 11, fontWeight: FontWeight.w800)),
+                                  label: Text(priority.toUpperCase(),
+                                      style: TextStyle(
+                                          color: priColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800)),
                                   backgroundColor: priColor.withOpacity(0.12),
                                   visualDensity: VisualDensity.compact,
-                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                           ]),
@@ -1411,7 +1619,12 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.pop(ctx), child: Text(RuntimeLocalizations.t(context, 'close') ?? 'Chiudi'))),
+                Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(RuntimeLocalizations.t(context, 'close') ??
+                            'Chiudi'))),
               ],
             ),
           ),
@@ -1426,7 +1639,10 @@ class _ProgressDialogBody extends StatefulWidget {
   final String Function(Map<String, dynamic>) originOf;
   final String Function(Map<String, dynamic>) destOf;
 
-  const _ProgressDialogBody({required this.resolveCurrent, required this.originOf, required this.destOf});
+  const _ProgressDialogBody(
+      {required this.resolveCurrent,
+      required this.originOf,
+      required this.destOf});
 
   @override
   State<_ProgressDialogBody> createState() => _ProgressDialogBodyState();
@@ -1456,7 +1672,10 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
     final dep = widget.resolveCurrent();
     final rawStops = dep['stops'];
     final List<Map<String, dynamic>> stops = rawStops is List
-        ? rawStops.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        ? rawStops
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
         : const [];
     final origin = widget.originOf(dep);
     final dest = widget.destOf(dep);
@@ -1480,14 +1699,17 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
       } else if (currentIdx == 0) {
         progress = 0.0;
       } else {
-        final prevTimes = _estimateRegionalStopTimes(stops[currentIdx - 1], delay);
+        final prevTimes =
+            _estimateRegionalStopTimes(stops[currentIdx - 1], delay);
         final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], delay);
         final prevDep = prevTimes['dep'];
         final nextArr = nextTimes['arr'];
         if (prevDep != null && nextArr != null) {
           final totalDuration = nextArr.difference(prevDep).inSeconds;
           final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
+          final segmentProgress = totalDuration > 0
+              ? (elapsed / totalDuration).clamp(0.0, 1.0)
+              : 0.0;
           progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
         } else {
           progress = currentIdx / (stops.length - 1);
@@ -1496,7 +1718,8 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
       progress = progress.clamp(0.0, 1.0);
     }
 
-    final trainLabel = _asStr(dep['tripNumber'] ?? dep['trainNumber'] ?? dep['category'] ?? 'Treno');
+    final trainLabel = _asStr(
+        dep['tripNumber'] ?? dep['trainNumber'] ?? dep['category'] ?? 'Treno');
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -1505,7 +1728,8 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
         children: [
           // Title
           Text(
-            RuntimeLocalizations.t(context, 'progress_title', fallback: 'Progresso Viaggio'),
+            RuntimeLocalizations.t(context, 'progress_title',
+                fallback: 'Progresso Viaggio'),
             style: AppTextStyle.titleLarge(color: theme.textColor),
           ),
           const SizedBox(height: 8),
@@ -1521,7 +1745,8 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
             decoration: BoxDecoration(
               color: theme.backgroundColor,
               borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
+              border:
+                  Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
             ),
             child: Column(
               children: [
@@ -1586,10 +1811,12 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
                           decoration: BoxDecoration(
                             color: AppTokens.trainColor,
                             shape: BoxShape.circle,
-                            border: Border.all(color: theme.surfaceColor, width: 4),
+                            border:
+                                Border.all(color: theme.surfaceColor, width: 4),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTokens.trainColor.withValues(alpha: 0.5),
+                                color:
+                                    AppTokens.trainColor.withValues(alpha: 0.5),
                                 blurRadius: 12,
                                 spreadRadius: 2,
                               ),
@@ -1650,10 +1877,17 @@ class _TimelineRow extends StatelessWidget {
   final VoidCallback? onStationTap;
 
   const _TimelineRow({
-    required this.stop, required this.index, required this.isLast,
-    required this.isCompleted, required this.isTraversing,
-    required this.isActiveStop, required this.progress, required this.timeFormatter,
-    required this.isFuture, required this.totalDelay, required this.theme,
+    required this.stop,
+    required this.index,
+    required this.isLast,
+    required this.isCompleted,
+    required this.isTraversing,
+    required this.isActiveStop,
+    required this.progress,
+    required this.timeFormatter,
+    required this.isFuture,
+    required this.totalDelay,
+    required this.theme,
     this.onStationTap,
   });
 
@@ -1662,9 +1896,11 @@ class _TimelineRow extends StatelessWidget {
     final bool highlighted = isCompleted || isActiveStop || isTraversing;
     final String stationName = _asStr(stop['stationName']);
     final bool cancelled = stop['cancelled'] == true;
-    final String? platform = _asStr(stop['platform']).isNotEmpty ? _asStr(stop['platform']) : null;
+    final String? platform =
+        _asStr(stop['platform']).isNotEmpty ? _asStr(stop['platform']) : null;
 
-    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int? delay) {
+    String buildTimeString(
+        String type, DateTime? scheduled, DateTime? estimated, int? delay) {
       if (scheduled == null && estimated == null) return '';
 
       // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
@@ -1675,16 +1911,20 @@ class _TimelineRow extends StatelessWidget {
       if (delay != null) {
         effectiveDelay = delay;
       } else if (estimated != null && scheduled != null) {
-        effectiveDelay = (estimated.difference(scheduled).inSeconds / 60).round();
+        effectiveDelay =
+            (estimated.difference(scheduled).inSeconds / 60).round();
       } else if (estimated == null && !isFuture && totalDelay != 0) {
         effectiveDelay = totalDelay;
       } else {
         effectiveDelay = 0;
       }
 
-      final effective = estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
+      final effective =
+          estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
       final effStr = timeFormatter(effective, 'IT');
-      final delayStr = effectiveDelay != 0 ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)" : "";
+      final delayStr = effectiveDelay != 0
+          ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)"
+          : "";
 
       if (scheduled != null && (estimated != null || effectiveDelay != 0)) {
         return '$type: $effStr$delayStr (${RuntimeLocalizations.t(context, 'scheduled_label') ?? 'Prog'}: ${timeFormatter(scheduled, 'IT')})';
@@ -1693,7 +1933,8 @@ class _TimelineRow extends StatelessWidget {
     }
 
     final schedArr = _parseRegionalTime(stop['scheduledArrival']);
-    final schedDep = _parseRegionalTime(stop['scheduledDeparture'] ?? stop['scheduledTime']);
+    final schedDep =
+        _parseRegionalTime(stop['scheduledDeparture'] ?? stop['scheduledTime']);
     final estArr = _parseRegionalTime(stop['estimatedArrival']);
     final estDep = _parseRegionalTime(stop['estimatedDeparture']);
     final int? arrDelay = _asIntOrNull(stop['arrivalDelay']);
@@ -1712,60 +1953,114 @@ class _TimelineRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Builder(
-                                builder: (_) {
-                                  // Piu il nome e lungo, piu il font si rimpicciolisce (16 -> 9);
-                                  // il FittedBox garantisce che entri comunque su ogni schermo.
-                                  final size = (16.0 - (stationName.length - 20) * 0.25).clamp(9.0, 16.0);
-                                  return Text(stationName, maxLines: 1, style: TextStyle(color: isCompleted ? theme.secondaryTextColor.withOpacity(0.6) : theme.textColor, fontSize: size, fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600));
-                                },
-                              ),
-                            ),
-                          ),
-                          if (onStationTap != null)
-                            GestureDetector(
-                              onTap: onStationTap,
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: theme.primaryColor.withValues(alpha: 0.12),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.train_rounded, size: 14, color: theme.primaryColor),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Builder(
+                                  builder: (_) {
+                                    // Piu il nome e lungo, piu il font si rimpicciolisce (16 -> 9);
+                                    // il FittedBox garantisce che entri comunque su ogni schermo.
+                                    final size = (16.0 -
+                                            (stationName.length - 20) * 0.25)
+                                        .clamp(9.0, 16.0);
+                                    return Text(stationName,
+                                        maxLines: 1,
+                                        style: TextStyle(
+                                            color: isCompleted
+                                                ? theme.secondaryTextColor
+                                                    .withOpacity(0.6)
+                                                : theme.textColor,
+                                            fontSize: size,
+                                            fontWeight: highlighted
+                                                ? FontWeight.w800
+                                                : FontWeight.w600));
+                                  },
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                    if (cancelled)
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.errorColor.withOpacity(0.12),
-                          border: Border.all(color: theme.errorColor.withOpacity(0.3)),
-                          borderRadius: BorderRadius.circular(8),
+                            if (onStationTap != null)
+                              GestureDetector(
+                                onTap: onStationTap,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: theme.primaryColor
+                                          .withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.train_rounded,
+                                        size: 14, color: theme.primaryColor),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        child: Text(RuntimeLocalizations.t(context, 'cancelled') ?? 'Cancellata', style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.w800)),
                       ),
-                  ],),
+                      if (cancelled)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.errorColor.withOpacity(0.12),
+                            border: Border.all(
+                                color: theme.errorColor.withOpacity(0.3)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                              RuntimeLocalizations.t(context, 'cancelled') ??
+                                  'Cancellata',
+                              style: TextStyle(
+                                  color: theme.errorColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800)),
+                        ),
+                    ],
+                  ),
                   if (schedArr != null || estArr != null)
-                    Text(buildTimeString(RuntimeLocalizations.t(context, 'arrival') ?? 'Arrivo', schedArr, estArr, isFuture ? totalDelay : arrDelay),
-                        style: TextStyle(color: cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                    Text(
+                        buildTimeString(
+                            RuntimeLocalizations.t(context, 'arrival') ??
+                                'Arrivo',
+                            schedArr,
+                            estArr,
+                            isFuture ? totalDelay : arrDelay),
+                        style: TextStyle(
+                            color: cancelled
+                                ? theme.secondaryTextColor.withOpacity(0.5)
+                                : (isCompleted
+                                    ? theme.secondaryTextColor.withOpacity(0.4)
+                                    : theme.secondaryTextColor),
+                            fontSize: 12,
+                            decoration: cancelled
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none)),
                   if (schedDep != null || estDep != null)
-                    Text(buildTimeString(RuntimeLocalizations.t(context, 'departure') ?? 'Partenza', schedDep, estDep, isFuture ? totalDelay : depDelay),
-                        style: TextStyle(color: cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                    Text(
+                        buildTimeString(
+                            RuntimeLocalizations.t(context, 'departure') ??
+                                'Partenza',
+                            schedDep,
+                            estDep,
+                            isFuture ? totalDelay : depDelay),
+                        style: TextStyle(
+                            color: cancelled
+                                ? theme.secondaryTextColor.withOpacity(0.5)
+                                : (isCompleted
+                                    ? theme.secondaryTextColor.withOpacity(0.4)
+                                    : theme.secondaryTextColor),
+                            fontSize: 12,
+                            decoration: cancelled
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none)),
                 ],
               ),
             ),
@@ -1779,7 +2074,11 @@ class _TimelineRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
               ),
-              child: Text(platform, style: TextStyle(color: theme.primaryColor, fontSize: 12, fontWeight: FontWeight.w800)),
+              child: Text(platform,
+                  style: TextStyle(
+                      color: theme.primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800)),
             ),
         ],
       ),
@@ -1792,24 +2091,62 @@ class _TimelineRow extends StatelessWidget {
       child: Stack(
         alignment: Alignment.topCenter,
         children: [
-          if (index > 0) Positioned(top: 0, height: 17, width: 3, child: Container(color: highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.05))),
-          if (!isLast) Positioned(top: 17, bottom: 0, width: 3, child: Stack(children: [
-            Container(color: theme.surfaceColor.withOpacity(0.05)),
-            if (isCompleted) Container(color: theme.primaryColor),
-            if (isTraversing) LayoutBuilder(builder: (c, ct) => Container(height: ct.maxHeight * progress, decoration: BoxDecoration(gradient: theme.progressGradient))),
-          ])),
-          Positioned(top: 17, child: Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: cancelled ? theme.errorColor : (highlighted ? theme.primaryColor : theme.surfaceColor.withOpacity(0.08)),
-              shape: BoxShape.circle,
-              border: Border.all(color: cancelled ? theme.errorColor : (highlighted ? theme.primaryColor : theme.secondaryTextColor.withOpacity(0.24)), width: 2),
-            ),
-          )),
-          if (isTraversing) Positioned.fill(child: LayoutBuilder(builder: (c, ct) => Stack(alignment: Alignment.topCenter, children: [
-            Positioned(top: 17 + ((ct.maxHeight - 17) * progress) - 10, child: const _TrainIcon(size: 20))
-          ]))) else if (isActiveStop) Positioned(top: 12, child: _TrainIcon(size: 20)),
+          if (index > 0)
+            Positioned(
+                top: 0,
+                height: 17,
+                width: 3,
+                child: Container(
+                    color: highlighted
+                        ? theme.primaryColor
+                        : theme.surfaceColor.withOpacity(0.05))),
+          if (!isLast)
+            Positioned(
+                top: 17,
+                bottom: 0,
+                width: 3,
+                child: Stack(children: [
+                  Container(color: theme.surfaceColor.withOpacity(0.05)),
+                  if (isCompleted) Container(color: theme.primaryColor),
+                  if (isTraversing)
+                    LayoutBuilder(
+                        builder: (c, ct) => Container(
+                            height: ct.maxHeight * progress,
+                            decoration: BoxDecoration(
+                                gradient: theme.progressGradient))),
+                ])),
+          Positioned(
+              top: 17,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: cancelled
+                      ? theme.errorColor
+                      : (highlighted
+                          ? theme.primaryColor
+                          : theme.surfaceColor.withOpacity(0.08)),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: cancelled
+                          ? theme.errorColor
+                          : (highlighted
+                              ? theme.primaryColor
+                              : theme.secondaryTextColor.withOpacity(0.24)),
+                      width: 2),
+                ),
+              )),
+          if (isTraversing)
+            Positioned.fill(
+                child: LayoutBuilder(
+                    builder: (c, ct) =>
+                        Stack(alignment: Alignment.topCenter, children: [
+                          Positioned(
+                              top: 17 + ((ct.maxHeight - 17) * progress) - 10,
+                              child: const _TrainIcon(size: 20))
+                        ])))
+          else if (isActiveStop)
+            Positioned(top: 12, child: _TrainIcon(size: 20)),
         ],
       ),
     );
@@ -1839,7 +2176,8 @@ class _BackButton extends StatelessWidget {
   final VoidCallback onTap;
   final ThemeProvider theme;
 
-  const _BackButton({required this.icon, required this.onTap, required this.theme});
+  const _BackButton(
+      {required this.icon, required this.onTap, required this.theme});
 
   @override
   Widget build(BuildContext context) {

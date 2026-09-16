@@ -722,6 +722,96 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     return !hasStops;
   }
 
+  /// Costruisce la departure arricchita dai dati trip (usato al primo load
+  /// e nei refresh continui): base = snapshot esistente per i fallback.
+  TrainDeparture _buildEnrichedDeparture(dynamic tripData, TrainDeparture base, String country) {
+    List<TrainStop> stops = [];
+    final stopsData = tripData['stops'] ?? tripData['stopList'] ?? [];
+    if (stopsData is List) {
+      stops = stopsData.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList();
+    }
+
+    return TrainDeparture(
+      tripId: base.tripId,
+      trainNumber: tripData['trainNumber']?.toString() ?? base.trainNumber,
+      category: tripData['category']?.toString() ?? base.category,
+      origin: tripData['origin']?.toString() ?? base.origin,
+      destination: tripData['destination']?.toString() ?? base.destination,
+      country: tripData['country']?.toString() ?? country,
+      status: tripData['status']?.toString() ?? base.status,
+      delayMinutes: base.delayMinutes ?? tripData['delay'] ?? 0,
+      scheduledTime: tripData['scheduledTime'] != null
+          ? DateTime.tryParse(tripData['scheduledTime'].toString())
+          : base.scheduledTime,
+      estimatedTime: tripData['estimatedTime'] != null
+          ? DateTime.tryParse(tripData['estimatedTime'].toString())
+          : base.estimatedTime,
+      platform: tripData['platform']?.toString() ?? base.platform,
+      stops: stops,
+      messages: tripData['messages'] != null
+          ? List<Map<String, dynamic>>.from(tripData['messages'])
+          : null,
+      metadata: tripData['metadata'] as Map<String, dynamic>?,
+    );
+  }
+
+  /// Refresh continuo del trip per treni esterni al tabellone (modalità link):
+  /// ricarica fermate/orari/ritardi e aggiorna la copia locale solo se
+  /// le fermate nuove non sono vuote (mai sovrascrivere col vuoto).
+  Future<void> _refreshExternalTripDetails() async {
+    if (!mounted || _isLoadingExternalDetails) return;
+    final base = _externalDep ?? widget.departure;
+    final tripId = base.tripId;
+    if (tripId == null || tripId.isEmpty) return;
+    final country = base.country.isNotEmpty
+        ? base.country
+        : (widget.selectedCountry ?? 'IT');
+
+    debugPrint('[NationalDelay] Refresh trip esterno: https://prod.cuzimmartin.dev/api/$country/trip?tripId=${Uri.encodeComponent(tripId)}');
+    try {
+      final uri = Uri.parse('https://prod.cuzimmartin.dev/api/$country/trip?tripId=${Uri.encodeComponent(tripId)}');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (!mounted || resp.statusCode != 200) return;
+      final decoded = json.decode(resp.body);
+      if (decoded is! Map<String, dynamic>) return;
+      final tripData = decoded['trip'] ?? decoded['data'] ?? decoded;
+      final rawStops = tripData['stops'] ?? tripData['stopList'] ?? [];
+      final count = rawStops is List ? rawStops.length : 0;
+      if (count == 0) {
+        debugPrint('[NationalDelay] Trip esterno senza fermate, tengo i dati esistenti');
+        return;
+      }
+      final enriched = _buildEnrichedDeparture(tripData, base, country);
+      // Modalita link: logo e numero restano intatti (quelli dello snapshot
+      // condiviso, da cui deriva anche il logo); si aggiornano solo
+      // fermate/orari/ritardi/stato. copyWith non espone questi campi
+      // (restano fissi dal costruttore), quindi ricostruisco qui.
+      final frozen = TrainDeparture(
+        tripId: enriched.tripId,
+        trainNumber: base.trainNumber,
+        category: base.category,
+        origin: enriched.origin,
+        destination: enriched.destination,
+        country: enriched.country,
+        status: enriched.status,
+        delayMinutes: enriched.delayMinutes,
+        scheduledTime: enriched.scheduledTime,
+        estimatedTime: enriched.estimatedTime,
+        platform: enriched.platform,
+        stops: enriched.stops,
+        messages: enriched.messages,
+        metadata: enriched.metadata,
+      );
+      setState(() {
+        _externalDep = frozen;
+        _hasLoadedExternalData = true;
+      });
+      debugPrint('[NationalDelay] Trip esterno aggiornato: ${frozen.stops?.length} fermate');
+    } catch (e) {
+      debugPrint('[NationalDelay] Errore refresh trip esterno: $e');
+    }
+  }
+
   Future<void> _maybeFetchExternalTripDetails() async {
     if (!_needsExternalFetch) {
       if (mounted) setState(() {
@@ -778,35 +868,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         final decoded = json.decode(resp.body);
         if (decoded is Map<String, dynamic>) {
           final tripData = decoded['trip'] ?? decoded['data'] ?? decoded;
-          
-          List<TrainStop> stops = [];
-          final stopsData = tripData['stops'] ?? tripData['stopList'] ?? [];
-          if (stopsData is List) {
-            stops = stopsData.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList();
-          }
 
-          final enriched = TrainDeparture(
-            tripId: widget.departure.tripId,
-            trainNumber: tripData['trainNumber']?.toString() ?? widget.departure.trainNumber,
-            category: tripData['category']?.toString() ?? widget.departure.category,
-            origin: tripData['origin']?.toString() ?? widget.departure.origin,
-            destination: tripData['destination']?.toString() ?? widget.departure.destination,
-            country: tripData['country']?.toString() ?? country,
-            status: tripData['status']?.toString() ?? widget.departure.status,
-            delayMinutes: tripData['delay'] ?? widget.departure.delayMinutes ?? 0,
-            scheduledTime: tripData['scheduledTime'] != null 
-                ? DateTime.tryParse(tripData['scheduledTime'].toString()) 
-                : widget.departure.scheduledTime,
-            estimatedTime: tripData['estimatedTime'] != null 
-                ? DateTime.tryParse(tripData['estimatedTime'].toString()) 
-                : widget.departure.estimatedTime,
-            platform: tripData['platform']?.toString() ?? widget.departure.platform,
-            stops: stops,
-            messages: tripData['messages'] != null 
-                ? List<Map<String, dynamic>>.from(tripData['messages']) 
-                : null,
-            metadata: tripData['metadata'] as Map<String, dynamic>?,
-          );
+          final enriched = _buildEnrichedDeparture(tripData, widget.departure, country);
 
           setState(() {
             _externalDep = enriched;
@@ -951,12 +1014,16 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
     );
     if (index != -1) {
-      _trainProvider.expandTrainDetails(index).then((_) {
+      // Modalita tabellone: ricarica completa continua (fermate/orari/ritardi),
+      // poi ritardo fresco dalle bacheche. Il provider non sovrascrive mai col vuoto.
+      _trainProvider.expandTrainDetails(index, forceRefresh: true).then((_) {
         if (mounted) _refreshDelayFallback();
       });
     } else {
-      // Treno esterno al tabellone: prova comunque il fallback dalle stazioni
-      _refreshDelayFallback();
+      // Modalita link (treno esterno al tabellone): ricarica trip + fallback stazioni
+      _refreshExternalTripDetails().then((_) {
+        if (mounted) _refreshDelayFallback();
+      });
     }
   }
 

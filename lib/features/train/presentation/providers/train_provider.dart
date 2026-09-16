@@ -7,14 +7,17 @@ import '../../data/repositories/train_repository.dart';
 import '../../../../core/api_constants.dart';
 import '../../../../core/services/offline_sync_service.dart';
 import 'package:flutter/foundation.dart';
-import '../../../../core/services/libsql_dart_web_stub.dart' if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
+import '../../../../core/services/libsql_dart_web_stub.dart'
+    if (dart.library.io) 'package:libsql_dart/libsql_dart.dart';
 
 class TrainProvider with ChangeNotifier {
   final TrainRepository _repository = TrainRepository();
-  
+
   // Turso database configuration
-  static const String _tursoUrl = 'libsql://betacloud-transporter-rixolino.aws-eu-west-1.turso.io';
-  static const String _tursoToken = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg2NTc3NDEsImlkIjoiMjI1ZTU0OTgtMmUxYS00ZWM3LTg0ZWUtMDlkMGRmM2YxOWMwIiwicmlkIjoiYWNkMDBiOGYtNTMxYS00MWMxLTk5YjQtYjg5ODc2YTJkMzVhIn0.nUl4jePNi0wZvxhdGvLlwk24EI9BL4jUvBoHKEMdGpatHD_bkn5V8PpcWvMujn4gwfNhmFmqNRH7JYjcjd9zBw';
+  static const String _tursoUrl =
+      'libsql://betacloud-transporter-rixolino.aws-eu-west-1.turso.io';
+  static const String _tursoToken =
+      'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njg2NTc3NDEsImlkIjoiMjI1ZTU0OTgtMmUxYS00ZWM3LTg0ZWUtMDlkMGRmM2YxOWMwIiwicmlkIjoiYWNkMDBiOGYtNTMxYS00MWMxLTk5YjQtYjg5ODc2YTJkMzVhIn0.nUl4jePNi0wZvxhdGvLlwk24EI9BL4jUvBoHKEMdGpatHD_bkn5V8PpcWvMujn4gwfNhmFmqNRH7JYjcjd9zBw';
 
   LibsqlClient? _client;
 
@@ -55,19 +58,19 @@ class TrainProvider with ChangeNotifier {
         tripNumber TEXT
       )
     ''');
-    
+
     await client.execute('''
       CREATE INDEX IF NOT EXISTS idx_train_trips_category ON train_trips(category)
     ''');
-    
+
     await client.execute('''
       CREATE INDEX IF NOT EXISTS idx_train_trips_trip_number ON train_trips(trip_number)
     ''');
-    
+
     await client.execute('''
       CREATE INDEX IF NOT EXISTS idx_train_trips_last_updated ON train_trips(last_updated DESC)
     ''');
-    
+
     debugPrint('✅ Train trips table created/verified in Turso');
   }
 
@@ -86,7 +89,7 @@ class TrainProvider with ChangeNotifier {
   Future<String?> getMostRecentTripId(String category, String number) async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT trip_id, last_updated, country FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
         positional: [category, number],
@@ -97,21 +100,23 @@ class TrainProvider with ChangeNotifier {
         final tripId = first['trip_id']?.toString();
         final lastUpdated = first['last_updated']?.toString() ?? 'N/A';
         final country = first['country']?.toString();
-        
-        debugPrint('✅ [Turso] Trovato trip_id: "$tripId" (last_updated: $lastUpdated)');
-        
+
+        debugPrint(
+            '✅ [Turso] Trovato trip_id: "$tripId" (last_updated: $lastUpdated)');
+
         if (country != null && country.isNotEmpty) {
           debugPrint('🌍 [Turso] Country: $country');
         }
-        
+
         return tripId;
       } else {
-        debugPrint('📭 [Turso] Nessun risultato per categoria "$category" e numero "$number"');
+        debugPrint(
+            '📭 [Turso] Nessun risultato per categoria "$category" e numero "$number"');
       }
     } catch (e) {
       debugPrint('❌ [Turso] Errore in getMostRecentTripId: $e');
     }
-    
+
     return null;
   }
 
@@ -119,18 +124,18 @@ class TrainProvider with ChangeNotifier {
   Future<void> saveTrip(Map<String, dynamic> tripData) async {
     try {
       final client = await getDatabase();
-      
+
       final tripId = tripData['trip_id']?.toString();
       if (tripId == null || tripId.isEmpty) {
         debugPrint('⚠️ [Turso] trip_id mancante, impossibile salvare');
         return;
       }
-      
+
       final checkResult = await client.query(
         'SELECT trip_id FROM train_trips WHERE trip_id = ?',
         positional: [tripId],
       );
-      
+
       if (checkResult.isNotEmpty) {
         await client.execute(
           '''UPDATE train_trips 
@@ -144,7 +149,8 @@ class TrainProvider with ChangeNotifier {
             tripData['operator']?.toString() ?? '',
             tripData['polyline']?.toString() ?? '',
             tripData['stops']?.toString() ?? '',
-            tripData['last_updated']?.toString() ?? DateTime.now().toIso8601String(),
+            tripData['last_updated']?.toString() ??
+                DateTime.now().toIso8601String(),
             tripData['delay'] ?? 0,
             tripData['tripNumber']?.toString() ?? '',
             tripId,
@@ -165,7 +171,8 @@ class TrainProvider with ChangeNotifier {
             tripData['operator']?.toString() ?? '',
             tripData['polyline']?.toString() ?? '',
             tripData['stops']?.toString() ?? '',
-            tripData['last_updated']?.toString() ?? DateTime.now().toIso8601String(),
+            tripData['last_updated']?.toString() ??
+                DateTime.now().toIso8601String(),
             tripData['delay'] ?? 0,
             tripData['tripNumber']?.toString() ?? '',
           ],
@@ -178,15 +185,16 @@ class TrainProvider with ChangeNotifier {
   }
 
   /// Recupera un trip completo per categoria e numero
-  Future<Map<String, dynamic>?> getTripByCategoryAndNumber(String category, String number) async {
+  Future<Map<String, dynamic>?> getTripByCategoryAndNumber(
+      String category, String number) async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT * FROM train_trips WHERE category = ? AND trip_number = ? ORDER BY last_updated DESC LIMIT 1',
         positional: [category, number],
       );
-      
+
       if (result.isNotEmpty) {
         final row = result.first;
         return {
@@ -205,7 +213,7 @@ class TrainProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('❌ [Turso] Errore in getTripByCategoryAndNumber: $e');
     }
-    
+
     return null;
   }
 
@@ -213,12 +221,12 @@ class TrainProvider with ChangeNotifier {
   Future<Map<String, dynamic>?> getTripById(String tripId) async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT * FROM train_trips WHERE trip_id = ?',
         positional: [tripId],
       );
-      
+
       if (result.isNotEmpty) {
         final row = result.first;
         return {
@@ -237,7 +245,7 @@ class TrainProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('❌ [Turso] Errore in getTripById: $e');
     }
-    
+
     return null;
   }
 
@@ -245,14 +253,14 @@ class TrainProvider with ChangeNotifier {
   Future<List<Map<String, dynamic>>> searchTripsByNumber(String query) async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT * FROM train_trips WHERE trip_number LIKE ? OR tripNumber LIKE ? ORDER BY last_updated DESC LIMIT 20',
         positional: ['%$query%', '%$query%'],
       );
-      
+
       final List<Map<String, dynamic>> results = [];
-      
+
       for (final row in result) {
         results.add({
           'trip_id': row['trip_id'],
@@ -267,20 +275,21 @@ class TrainProvider with ChangeNotifier {
           'tripNumber': row['tripNumber'],
         });
       }
-      
+
       return results;
     } catch (e) {
       debugPrint('❌ [Turso] Errore in searchTripsByNumber: $e');
     }
-    
+
     return [];
   }
 
   /// Salva gli stops di un trip
-  Future<void> saveTripStops(String tripId, List<Map<String, dynamic>> stops) async {
+  Future<void> saveTripStops(
+      String tripId, List<Map<String, dynamic>> stops) async {
     try {
       final client = await getDatabase();
-      
+
       await client.execute(
         'UPDATE train_trips SET stops = ? WHERE trip_id = ?',
         positional: [
@@ -288,7 +297,7 @@ class TrainProvider with ChangeNotifier {
           tripId,
         ],
       );
-      
+
       debugPrint('✅ [Turso] Salvate stops per trip: $tripId');
     } catch (e) {
       debugPrint('❌ [Turso] Errore salvando stops: $e');
@@ -299,12 +308,12 @@ class TrainProvider with ChangeNotifier {
   Future<List<Map<String, dynamic>>?> getTripStops(String tripId) async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT stops FROM train_trips WHERE trip_id = ?',
         positional: [tripId],
       );
-      
+
       if (result.isNotEmpty) {
         final stopsJson = result.first['stops']?.toString();
         if (stopsJson != null && stopsJson.isNotEmpty) {
@@ -317,7 +326,7 @@ class TrainProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('❌ [Turso] Errore in getTripStops: $e');
     }
-    
+
     return null;
   }
 
@@ -325,13 +334,13 @@ class TrainProvider with ChangeNotifier {
   Future<List<Map<String, dynamic>>> getAllTrips() async {
     try {
       final client = await getDatabase();
-      
+
       final result = await client.query(
         'SELECT * FROM train_trips ORDER BY last_updated DESC LIMIT 100',
       );
-      
+
       final List<Map<String, dynamic>> results = [];
-      
+
       for (final row in result) {
         results.add({
           'trip_id': row['trip_id'],
@@ -344,12 +353,12 @@ class TrainProvider with ChangeNotifier {
           'tripNumber': row['tripNumber'],
         });
       }
-      
+
       return results;
     } catch (e) {
       debugPrint('❌ [Turso] Errore in getAllTrips: $e');
     }
-    
+
     return [];
   }
 
@@ -366,7 +375,7 @@ class TrainProvider with ChangeNotifier {
   // New States for Service and Mode
   String _selectedService = 'trainboardeu';
   bool _isArrivalMode = false;
-  
+
   String get selectedService => _selectedService;
   bool get isArrivalMode => _isArrivalMode;
 
@@ -385,7 +394,8 @@ class TrainProvider with ChangeNotifier {
 
   Future<void> loadTrainLogos({String source = 'official'}) async {
     if (_hasLoadedLogos || _isLoadingLogos) {
-      debugPrint('[TrainProvider] loadTrainLogos skipped: loaded=$_hasLoadedLogos loading=$_isLoadingLogos');
+      debugPrint(
+          '[TrainProvider] loadTrainLogos skipped: loaded=$_hasLoadedLogos loading=$_isLoadingLogos');
       return;
     }
     _isLoadingLogos = true;
@@ -419,9 +429,11 @@ class TrainProvider with ChangeNotifier {
 
   /// Saves a trip snapshot on the server and returns the public share URL.
   /// Country chain: departure → explicit fallback → selected station.
-  Future<String?> shareTripLink(TrainDeparture dep, {String? countryFallback}) async {
+  Future<String?> shareTripLink(TrainDeparture dep,
+      {String? countryFallback}) async {
     try {
-      debugPrint('[TrainProvider] Sharing trip ${dep.category} ${dep.trainNumber}...');
+      debugPrint(
+          '[TrainProvider] Sharing trip ${dep.category} ${dep.trainNumber}...');
       final country = dep.country.isNotEmpty
           ? dep.country
           : (countryFallback ?? '').isNotEmpty
@@ -434,18 +446,22 @@ class TrainProvider with ChangeNotifier {
         'tripNumber': dep.trainNumber ?? '',
         'origin': dep.origin ?? '',
         'destination': dep.destination ?? '',
-        'operator': (dep.metadata?['operator'] ?? dep.metadata?['company'] ?? '').toString(),
+        'operator':
+            (dep.metadata?['operator'] ?? dep.metadata?['company'] ?? '')
+                .toString(),
         'platform': dep.platform ?? '',
         'delay': dep.delayMinutes ?? 0,
         'scheduledTime': dep.scheduledTime?.toIso8601String() ?? '',
         'estimatedTime': dep.estimatedTime?.toIso8601String() ?? '',
         'stops': dep.stops?.map((s) {
-          final j = s.toJson();
-          if ((j['country'] ?? '').toString().isEmpty && country.isNotEmpty) {
-            j['country'] = country;
-          }
-          return j;
-        }).toList() ?? [],
+              final j = s.toJson();
+              if ((j['country'] ?? '').toString().isEmpty &&
+                  country.isNotEmpty) {
+                j['country'] = country;
+              }
+              return j;
+            }).toList() ??
+            [],
       };
       final shareId = await _repository.shareTrip(payload);
       if (shareId == null || shareId.isEmpty) return null;
@@ -485,7 +501,8 @@ class TrainProvider with ChangeNotifier {
   void _startTimer() {
     if (_blockOnlineAutoRefresh) return;
 
-    _refreshTimer = Timer.periodic(Duration(seconds: _autoRefreshSeconds), (timer) {
+    _refreshTimer =
+        Timer.periodic(Duration(seconds: _autoRefreshSeconds), (timer) {
       if (_blockOnlineAutoRefresh) {
         _stopTimer();
         return;
@@ -532,7 +549,7 @@ class TrainProvider with ChangeNotifier {
 
   List<TrainStation> _stationSuggestions = [];
   bool _isLoadingSuggestions = false;
-  
+
   List<TrainDeparture> _departures = [];
   bool _isLoadingDepartures = false;
   bool _isUsingOfflineCache = false;
@@ -540,7 +557,7 @@ class TrainProvider with ChangeNotifier {
 
   List<TrainStation> get stationSuggestions => _stationSuggestions;
   bool get isLoadingSuggestions => _isLoadingSuggestions;
-  
+
   List<TrainDeparture> get departures => _departures;
   bool get isLoadingDepartures => _isLoadingDepartures;
   bool get isUsingOfflineCache => _isUsingOfflineCache;
@@ -554,7 +571,7 @@ class TrainProvider with ChangeNotifier {
 
   Future<void> searchTrainByNumber(String query) async {
     if (query.length < 2) return;
-    
+
     _isSearchingByNumber = true;
     notifyListeners();
 
@@ -576,11 +593,12 @@ class TrainProvider with ChangeNotifier {
     fetchDepartures(station.id, country: station.country);
   }
 
-  void selectSavedTrain(TrainStation station, TrainDeparture train, String service, String mode) {
+  void selectSavedTrain(
+      TrainStation station, TrainDeparture train, String service, String mode) {
     _selectedStation = station;
     _selectedService = service;
     _isArrivalMode = mode == 'arrivals';
-    _departures = [train]; 
+    _departures = [train];
     _isUsingOfflineCache = true;
     _isLoadingDepartures = false;
     setOnlineAutoRefreshBlocked(true);
@@ -597,7 +615,7 @@ class TrainProvider with ChangeNotifier {
       );
     }
   }
-  
+
   void clearSelection() {
     _selectedStation = null;
     _departures = [];
@@ -610,23 +628,20 @@ class TrainProvider with ChangeNotifier {
     clearSelection();
   }
 
-  Future<void> searchStations(String query, {String country = 'IT', String? city}) async {
+  Future<void> searchStations(String query,
+      {String country = 'IT', String? city}) async {
     if (query.length < 2) {
       _stationSuggestions = [];
       notifyListeners();
       return;
     }
-    
+
     _isLoadingSuggestions = true;
     notifyListeners();
 
     try {
-      _stationSuggestions = await _repository.searchStations(
-        query, 
-        country: country,
-        city: city,
-        service: _selectedService
-      );
+      _stationSuggestions = await _repository.searchStations(query,
+          country: country, city: city, service: _selectedService);
     } catch (e) {
       debugPrint("Provider Error: $e");
       _stationSuggestions = [];
@@ -646,24 +661,25 @@ class TrainProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchDepartures(String stationId, {String country = 'IT', bool silent = false, bool offlineSyncEnabled = false}) async {
+  Future<void> fetchDepartures(String stationId,
+      {String country = 'IT',
+      bool silent = false,
+      bool offlineSyncEnabled = false}) async {
     if (stationId.isEmpty) return;
     final shouldUseOfflineSync = offlineSyncEnabled || _offlineSyncEnabled;
     final requestId = ++_fetchRequestId;
     final cacheIdentifier = _cacheIdentifier(stationId, country);
-    
+
     if (!silent) {
       _isLoadingDepartures = true;
       notifyListeners();
     }
 
     try {
-      final newDepartures = await _repository.fetchDepartures(
-        stationId, 
-        country: country, 
-        service: _selectedService,
-        isArrival: _isArrivalMode
-      );
+      final newDepartures = await _repository.fetchDepartures(stationId,
+          country: country,
+          service: _selectedService,
+          isArrival: _isArrivalMode);
       if (requestId != _fetchRequestId) return;
       _isUsingOfflineCache = false;
       setOnlineAutoRefreshBlocked(false);
@@ -672,8 +688,10 @@ class TrainProvider with ChangeNotifier {
         for (int i = 0; i < newDepartures.length; i++) {
           final newDep = newDepartures[i];
           final oldDep = _departures.firstWhere(
-            (d) => (d.tripId != null && d.tripId == newDep.tripId) || 
-                   (d.trainNumber == newDep.trainNumber && d.destination == newDep.destination),
+            (d) =>
+                (d.tripId != null && d.tripId == newDep.tripId) ||
+                (d.trainNumber == newDep.trainNumber &&
+                    d.destination == newDep.destination),
             orElse: () => newDep,
           );
 
@@ -707,48 +725,53 @@ class TrainProvider with ChangeNotifier {
               'lastUpdated': DateTime.now().toIso8601String(),
             },
           );
-          debugPrint('[TrainProvider] Synced offline data for train station $stationId');
+          debugPrint(
+              '[TrainProvider] Synced offline data for train station $stationId');
         } catch (e) {
           debugPrint('[TrainProvider] Error saving offline data: $e');
         }
       }
     } catch (e) {
-       debugPrint("Provider Error: $e");
-       
-       if (shouldUseOfflineSync) {
-         try {
-           final cachedData = await OfflineSyncService.getTransportData(
-             transportType: 'train',
-             identifier: cacheIdentifier,
-           );
-           if (requestId != _fetchRequestId) return;
-            if (cachedData != null && cachedData is Map) {
-              final departuresData = cachedData['departures'] as List;
-              _departures = departuresData
-                  .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
-                  .toList();
-               _isUsingOfflineCache = true;
-               setOnlineAutoRefreshBlocked(true);
-               debugPrint('[TrainProvider] Loaded offline data for train station $stationId');
-            } else if (cachedData != null && cachedData is List) {
-             _departures = cachedData
-                 .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
-                 .toList();
-              _isUsingOfflineCache = true;
-              setOnlineAutoRefreshBlocked(true);
-              debugPrint('[TrainProvider] Loaded offline data for train station $stationId');
-           } else {
-              _departures = [];
-              _isUsingOfflineCache = false;
-           }
-         } catch (e2) {
+      debugPrint("Provider Error: $e");
+
+      if (shouldUseOfflineSync) {
+        try {
+          final cachedData = await OfflineSyncService.getTransportData(
+            transportType: 'train',
+            identifier: cacheIdentifier,
+          );
+          if (requestId != _fetchRequestId) return;
+          if (cachedData != null && cachedData is Map) {
+            final departuresData = cachedData['departures'] as List;
+            _departures = departuresData
+                .map((item) =>
+                    TrainDeparture.fromJson(item as Map<String, dynamic>))
+                .toList();
+            _isUsingOfflineCache = true;
+            setOnlineAutoRefreshBlocked(true);
+            debugPrint(
+                '[TrainProvider] Loaded offline data for train station $stationId');
+          } else if (cachedData != null && cachedData is List) {
+            _departures = cachedData
+                .map((item) =>
+                    TrainDeparture.fromJson(item as Map<String, dynamic>))
+                .toList();
+            _isUsingOfflineCache = true;
+            setOnlineAutoRefreshBlocked(true);
+            debugPrint(
+                '[TrainProvider] Loaded offline data for train station $stationId');
+          } else {
             _departures = [];
             _isUsingOfflineCache = false;
-         }
-       } else {
+          }
+        } catch (e2) {
           _departures = [];
           _isUsingOfflineCache = false;
-       }
+        }
+      } else {
+        _departures = [];
+        _isUsingOfflineCache = false;
+      }
     } finally {
       if (requestId == _fetchRequestId) {
         if (!silent) {
@@ -774,16 +797,19 @@ class TrainProvider with ChangeNotifier {
       if (cachedData != null && cachedData is Map) {
         final departuresData = cachedData['departures'] as List;
         _departures = departuresData
-            .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
+            .map(
+                (item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
             .toList();
         _isUsingOfflineCache = true;
         setOnlineAutoRefreshBlocked(true);
         _isLoadingDepartures = false;
-        debugPrint('[TrainProvider] Switched immediately to offline cache for train station $stationId');
+        debugPrint(
+            '[TrainProvider] Switched immediately to offline cache for train station $stationId');
         notifyListeners();
       } else if (cachedData != null && cachedData is List) {
         _departures = cachedData
-            .map((item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
+            .map(
+                (item) => TrainDeparture.fromJson(item as Map<String, dynamic>))
             .toList();
         _isUsingOfflineCache = true;
         setOnlineAutoRefreshBlocked(true);
@@ -795,38 +821,40 @@ class TrainProvider with ChangeNotifier {
     }
   }
 
-  Future<void> expandTrainDetails(int index, {bool forceRefresh = false}) async {
+  Future<void> expandTrainDetails(int index,
+      {bool forceRefresh = false}) async {
     if (index < 0 || index >= _departures.length) return;
-    
+
     final dep = _departures[index];
-    if (!forceRefresh && (dep.stops != null && dep.stops!.isNotEmpty) && dep.error == null) return; 
+    if (!forceRefresh &&
+        (dep.stops != null && dep.stops!.isNotEmpty) &&
+        dep.error == null) return;
 
     if (dep.error != null) {
-       _departures[index] = dep.copyWith(clearError: true);
-       notifyListeners();
+      _departures[index] = dep.copyWith(clearError: true);
+      notifyListeners();
     }
 
     try {
       TrainDeparture? details;
       if (dep.tripId != null) {
-        details = await _repository.fetchTrip(
-          dep.tripId!, 
-          country: _selectedStation?.country ?? 'IT',
-          service: _selectedService
-        );
+        details = await _repository.fetchTrip(dep.tripId!,
+            country: _selectedStation?.country ?? 'IT',
+            service: _selectedService);
       } else {
         details = await _repository.fetchTrainDetails(
-          dep.trainNumber ?? '', 
-          _selectedStation?.id ?? '',
-          country: _selectedStation?.country ?? 'IT',
-          service: _selectedService
-        );
+            dep.trainNumber ?? '', _selectedStation?.id ?? '',
+            country: _selectedStation?.country ?? 'IT',
+            service: _selectedService);
       }
 
-      if (details != null && details.stops != null && details.stops!.isNotEmpty) {
+      if (details != null &&
+          details.stops != null &&
+          details.stops!.isNotEmpty) {
         String? newOrigin = details.origin;
-        if ((newOrigin == null || newOrigin.isEmpty) && details.stops!.isNotEmpty) {
-           newOrigin = details.stops!.first.stationName;
+        if ((newOrigin == null || newOrigin.isEmpty) &&
+            details.stops!.isNotEmpty) {
+          newOrigin = details.stops!.first.stationName;
         }
 
         _departures[index] = _departures[index].copyWith(
@@ -837,13 +865,15 @@ class TrainProvider with ChangeNotifier {
           clearError: true,
         );
         if (_offlineSyncEnabled && _selectedStation != null) {
-          await _saveCurrentDeparturesToOfflineCache(_selectedStation!.id, _selectedStation!.country);
+          await _saveCurrentDeparturesToOfflineCache(
+              _selectedStation!.id, _selectedStation!.country);
         }
         notifyListeners();
       } else if (details != null) {
         // Il treno e sparito dal tabellone/upstream (risposta senza fermate):
         // non sovrascrivere mai i dati gia caricati col vuoto.
-        debugPrint('[TrainProvider] Trip ${dep.trainNumber} senza fermate, tengo i dati esistenti');
+        debugPrint(
+            '[TrainProvider] Trip ${dep.trainNumber} senza fermate, tengo i dati esistenti');
       }
     } catch (e) {
       debugPrint("Provider Error: $e");
@@ -856,7 +886,7 @@ class TrainProvider with ChangeNotifier {
       } else if (s.contains("SocketException") || s.contains("Network")) {
         friendlyError = "Errore di connessione. Controlla la rete.";
       }
-      
+
       _departures[index] = _departures[index].copyWith(error: friendlyError);
       notifyListeners();
     }
@@ -875,7 +905,8 @@ class TrainProvider with ChangeNotifier {
   /// Non tocca loading flag, cache offline né la stazione selezionata:
   /// le query sono silenziose e con timeout breve.
   /// Restituisce il delay trovato oppure null.
-  Future<int?> refreshDelayFromUpcomingStations(TrainDeparture dep, {int maxStations = 3}) async {
+  Future<int?> refreshDelayFromUpcomingStations(TrainDeparture dep,
+      {int maxStations = 3}) async {
     final stops = dep.stops;
     if (stops == null || stops.isEmpty) {
       debugPrint('[TrainProvider] Delay tabelloni: skip, nessuna fermata');
@@ -890,19 +921,23 @@ class TrainProvider with ChangeNotifier {
       final s = stops[i];
       if (s.cancelled) continue;
       final depTime = s.estimatedDeparture?.toUtc() ?? s.departure?.toUtc();
-      if (depTime != null && depTime.isBefore(now.subtract(const Duration(minutes: 2)))) {
+      if (depTime != null &&
+          depTime.isBefore(now.subtract(const Duration(minutes: 2)))) {
         continue; // già passata
       }
       indices.add(i);
     }
     // Se risultano tutte passate (treno in arrivo), prova comunque le ultime
     if (indices.isEmpty) {
-      for (int i = stops.length - 1; i >= 0 && indices.length < maxStations; i--) {
+      for (int i = stops.length - 1;
+          i >= 0 && indices.length < maxStations;
+          i--) {
         if (!stops[i].cancelled) indices.insert(0, i);
       }
     }
     if (indices.isEmpty) {
-      debugPrint('[TrainProvider] Delay tabelloni: skip, nessuna fermata futura');
+      debugPrint(
+          '[TrainProvider] Delay tabelloni: skip, nessuna fermata futura');
       return null;
     }
     // Stazioni restanti in base all'indice del treno (dalla prima futura a fine tratta)
@@ -912,7 +947,8 @@ class TrainProvider with ChangeNotifier {
         .map((s) => s.stationName)
         .where((n) => n.isNotEmpty)
         .toList();
-    debugPrint('[TrainProvider] Delay tabelloni treno ${dep.trainNumber} (delay attuale ${dep.delayMinutes}): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
+    debugPrint(
+        '[TrainProvider] Delay tabelloni treno ${dep.trainNumber} (delay attuale ${dep.delayMinutes}): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
 
     for (final i in indices) {
       final stop = stops[i];
@@ -921,79 +957,95 @@ class TrainProvider with ChangeNotifier {
       final country = stop.country.isNotEmpty
           ? stop.country
           : (dep.country.isNotEmpty ? dep.country : 'IT');
-      // Ultima fermata della tratta -> tabellone arrivi, le altre -> partenze
-      final isArrival = i == stops.length - 1;
+      final modes = i == stops.length - 1 ? [true] : [false, true];
+      bool matchFound = false;
 
-      List<TrainDeparture> board;
-      try {
-        debugPrint('[TrainProvider] Delay tabelloni: fetch ${isArrival ? 'arrivi' : 'partenze'} stazione ${stop.stationName} ($stationId)');
-        board = await _repository
-            .fetchDepartures(
-              stationId,
-              country: country,
-              service: _selectedService,
-              isArrival: isArrival,
-            )
-            .timeout(const Duration(seconds: 8));
-        debugPrint('[TrainProvider] Delay tabelloni: $stationId -> ${board.length} corse');
-      } catch (e) {
-        debugPrint('[TrainProvider] Delay tabelloni: errore fetch $stationId: $e');
-        continue;
-      }
+      for (final isArrival in modes) {
+        List<TrainDeparture> board;
+        try {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: fetch ${isArrival ? 'arrivi' : 'partenze'} stazione ${stop.stationName} ($stationId)');
+          board = await _repository
+              .fetchDepartures(
+                stationId,
+                country: country,
+                service: _selectedService,
+                isArrival: isArrival,
+              )
+              .timeout(const Duration(seconds: 8));
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: $stationId (${isArrival ? 'arrivi' : 'partenze'}) -> ${board.length} corse');
+        } catch (e) {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: errore fetch $stationId: $e');
+          continue;
+        }
 
-      TrainDeparture? match;
-      String matchBy = '';
-      final tripId = dep.tripId ?? '';
-      if (tripId.isNotEmpty) {
-        for (final d in board) {
-          if (d.tripId == tripId) {
+        TrainDeparture? match;
+        String matchBy = '';
+        final tripId = dep.tripId ?? '';
+        if (tripId.isNotEmpty) {
+          for (final d in board) {
+            if (d.tripId == tripId) {
+              match = d;
+              matchBy = 'tripId';
+              break;
+            }
+          }
+        }
+        // Il tripId cambia da stazione a stazione (suffisso timestamp diverso),
+        // quindi come fallback si matcha per numero treno + destinazione.
+        if (match == null && (dep.trainNumber ?? '').isNotEmpty) {
+          final dest = (dep.destination ?? '').trim().toLowerCase();
+          for (final d in board) {
+            if (d.trainNumber != dep.trainNumber) continue;
+            final dDest = (d.destination ?? '').trim().toLowerCase();
+            if (dest.isNotEmpty && dDest.isNotEmpty && dDest != dest) continue;
             match = d;
-            matchBy = 'tripId';
+            matchBy = 'numero+destinazione';
             break;
           }
         }
-      }
-      // Il tripId cambia da stazione a stazione (suffisso timestamp diverso),
-      // quindi come fallback si matcha per numero treno + destinazione.
-      if (match == null && (dep.trainNumber ?? '').isNotEmpty) {
-        final dest = (dep.destination ?? '').trim().toLowerCase();
-        for (final d in board) {
-          if (d.trainNumber != dep.trainNumber) continue;
-          final dDest = (d.destination ?? '').trim().toLowerCase();
-          if (dest.isNotEmpty && dDest.isNotEmpty && dDest != dest) continue;
-          match = d;
-          matchBy = 'numero+destinazione';
-          break;
+        if (match == null) {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: treno non trovato a $stationId (${isArrival ? 'arrivi' : 'partenze'}), provo altro modo/stazione');
+          continue;
         }
-      }
-      if (match == null) {
-        debugPrint('[TrainProvider] Delay tabelloni: treno non trovato a $stationId, passo alla prossima');
-        continue;
-      }
-      debugPrint('[TrainProvider] Delay tabelloni: match via $matchBy a $stationId');
+        debugPrint(
+            '[TrainProvider] Delay tabelloni: match via $matchBy a $stationId (${isArrival ? 'arrivi' : 'partenze'})');
 
-      final delay = match.delayMinutes;
-      if (delay == null) {
-        debugPrint('[TrainProvider] Delay tabelloni: match senza delay, passo alla prossima');
-        continue;
-      }
+        final delay = match.delayMinutes;
+        if (delay == null) {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: match senza delay, provo altro modo/stazione');
+          continue;
+        }
 
-      // Aggiorna la departure nel tabellone corrente
-      final idx = _departures.indexWhere((d) =>
-          (tripId.isNotEmpty && d.tripId == tripId) ||
-          (d.trainNumber == dep.trainNumber && d.destination == dep.destination));
-      if (idx != -1) {
-        final oldDelay = _departures[idx].delayMinutes;
-        _departures[idx] = _departures[idx].copyWith(
-          delayMinutes: delay,
-          clearError: true,
-        );
-        notifyListeners();
-        debugPrint('[TrainProvider] Delay tabelloni aggiornato: $oldDelay -> $delay min (da ${stop.stationName})');
-      } else {
-        debugPrint('[TrainProvider] Delay tabelloni: $delay min (da ${stop.stationName}), corsa fuori tabellone corrente');
+        // Aggiorna la departure nel tabellone corrente
+        matchFound = true;
+        final idx = _departures.indexWhere((d) =>
+            (tripId.isNotEmpty && d.tripId == tripId) ||
+            (d.trainNumber == dep.trainNumber &&
+                d.destination == dep.destination));
+        if (idx != -1) {
+          final oldDelay = _departures[idx].delayMinutes;
+          _departures[idx] = _departures[idx].copyWith(
+            delayMinutes: delay,
+            clearError: true,
+          );
+          notifyListeners();
+          debugPrint(
+              '[TrainProvider] Delay tabelloni aggiornato: $oldDelay -> $delay min (da ${stop.stationName})');
+        } else {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: $delay min (da ${stop.stationName}), corsa fuori tabellone corrente');
+        }
+        return delay;
       }
-      return delay;
+      if (!matchFound) {
+        debugPrint(
+            '[TrainProvider] Nessun match trovato a $stationId, passo alla prossima stazione');
+      }
     }
     debugPrint('[TrainProvider] Delay tabelloni: nessun tabellone utile');
     return null;
@@ -1004,7 +1056,8 @@ class TrainProvider with ChangeNotifier {
     return '${_selectedService}_${mode}_${stationId}_$country';
   }
 
-  Future<void> _saveCurrentDeparturesToOfflineCache(String stationId, String country) async {
+  Future<void> _saveCurrentDeparturesToOfflineCache(
+      String stationId, String country) async {
     if (_departures.isEmpty) return;
     try {
       await OfflineSyncService.saveTransportData(
@@ -1025,7 +1078,7 @@ class TrainProvider with ChangeNotifier {
 
   Future<void> saveTrainOffline(TrainDeparture train) async {
     if (_selectedStation == null) return;
-    
+
     final identifier = 'train_detail_${train.tripId}_${_selectedStation!.id}';
     await OfflineSyncService.saveTransportData(
       transportType: 'train',
@@ -1051,12 +1104,13 @@ class TrainProvider with ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> getDownloadedTrains() async {
-    final identifiers = await OfflineSyncService.getAllCachedIdentifiers('train');
+    final identifiers =
+        await OfflineSyncService.getAllCachedIdentifiers('train');
     final List<Map<String, dynamic>> results = [];
-    
+
     for (final id in identifiers) {
       if (!id.startsWith('train_detail_')) continue;
-      
+
       final data = await OfflineSyncService.getTransportData(
         transportType: 'train',
         identifier: id,
@@ -1090,7 +1144,8 @@ class TrainProvider with ChangeNotifier {
   /// Elimina tutti i treni salvati offline, preservando le cache dei
   /// tabelloni di stazione (identifier che non iniziano per `train_detail_`).
   Future<void> clearDownloadedTrains() async {
-    final identifiers = await OfflineSyncService.getAllCachedIdentifiers('train');
+    final identifiers =
+        await OfflineSyncService.getAllCachedIdentifiers('train');
     for (final id in identifiers) {
       if (!id.startsWith('train_detail_')) continue;
       await OfflineSyncService.deleteTransportData(
