@@ -67,6 +67,14 @@ int _asInt(dynamic v) {
   return int.tryParse(v.toString()) ?? 0;
 }
 
+/// Come _asInt ma preserva null (ritardo per-fermata sconosciuto vs 0 misurato).
+int? _asIntOrNull(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is double) return v.toInt();
+  return int.tryParse(v.toString());
+}
+
 String _asStr(dynamic v) {
   if (v == null) return '';
   final s = v.toString().trim();
@@ -281,16 +289,29 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         }
         if (trip is Map) {
           final tripMap = Map<String, dynamic>.from(trip);
-          // Le fermate della lista partenze FAL sono sintetiche ("16:01");
-          // se il trip porta fermate dettagliate le usiamo, altrimenti teniamo le esistenti.
+          final freshStops = tripMap['stops'] is List ? (tripMap['stops'] as List).length : 0;
           _fetchTimeoutTimer?.cancel();
           if (!mounted) return;
-          setState(() {
-            _tripData = tripMap;
-            _isLoading = false;
-            _hasLoadedData = true;
-            _error = null;
-          });
+          if (freshStops == 0 && _stops.isNotEmpty) {
+            // Il treno e sparito dall'upstream (risposta senza fermate):
+            // non sovrascrivere mai i dati gia caricati col vuoto.
+            debugPrint('[RegionalTrip] Trip $_tripId senza fermate, tengo i dati esistenti');
+            setState(() {
+              _isLoading = false;
+              _hasLoadedData = true;
+              _error = null;
+            });
+          } else {
+            setState(() {
+              _tripData = tripMap;
+              _isLoading = false;
+              _hasLoadedData = true;
+              _error = null;
+            });
+          }
+          // All'apertura: cerca il ritardo fresco nei tabelloni delle
+          // fermate (stessa logica del flusso nazionale) e aggiornalo.
+          _refreshDelayFromBoards();
           return;
         }
       }
@@ -311,6 +332,133 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         _error = 'Errore di rete: $e';
       });
     }
+  }
+
+  /// Copia di TrainProvider.refreshDelayFromUpcomingStations per i regionali:
+  /// se il trip endpoint non fornisce un ritardo aggiornato, lo cerca nei
+  /// tabelloni (departures/arrivals) delle prossime fermate della tratta.
+  ///
+  /// 1. Prende le prossime fermate non cancellate con stationId valido (max 3).
+  /// 2. Fetcha l'URL di bacheca (arrivi per l'ultima fermata, partenze le altre).
+  /// 3. Matcha la corsa per tripId, con fallback su numero treno + destinazione
+  ///    (i tripId regionali cambiano da stazione a stazione:
+  ///    FAL `fal-<num>-<stationId>`, Trenord `<codice>-<mir>-<epoch>`).
+  /// 4. Aggiorna il delay del dettaglio.
+  Future<void> _refreshDelayFromBoards({int maxStations = 3}) async {
+    final stops = _stops;
+    if (stops.isEmpty) {
+      debugPrint('[RegionalDelay] Skip: nessuna fermata');
+      return;
+    }
+
+    final nowUtc = DateTime.now().toUtc();
+
+    // Indici delle prossime fermate non cancellate (prima non ancora passata)
+    final indices = <int>[];
+    for (int i = 0; i < stops.length && indices.length < maxStations; i++) {
+      final s = stops[i];
+      if (s['cancelled'] == true) continue;
+      final times = _estimateRegionalStopTimes(s, _delay);
+      final depTime = times['dep'];
+      if (depTime != null && depTime.isBefore(nowUtc.subtract(const Duration(minutes: 2)))) {
+        continue; // già passata
+      }
+      if (_asStr(s['stationId'] ?? s['id']).isEmpty) continue;
+      indices.add(i);
+    }
+    // Se risultano tutte passate (treno in arrivo), prova comunque le ultime
+    if (indices.isEmpty) {
+      for (int i = stops.length - 1; i >= 0 && indices.length < maxStations; i--) {
+        if (stops[i]['cancelled'] == true) continue;
+        if (_asStr(stops[i]['stationId'] ?? stops[i]['id']).isEmpty) continue;
+        indices.insert(0, i);
+      }
+    }
+    if (indices.isEmpty) {
+      debugPrint('[RegionalDelay] Skip: nessuna fermata futura con stationId');
+      return;
+    }
+
+    final tripNumber = _trainNumber;
+    final dest = _getEffectiveDestination(_current).trim().toLowerCase();
+    // Stazioni restanti in base all'indice del treno (dalla prima futura a fine tratta)
+    final startIdx = indices.reduce((a, b) => a < b ? a : b);
+    final remaining = stops
+        .sublist(startIdx)
+        .map((s) => _asStr(s['stationName']))
+        .where((n) => n.isNotEmpty)
+        .toList();
+    debugPrint('[RegionalDelay] Treno $tripNumber (delay attuale $_delay): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
+
+    for (final i in indices) {
+      final stop = stops[i];
+      final stationId = _asStr(stop['stationId'] ?? stop['id']);
+      // Ultima fermata della tratta -> tabellone arrivi, le altre -> partenze
+      final mode = i == stops.length - 1 ? 'arrivals' : 'departures';
+
+      List<Map<String, dynamic>> board;
+      try {
+        final url = '$_baseUrl/$mode?stationId=${Uri.encodeComponent(stationId)}';
+        debugPrint('[RegionalDelay] Fetch $mode stazione ${_asStr(stop['stationName'])} ($stationId): $url');
+        final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+        if (resp.statusCode != 200) {
+          debugPrint('[RegionalDelay] HTTP ${resp.statusCode} da $stationId, passo alla prossima');
+          continue;
+        }
+        final decoded = json.decode(resp.body);
+        final list = (decoded is Map ? decoded['data'] as List<dynamic>? : null) ?? [];
+        board = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        debugPrint('[RegionalDelay] Tabellone $stationId: ${board.length} corse');
+      } catch (e) {
+        debugPrint('[RegionalDelay] Errore fetch $stationId: $e');
+        continue;
+      }
+
+      Map<String, dynamic>? match;
+      String matchBy = '';
+      if (_tripId.isNotEmpty) {
+        for (final b in board) {
+          if (_asStr(b['tripId']) == _tripId) {
+            match = b;
+            matchBy = 'tripId';
+            break;
+          }
+        }
+      }
+      if (match == null && tripNumber.isNotEmpty) {
+        for (final b in board) {
+          if (_asStr(b['tripNumber'] ?? b['trainNumber']) != tripNumber) continue;
+          final bDest = _asStr(b['destination']).trim().toLowerCase();
+          if (dest.isNotEmpty && bDest.isNotEmpty && bDest != dest) continue;
+          match = b;
+          matchBy = 'numero+destinazione';
+          break;
+        }
+      }
+      if (match == null) {
+        debugPrint('[RegionalDelay] Treno non trovato nel tabellone $stationId, passo alla prossima');
+        continue;
+      }
+      debugPrint('[RegionalDelay] Match via $matchBy nel tabellone $stationId');
+      if (match['delay'] == null) {
+        debugPrint('[RegionalDelay] Match senza delay, passo alla prossima');
+        continue;
+      }
+
+      final delay = _asInt(match['delay']);
+      if (!mounted) return;
+      final oldDelay = _delay;
+      if (delay != oldDelay && _tripData != null) {
+        setState(() {
+          _tripData = {..._current, 'delay': delay};
+        });
+        debugPrint('[RegionalDelay] Aggiornato: $oldDelay -> $delay min (da ${_asStr(stop['stationName'])})');
+      } else {
+        debugPrint('[RegionalDelay] Invariato: $delay min (da ${_asStr(stop['stationName'])})');
+      }
+      return;
+    }
+    debugPrint('[RegionalDelay] Nessun tabellone utile, ritardo invariato ($_delay min)');
   }
 
   void _retry() {
@@ -420,13 +568,21 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   }
 
   // ---------------------------------------------------------------------------
-  // Auto-refresh (copia semplificata di _startAutoRefresh / _toggleAutoRefresh)
+  // Auto-refresh + delay continuo da tabelloni finche la sheet e aperta
   // ---------------------------------------------------------------------------
+
+  /// Tick continuo: prima il trip live, poi il ritardo fresco dalle bacheche.
+  Future<void> _autoRefreshTick() async {
+    if (!mounted) return;
+    await _fetchTripDetails();
+    if (!mounted) return;
+    await _refreshDelayFromBoards();
+  }
 
   void _startAutoRefresh() {
     final interval = _settingsProvider.trainRefreshSeconds;
     if (interval > 0) {
-      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _refreshTrainDetails());
+      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _autoRefreshTick());
     }
   }
 
@@ -436,14 +592,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       _autoRefreshTimer!.cancel();
       _autoRefreshTimer = null;
     } else if (interval > 0) {
-      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _refreshTrainDetails());
+      _autoRefreshTimer = Timer.periodic(Duration(seconds: interval), (_) => _autoRefreshTick());
     }
     if (mounted) setState(() {});
   }
 
   void _refreshTrainDetails() {
     if (!mounted) return;
-    _fetchTripDetails();
+    _autoRefreshTick();
   }
 
   String _formatStationTime(DateTime? date, String countryCode) {
@@ -1508,12 +1664,23 @@ class _TimelineRow extends StatelessWidget {
     final bool cancelled = stop['cancelled'] == true;
     final String? platform = _asStr(stop['platform']).isNotEmpty ? _asStr(stop['platform']) : null;
 
-    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int delay) {
+    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int? delay) {
       if (scheduled == null && estimated == null) return '';
 
-      final int effectiveDelay = (estimated == null && delay == 0 && isActiveStop && totalDelay != 0)
-          ? totalDelay
-          : delay;
+      // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
+      // usa il ritardo del treno (stessa logica dello sheet nazionale).
+      // Uno 0 esplicito (fermata puntuale misurata) viene rispettato.
+      // Se esiste lo stimato ma non il ritardo, lo si deriva da stimato-programmato.
+      final int effectiveDelay;
+      if (delay != null) {
+        effectiveDelay = delay;
+      } else if (estimated != null && scheduled != null) {
+        effectiveDelay = (estimated.difference(scheduled).inSeconds / 60).round();
+      } else if (estimated == null && !isFuture && totalDelay != 0) {
+        effectiveDelay = totalDelay;
+      } else {
+        effectiveDelay = 0;
+      }
 
       final effective = estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
       final effStr = timeFormatter(effective, 'IT');
@@ -1529,8 +1696,8 @@ class _TimelineRow extends StatelessWidget {
     final schedDep = _parseRegionalTime(stop['scheduledDeparture'] ?? stop['scheduledTime']);
     final estArr = _parseRegionalTime(stop['estimatedArrival']);
     final estDep = _parseRegionalTime(stop['estimatedDeparture']);
-    final arrDelay = _asInt(stop['arrivalDelay']);
-    final depDelay = _asInt(stop['departureDelay']);
+    final int? arrDelay = _asIntOrNull(stop['arrivalDelay']);
+    final int? depDelay = _asIntOrNull(stop['departureDelay']);
 
     return IntrinsicHeight(
       child: Row(

@@ -676,8 +676,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   // Evita fallback ritardo concorrenti
   bool _isRefreshingDelayFallback = false;
-  // Ultimo aggiornamento ritardo via tabelloni (throttle = impostazioni refresh)
-  DateTime? _lastDelayFallbackAt;
 
   @override
   void initState() {
@@ -984,35 +982,32 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   /// Se i minuti di ritardo non sono più ottenibili via trip endpoint
   /// (refresh fallito -> error impostato, oppure delay assente), li cerca
   /// nei tabelloni delle prossime stazioni della tratta.
+  /// Gira in continuo finche la sheet e aperta (ad ogni tick auto-refresh):
+  /// nessun throttle, solo mutex anti-concorrenza.
   Future<void> _refreshDelayFallback() async {
-    if (!mounted || _isRefreshingDelayFallback) return;
-    final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
-    // Ritardo già noto e aggiornato di recente: niente da fare.
-    // Il throttle segue le impostazioni (trainRefreshSeconds): i controlli
-    // viaggiano alla cadenza scelta dall'utente; in manuale (0) ricontrolla sempre.
-    final delayKnown = current.error == null && current.delayMinutes != null;
-    final refreshSeconds = _settingsProvider.trainRefreshSeconds;
-    final throttle = refreshSeconds > 0
-        ? Duration(seconds: refreshSeconds)
-        : Duration.zero;
-    final last = _lastDelayFallbackAt;
-    if (delayKnown &&
-        last != null &&
-        DateTime.now().difference(last) < throttle) {
+    if (!mounted || _isRefreshingDelayFallback) {
+      if (_isRefreshingDelayFallback) debugPrint('[NationalDelay] Skip: aggiornamento gia in corso');
       return;
     }
+    final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    debugPrint('[NationalDelay] Treno ${current.trainNumber} (delay attuale ${current.delayMinutes}): cerco nei tabelloni');
 
     _isRefreshingDelayFallback = true;
     try {
       final delay = await _trainProvider.refreshDelayFromUpcomingStations(current);
-      if (!mounted || delay == null) return;
-      _lastDelayFallbackAt = DateTime.now();
+      if (!mounted || delay == null) {
+        if (delay == null) debugPrint('[NationalDelay] Nessun ritardo trovato nei tabelloni');
+        return;
+      }
       // Se la departure visualizzata è esterna al tabellone, aggiorna la copia locale
       if (_externalDep != null && identical(current, _externalDep)) {
         if (_externalDep!.delayMinutes != delay) {
           setState(() {
             _externalDep = _externalDep!.copyWith(delayMinutes: delay);
           });
+          debugPrint('[NationalDelay] Copia esterna aggiornata: ${current.delayMinutes} -> $delay min');
+        } else {
+          debugPrint('[NationalDelay] Copia esterna invariata: $delay min');
         }
       } else if (_findDisplayedDeparture() == null &&
           current.delayMinutes != delay) {
@@ -1021,6 +1016,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         setState(() {
           _externalDep = current.copyWith(delayMinutes: delay);
         });
+        debugPrint('[NationalDelay] Snapshot esterno aggiornato: ${current.delayMinutes} -> $delay min');
+      } else {
+        debugPrint('[NationalDelay] Ritardo $delay min gia nel tabellone corrente');
       }
     } finally {
       _isRefreshingDelayFallback = false;
@@ -2785,12 +2783,24 @@ class _TimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool highlighted = isCompleted || isActiveStop || isTraversing;
 
-    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int delay) {
+    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int? delay) {
       if (scheduled == null && estimated == null) return '';
-      
-      final int effectiveDelay = (estimated == null && delay == 0 && isActiveStop && totalDelay != 0) 
-          ? totalDelay 
-          : delay;
+
+      // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
+      // usa il ritardo del treno (le fermate gia passate/attuale hanno subito
+      // lo stesso ritardo; quelle future usano gia totalDelay dal chiamante).
+      // Uno 0 esplicito (fermata puntuale misurata) viene rispettato.
+      // Se esiste lo stimato ma non il ritardo, lo si deriva da stimato-programmato.
+      final int effectiveDelay;
+      if (delay != null) {
+        effectiveDelay = delay;
+      } else if (estimated != null && scheduled != null) {
+        effectiveDelay = (estimated.difference(scheduled).inSeconds / 60).round();
+      } else if (estimated == null && !isFuture && totalDelay != 0) {
+        effectiveDelay = totalDelay;
+      } else {
+        effectiveDelay = 0;
+      }
 
       final effective = estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
       final effStr = timeFormatter(effective, stop.country);
@@ -2864,10 +2874,10 @@ class _TimelineRow extends StatelessWidget {
                       ),
                   ],),
                   if (stop.arrival != null) 
-                Text(buildTimeString(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : (stop.arrivalDelay ?? 0)),
+                Text(buildTimeString(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : stop.arrivalDelay),
                         style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
                   if (stop.departure != null)
-                Text(buildTimeString(RuntimeLocalizations.t(context, 'departure'), stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : (stop.departureDelay ?? 0)),
+                Text(buildTimeString(RuntimeLocalizations.t(context, 'departure'), stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : stop.departureDelay),
                         style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
 
                 ],

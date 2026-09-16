@@ -823,7 +823,7 @@ class TrainProvider with ChangeNotifier {
         );
       }
 
-      if (details != null && details.stops != null) {
+      if (details != null && details.stops != null && details.stops!.isNotEmpty) {
         String? newOrigin = details.origin;
         if ((newOrigin == null || newOrigin.isEmpty) && details.stops!.isNotEmpty) {
            newOrigin = details.stops!.first.stationName;
@@ -840,6 +840,10 @@ class TrainProvider with ChangeNotifier {
           await _saveCurrentDeparturesToOfflineCache(_selectedStation!.id, _selectedStation!.country);
         }
         notifyListeners();
+      } else if (details != null) {
+        // Il treno e sparito dal tabellone/upstream (risposta senza fermate):
+        // non sovrascrivere mai i dati gia caricati col vuoto.
+        debugPrint('[TrainProvider] Trip ${dep.trainNumber} senza fermate, tengo i dati esistenti');
       }
     } catch (e) {
       debugPrint("Provider Error: $e");
@@ -873,7 +877,10 @@ class TrainProvider with ChangeNotifier {
   /// Restituisce il delay trovato oppure null.
   Future<int?> refreshDelayFromUpcomingStations(TrainDeparture dep, {int maxStations = 3}) async {
     final stops = dep.stops;
-    if (stops == null || stops.isEmpty) return null;
+    if (stops == null || stops.isEmpty) {
+      debugPrint('[TrainProvider] Delay tabelloni: skip, nessuna fermata');
+      return null;
+    }
 
     final now = DateTime.now().toUtc();
 
@@ -894,7 +901,18 @@ class TrainProvider with ChangeNotifier {
         if (!stops[i].cancelled) indices.insert(0, i);
       }
     }
-    if (indices.isEmpty) return null;
+    if (indices.isEmpty) {
+      debugPrint('[TrainProvider] Delay tabelloni: skip, nessuna fermata futura');
+      return null;
+    }
+    // Stazioni restanti in base all'indice del treno (dalla prima futura a fine tratta)
+    final startIdx = indices.reduce((a, b) => a < b ? a : b);
+    final remaining = stops
+        .sublist(startIdx)
+        .map((s) => s.stationName)
+        .where((n) => n.isNotEmpty)
+        .toList();
+    debugPrint('[TrainProvider] Delay tabelloni treno ${dep.trainNumber} (delay attuale ${dep.delayMinutes}): indice $startIdx, stazioni restanti (${remaining.length}): ${remaining.join(' → ')}');
 
     for (final i in indices) {
       final stop = stops[i];
@@ -908,6 +926,7 @@ class TrainProvider with ChangeNotifier {
 
       List<TrainDeparture> board;
       try {
+        debugPrint('[TrainProvider] Delay tabelloni: fetch ${isArrival ? 'arrivi' : 'partenze'} stazione ${stop.stationName} ($stationId)');
         board = await _repository
             .fetchDepartures(
               stationId,
@@ -916,16 +935,20 @@ class TrainProvider with ChangeNotifier {
               isArrival: isArrival,
             )
             .timeout(const Duration(seconds: 8));
-      } catch (_) {
+        debugPrint('[TrainProvider] Delay tabelloni: $stationId -> ${board.length} corse');
+      } catch (e) {
+        debugPrint('[TrainProvider] Delay tabelloni: errore fetch $stationId: $e');
         continue;
       }
 
       TrainDeparture? match;
+      String matchBy = '';
       final tripId = dep.tripId ?? '';
       if (tripId.isNotEmpty) {
         for (final d in board) {
           if (d.tripId == tripId) {
             match = d;
+            matchBy = 'tripId';
             break;
           }
         }
@@ -939,28 +962,40 @@ class TrainProvider with ChangeNotifier {
           final dDest = (d.destination ?? '').trim().toLowerCase();
           if (dest.isNotEmpty && dDest.isNotEmpty && dDest != dest) continue;
           match = d;
+          matchBy = 'numero+destinazione';
           break;
         }
       }
-      if (match == null) continue;
+      if (match == null) {
+        debugPrint('[TrainProvider] Delay tabelloni: treno non trovato a $stationId, passo alla prossima');
+        continue;
+      }
+      debugPrint('[TrainProvider] Delay tabelloni: match via $matchBy a $stationId');
 
       final delay = match.delayMinutes;
-      if (delay == null) continue;
+      if (delay == null) {
+        debugPrint('[TrainProvider] Delay tabelloni: match senza delay, passo alla prossima');
+        continue;
+      }
 
       // Aggiorna la departure nel tabellone corrente
       final idx = _departures.indexWhere((d) =>
           (tripId.isNotEmpty && d.tripId == tripId) ||
           (d.trainNumber == dep.trainNumber && d.destination == dep.destination));
       if (idx != -1) {
+        final oldDelay = _departures[idx].delayMinutes;
         _departures[idx] = _departures[idx].copyWith(
           delayMinutes: delay,
           clearError: true,
         );
         notifyListeners();
+        debugPrint('[TrainProvider] Delay tabelloni aggiornato: $oldDelay -> $delay min (da ${stop.stationName})');
+      } else {
+        debugPrint('[TrainProvider] Delay tabelloni: $delay min (da ${stop.stationName}), corsa fuori tabellone corrente');
       }
-      debugPrint('[TrainProvider] Delay fallback da stazione ${stop.stationName}: $delay min');
       return delay;
     }
+    debugPrint('[TrainProvider] Delay tabelloni: nessun tabellone utile');
     return null;
   }
 
