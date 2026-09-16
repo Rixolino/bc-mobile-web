@@ -363,6 +363,22 @@ class RuntimeLocalizations {
       'trainCategoryNumber': '{category} {number}',
       'trainRoute': '{origin} → {destination}',
       'scheduledLabel': 'Previsto',
+      // --- National / Regional ---
+      'tab_national': 'Nazionale',
+      'tab_regionale': 'Regionale',
+      'regional_providers_title': 'Operatori Regionali',
+      'regional_providers_subtitle': 'Seleziona il tuo operatore ferroviario regionale',
+      'regional_no_providers': 'Nessun operatore regionale disponibile per questo paese',
+      'regional_provider_stations': 'Stazioni',
+      'regional_provider_departures': 'Partenze',
+      'regional_provider_arrivals': 'Arrivi',
+      'regional_provider_trip': 'Dettaglio Treno',
+      'regional_provider_lines': 'Linee',
+      'regional_provider_news': 'Avvisi',
+      'regional_provider_realtime': 'Tempo Reale',
+      'regional_open_web': 'Apri sito web',
+      'regional_loading': 'Caricamento operatori regionali...',
+      'regional_error': 'Errore nel caricamento degli operatori regionali',
     }, // end IT
     'en': {
       // --- Routing ---
@@ -722,6 +738,22 @@ class RuntimeLocalizations {
       'trainCategoryNumber': '{category} {number}',
       'trainRoute': '{origin} → {destination}',
       'scheduledLabel': 'Scheduled',
+      // --- National / Regional ---
+      'tab_national': 'National',
+      'tab_regionale': 'Regional',
+      'regional_providers_title': 'Regional Operators',
+      'regional_providers_subtitle': 'Select your regional railway operator',
+      'regional_no_providers': 'No regional operators available for this country',
+      'regional_provider_stations': 'Stations',
+      'regional_provider_departures': 'Departures',
+      'regional_provider_arrivals': 'Arrivals',
+      'regional_provider_trip': 'Trip Details',
+      'regional_provider_lines': 'Lines',
+      'regional_provider_news': 'News',
+      'regional_provider_realtime': 'Realtime',
+      'regional_open_web': 'Open website',
+      'regional_loading': 'Loading regional operators...',
+      'regional_error': 'Error loading regional operators',
     },
     'de': {
       // --- Routing ---
@@ -1081,6 +1113,22 @@ class RuntimeLocalizations {
       'trainCategoryNumber': '{category} {number}',
       'trainRoute': '{origin} → {destination}',
       'scheduledLabel': 'Geplant',
+      // --- National / Regional ---
+      'tab_national': 'National',
+      'tab_regionale': 'Regional',
+      'regional_providers_title': 'Regionale Anbieter',
+      'regional_providers_subtitle': 'Wählen Sie Ihren regionalen Eisenbahnanbieter',
+      'regional_no_providers': 'Keine regionalen Anbieter für dieses Land verfügbar',
+      'regional_provider_stations': 'Bahnhöfe',
+      'regional_provider_departures': 'Abfahrten',
+      'regional_provider_arrivals': 'Ankünfte',
+      'regional_provider_trip': 'Fahrtdetails',
+      'regional_provider_lines': 'Linien',
+      'regional_provider_news': 'Neuigkeiten',
+      'regional_provider_realtime': 'Echtzeit',
+      'regional_open_web': 'Webseite öffnen',
+      'regional_loading': 'Regionale Anbieter laden...',
+      'regional_error': 'Fehler beim Laden der regionalen Anbieter',
     }
   };
 
