@@ -121,8 +121,23 @@ class TvCursorService extends ChangeNotifier {
   }
 
   void _scrollBy(Offset delta) {
+    // Il cursore nelle fasce bordo spesso sta sopra chrome non scrollabile
+    // (AppBar, nav bar, maniglie sheet): invia il segnale più dentro,
+    // sul contenuto scrollabile, altrimenti si perde.
+    var dispatch = _position;
+    if (_position.dy < edgeZone) {
+      dispatch = Offset(
+        _position.dx,
+        (edgeZone + 40).clamp(0.0, _screenSize.height),
+      );
+    } else if (_position.dy > _screenSize.height - edgeZone) {
+      dispatch = Offset(
+        _position.dx,
+        (_screenSize.height - edgeZone - 40).clamp(0.0, _screenSize.height),
+      );
+    }
     WidgetsBinding.instance.handlePointerEvent(
-      PointerScrollEvent(position: _position, scrollDelta: delta),
+      PointerScrollEvent(position: dispatch, scrollDelta: delta),
     );
   }
 
