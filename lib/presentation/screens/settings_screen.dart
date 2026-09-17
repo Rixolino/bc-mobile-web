@@ -12,6 +12,7 @@ import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 import 'dart:ui';
 import '../../features/train/presentation/widgets/railway_station_stats_screen.dart';
+import '../../core/services/tv_cursor_service.dart';
 import 'legal_document_screen.dart';
 import 'language_settings_screen.dart';
 import 'onboarding_screen.dart' deferred as onboarding;
@@ -54,6 +55,11 @@ class SettingsScreen extends StatelessWidget {
                           child: Divider(height: 1, thickness: 1),
                         ),
                         _buildStartScreenSelector(context, settings, theme),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Divider(height: 1, thickness: 1),
+                        ),
+                        _buildTvCursorToggle(context, theme),
                       ],
                     ),
 
@@ -998,6 +1004,21 @@ class SettingsScreen extends StatelessWidget {
       description: AppLocalizations.of(context)?.stopClusteringDesc ?? 'Raggruppa le fermate vicine in cluster.',
       value: settings.stopsClusteringEnabled,
       onChanged: (value) => settings.setStopsClusteringEnabled(value),
+    );
+  }
+
+  Widget _buildTvCursorToggle(BuildContext context, ThemeProvider theme) {
+    final cursor = Provider.of<TvCursorService>(context);
+    return _buildSimpleToggle(
+      context,
+      theme,
+      title: RuntimeLocalizations.t(context, 'settings_tv_cursor',
+          fallback: 'Cursore TV'),
+      description: RuntimeLocalizations.t(context, 'settings_tv_cursor_desc',
+          fallback:
+              'Mostra un cursore comandato dal telecomando (Fire Stick, Google TV): frecce per muovere, OK per toccare.'),
+      value: cursor.enabled,
+      onChanged: (value) => cursor.setEnabled(value),
     );
   }
 

@@ -11,6 +11,8 @@ import 'presentation/providers/settings_provider.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/map_state_provider.dart';
 import 'presentation/screens/splash_screen.dart';
+import 'core/services/tv_cursor_service.dart';
+import 'core/widgets/tv_cursor_overlay.dart';
 import 'core/services/android_background_service.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -129,6 +131,7 @@ class _BcTransporterAppState extends State<BcTransporterApp>
         ),
         ChangeNotifierProvider(create: (_) => MapStateProvider()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()),
+        ChangeNotifierProvider(create: (_) => TvCursorService()..load()),
       ],
       child: Consumer2<ThemeProvider, SettingsProvider>(
         builder: (context, theme, settings, child) {
@@ -157,6 +160,7 @@ class _BcTransporterAppState extends State<BcTransporterApp>
                   Locale('de'), // Tedesco
                   Locale('fr'), // Francese
                 ],
+                builder: (context, child) => TvRemoteHost(child: child),
                 home: const SplashScreen(),
               );
             },
