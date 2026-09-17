@@ -903,6 +903,37 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (settings.logoSource == 'official') ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: theme.secondaryTextColor.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 14,
+                          color: theme.secondaryTextColor,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            RuntimeLocalizations.t(context, 'logos_official_disclaimer'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: theme.secondaryTextColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

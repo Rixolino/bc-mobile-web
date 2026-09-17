@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:app_links/app_links.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
 import '../../core/design_system.dart';
 import 'home_screen.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -59,9 +61,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     } catch (_) {}
     if (!mounted) return;
 
+    bool hasSeenOnboarding = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+    } catch (_) {}
+    if (!mounted) return;
+
     if (skipIntro) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => hasSeenOnboarding ? const HomeScreen() : const OnboardingScreen()),
       );
       return;
     }
@@ -70,7 +79,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const HomeScreen(),
+            pageBuilder: (_, __, ___) => hasSeenOnboarding ? const HomeScreen() : const OnboardingScreen(),
             transitionDuration: const Duration(milliseconds: 600),
             transitionsBuilder: (_, anim, __, child) {
               return FadeTransition(
