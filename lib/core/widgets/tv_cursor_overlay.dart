@@ -24,6 +24,8 @@ class TvRemoteHost extends StatelessWidget {
       child: Stack(
         children: [
           if (child != null) child!,
+          // I comandi sotto, il cursore sempre sopra: solo lui li copre.
+          const _TvScrollButtons(),
           const _TvCursor(),
         ],
       ),
@@ -74,6 +76,78 @@ class _TvCursor extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Frecce generate per OGNI oggetto scrollabile rilevato: mini controllo
+/// su/giù sul bordo destro di ciascun viewport. Tappabili col cursore o al tocco.
+class _TvScrollButtons extends StatelessWidget {
+  const _TvScrollButtons();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<TvCursorService>(
+      builder: (context, cursor, _) {
+        final vps = cursor.viewports;
+        if (vps.isEmpty) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        final screen = MediaQuery.sizeOf(context);
+        const double w = 40;
+        return Stack(
+          children: [
+            for (int i = 0; i < vps.length; i++)
+              _viewportArrows(scheme, screen, vps[i], cursor, w),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _viewportArrows(ColorScheme scheme, Size screen, ViewportInfo vp,
+      TvCursorService cursor, double w) {
+    final r = vp.rect;
+    // Bordo destro del viewport, centrato verticalmente, dentro lo schermo
+    final double left =
+        (r.right - w - 6).clamp(4.0, screen.width - w - 4.0);
+    final double top =
+        (r.center.dy - 46).clamp(4.0, screen.height - 100.0);
+    Widget btn(IconData icon, double delta) {
+      return Material(
+        color: scheme.primaryContainer.withOpacity(0.92),
+        shape: const CircleBorder(),
+        elevation: 3,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => cursor.scrollViewport(vp, delta),
+          child: Padding(
+            padding: const EdgeInsets.all(7),
+            child: Icon(icon, size: 17, color: scheme.primary),
+          ),
+        ),
+      );
+    }
+
+    const gap = TvCursorService.scrollStep * 3;
+    final bool horizontal = vp.axis == Axis.horizontal;
+    return Positioned(
+      left: left,
+      top: top,
+      width: w,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: horizontal
+            ? [
+                btn(Icons.keyboard_arrow_left_rounded, -gap),
+                const SizedBox(height: 4),
+                btn(Icons.keyboard_arrow_right_rounded, gap),
+              ]
+            : [
+                btn(Icons.keyboard_arrow_up_rounded, -gap),
+                const SizedBox(height: 4),
+                btn(Icons.keyboard_arrow_down_rounded, gap),
+              ],
+      ),
     );
   }
 }
