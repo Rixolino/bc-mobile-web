@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
 import '../../core/design_system.dart';
+import '../../core/services/runtime_localizations.dart';
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -62,15 +63,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (!mounted) return;
 
     bool hasSeenOnboarding = false;
+    int startScreen = 0;
     try {
       final prefs = await SharedPreferences.getInstance();
       hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+      startScreen = (prefs.getInt('ui_start_screen') ?? 0).clamp(0, 4);
     } catch (_) {}
     if (!mounted) return;
 
     if (skipIntro) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => hasSeenOnboarding ? const HomeScreen() : const OnboardingScreen()),
+        MaterialPageRoute(builder: (_) => hasSeenOnboarding ? HomeScreen(initialMode: startScreen) : const OnboardingScreen()),
       );
       return;
     }
@@ -79,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => hasSeenOnboarding ? const HomeScreen() : const OnboardingScreen(),
+            pageBuilder: (_, __, ___) => hasSeenOnboarding ? HomeScreen(initialMode: startScreen) : const OnboardingScreen(),
             transitionDuration: const Duration(milliseconds: 600),
             transitionsBuilder: (_, anim, __, child) {
               return FadeTransition(
@@ -174,7 +177,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Tuo viaggio, in tempo reale',
+                            RuntimeLocalizations.t(context, 'splash_tagline',
+                                fallback: 'Tuo viaggio, in tempo reale'),
                             style: TextStyle(
                               color: theme.secondaryTextColor,
                               fontSize: 14,

@@ -1,10 +1,9 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'legal_document_screen.dart';
 import '../providers/theme_provider.dart';
 import '../../core/design_system.dart';
 import '../../core/services/runtime_localizations.dart';
@@ -1735,6 +1734,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _acceptedPrivacy = false;
   bool _acceptedEula = false;
+  bool _acceptedTerms = false;
   final PageController _pageController = PageController();
   int _currentPage = 0;
   static int get _totalPages => 2 + _onboardingFeatures.length;
@@ -1748,10 +1748,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
+    final startScreen = (prefs.getInt('ui_start_screen') ?? 0).clamp(0, 4);
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const HomeScreen(),
+          pageBuilder: (_, __, ___) => HomeScreen(initialMode: startScreen),
           transitionDuration: const Duration(milliseconds: 500),
           transitionsBuilder: (_, anim, __, child) =>
               FadeTransition(opacity: anim, child: child),
@@ -1760,178 +1761,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _showPolicyDialog(String title, String content) {
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: theme.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radius2Xl),
-        ),
-        child: Container(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.75),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: AppGradients.brandGradient,
-                      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                    ),
-                    child: Icon(
-                      title.contains('EULA') ||
-                              title.contains('Licenza') ||
-                              title.contains('License') ||
-                              title.contains('Lizenz')
-                          ? Icons.gavel_rounded
-                          : Icons.shield_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontFamily: 'Syne',
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: theme.textColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: _buildPolicyContent(theme, content),
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: Text(
-                  RuntimeLocalizations.t(context, 'close', fallback: 'Chiudi'),
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
+  void _showPolicyDialog(String title, String content, {IconData icon = Icons.shield_rounded}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LegalDocumentScreen(
+          title: title,
+          content: content,
+          icon: icon,
         ),
       ),
-    );
-  }
-
-  /// Testo con URL rilevati automaticamente e resi tappabili.
-  TextSpan _linkifyText(String text, TextStyle style, Color linkColor) {
-    final urlRegExp = RegExp(r'https?://[^\s)]+');
-    final spans = <TextSpan>[];
-    int start = 0;
-    for (final match in urlRegExp.allMatches(text)) {
-      if (match.start > start) {
-        spans.add(TextSpan(text: text.substring(start, match.start)));
-      }
-      final url = match.group(0)!;
-      spans.add(
-        TextSpan(
-          text: url,
-          style: TextStyle(
-            color: linkColor,
-            decoration: TextDecoration.underline,
-            decorationColor: linkColor,
-          ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () async {
-              final uri = Uri.tryParse(url);
-              if (uri == null) return;
-              try {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              } catch (_) {}
-            },
-        ),
-      );
-      start = match.end;
-    }
-    if (start < text.length) {
-      spans.add(TextSpan(text: text.substring(start)));
-    }
-    return TextSpan(style: style, children: spans);
-  }
-
-  /// Renderizza il testo legale separando le sezioni (delimitate da righe
-  /// di ━ nei testi) con veri separatori Flutter: titolo, Divider, corpo.
-  Widget _buildPolicyContent(ThemeProvider theme, String content) {
-    final bodyStyle = TextStyle(
-      color: theme.textColor,
-      fontSize: 13,
-      height: 1.6,
-    );
-    final parts = content.split(RegExp(r'\n[━─=\-]{5,}\n'));
-    if (parts.length < 3) {
-      return RichText(
-        text: _linkifyText(content, bodyStyle, theme.primaryColor),
-      );
-    }
-    final widgets = <Widget>[
-      RichText(
-        textAlign: TextAlign.center,
-        text: _linkifyText(
-          parts[0].trim(),
-          TextStyle(
-            color: theme.textColor,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            height: 1.5,
-          ),
-          theme.primaryColor,
-        ),
-      ),
-    ];
-    for (int i = 1; i < parts.length; i += 2) {
-      final header = parts[i].trim();
-      final body = (i + 1 < parts.length) ? parts[i + 1].trim() : '';
-      widgets.addAll([
-        const SizedBox(height: 14),
-        Text(
-          header,
-          style: TextStyle(
-            color: theme.primaryColor,
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            height: 1.4,
-          ),
-        ),
-        Divider(
-          color: theme.primaryColor.withOpacity(0.35),
-          thickness: 1.5,
-          height: 14,
-        ),
-        if (body.isNotEmpty)
-          RichText(
-            text: _linkifyText(body, bodyStyle, theme.primaryColor),
-          ),
-      ]);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
     );
   }
 
@@ -2252,7 +2090,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ===== PAGINA FINALE: Privacy e termini =====
   Widget _buildPrivacyPage(ThemeProvider theme) {
-    final canProceed = _acceptedPrivacy && _acceptedEula;
+    final canProceed = _acceptedPrivacy && _acceptedEula && _acceptedTerms;
 
     final ppTitle = RuntimeLocalizations.t(context, 'onboarding_privacy_link',
         fallback: 'Privacy Policy');
@@ -2262,6 +2100,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         fallback: 'EULA');
     final eulaText =
         RuntimeLocalizations.t(context, 'onboarding_eula_text', fallback: '');
+    final termsTitle = RuntimeLocalizations.t(context, 'onboarding_terms_link',
+        fallback: 'Termini di utilizzo');
+    final termsText =
+        RuntimeLocalizations.t(context, 'onboarding_terms_text', fallback: '');
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -2327,7 +2169,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   value: _acceptedEula,
                   onChanged: (val) =>
                       setState(() => _acceptedEula = val ?? false),
-                  onLinkTap: () => _showPolicyDialog(eulaTitle, eulaText),
+                  onLinkTap: () => _showPolicyDialog(eulaTitle, eulaText,
+                      icon: Icons.gavel_rounded),
+                  theme: theme,
+                ),
+                Divider(
+                    color: theme.primaryColor.withOpacity(0.1), height: 24),
+                _buildCheckboxTile(
+                  prefix: RuntimeLocalizations.t(
+                      context, 'onboarding_terms_prefix',
+                      fallback: 'Ho letto e accetto i '),
+                  linkText: termsTitle,
+                  value: _acceptedTerms,
+                  onChanged: (val) =>
+                      setState(() => _acceptedTerms = val ?? false),
+                  onLinkTap: () => _showPolicyDialog(termsTitle, termsText,
+                      icon: Icons.description_rounded),
                   theme: theme,
                 ),
               ],

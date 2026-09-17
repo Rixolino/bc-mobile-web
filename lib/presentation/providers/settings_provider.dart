@@ -21,6 +21,7 @@ class SettingsProvider with ChangeNotifier {
   static const String keyFunctionsWorker = 'functions_worker_enabled';
 
   static const String keyMapStyle = 'map_style';
+  static const String keyStartScreen = 'ui_start_screen';
   static const String keyVectorLogos = 'ui_vector_logos_enabled';
   static const String keyLogoSource = 'ui_logo_source';
   static const String keyLanguage = 'app_language';
@@ -63,6 +64,9 @@ class SettingsProvider with ChangeNotifier {
   String _trainService = 'trainboardeu';
   String _busProvider = 'bari';
   String _busBaseUrl = 'https://betacloud-transporter.is-cool.dev';
+
+  // Schermata iniziale: 0 Home, 1 Treni, 2 Bus, 3 Aerei, 4 Autostrade
+  int _startScreenMode = 0;
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
@@ -113,6 +117,9 @@ class SettingsProvider with ChangeNotifier {
   // New: arrival pre-notice in minutes
   int get trainArrivalPreNoticeMinutes => _trainArrivalPreNoticeMinutes;
 
+  // Schermata iniziale dell'app
+  int get startScreenMode => _startScreenMode;
+
   // New: offline sync feature (beta)
   bool get offlineSyncEnabled => _offlineSyncEnabled;
 
@@ -155,6 +162,7 @@ class SettingsProvider with ChangeNotifier {
     _trainsWorkerEnabled = prefs.getBool(keyTrainsWorker) ?? false;
     _busesWorkerEnabled = prefs.getBool(keyBusesWorker) ?? false;
     _functionsWorkerEnabled = prefs.getBool(keyFunctionsWorker) ?? false;
+    _startScreenMode = prefs.getInt(keyStartScreen) ?? 0;
 
     // Load worker params
     _trainStationId = prefs.getString(keyTrainStationId) ?? '';
@@ -319,6 +327,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyLogoSource, source);
+  }
+
+  Future<void> setStartScreenMode(int mode) async {
+    _startScreenMode = mode.clamp(0, 4);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(keyStartScreen, _startScreenMode);
   }
 
   Future<void> setTrainsWorkerEnabled(bool enabled) async {

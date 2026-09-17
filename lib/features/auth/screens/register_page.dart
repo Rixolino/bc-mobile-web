@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'login_page.dart';
 import 'dashboard_page.dart';
-import '../../../presentation/screens/home_screen.dart';
 import '../../../core/design_system.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 
@@ -18,6 +17,8 @@ class _RegisterPageState extends State<RegisterPage>
     with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   final _confirmPasswordController = TextEditingController();
   final _nicknameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -112,9 +113,7 @@ class _RegisterPageState extends State<RegisterPage>
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: theme.primaryColor),
           onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-            );
+            Navigator.of(context).maybePop();
           },
           tooltip: loc?.back ?? 'Torna indietro',
         ),
@@ -262,6 +261,17 @@ class _RegisterPageState extends State<RegisterPage>
                                 hintText: loc?.createPasswordHint ??
                                     'Crea una password sicura',
                                 prefixIcon: const Icon(Icons.lock_outline),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.6),
+                                  ),
+                                  onPressed: () => setState(() =>
+                                      _obscurePassword = !_obscurePassword),
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -269,7 +279,7 @@ class _RegisterPageState extends State<RegisterPage>
                                 fillColor:
                                     theme.colorScheme.surface.withOpacity(0.5),
                               ),
-                              obscureText: true,
+                              obscureText: _obscurePassword,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return loc?.passwordRequired ??
@@ -292,6 +302,18 @@ class _RegisterPageState extends State<RegisterPage>
                                 hintText:
                                     loc?.repeatPassword ?? 'Ripeti la password',
                                 prefixIcon: const Icon(Icons.lock_reset),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureConfirmPassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.6),
+                                  ),
+                                  onPressed: () => setState(() =>
+                                      _obscureConfirmPassword =
+                                          !_obscureConfirmPassword),
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -299,7 +321,7 @@ class _RegisterPageState extends State<RegisterPage>
                                 fillColor:
                                     theme.colorScheme.surface.withOpacity(0.5),
                               ),
-                              obscureText: true,
+                              obscureText: _obscureConfirmPassword,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return loc?.confirmPasswordRequired ??

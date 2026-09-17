@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'register_page.dart';
 import 'dashboard_page.dart';
-import '../../../presentation/screens/home_screen.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../core/design_system.dart';
 import '../../../core/responsive.dart';
@@ -18,6 +17,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
   final _formKey = GlobalKey<FormState>();
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -72,9 +72,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: theme.primaryColor),
           onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-            );
+            Navigator.of(context).maybePop();
           },
           tooltip: loc?.back ?? 'Torna indietro',
         ),
@@ -199,13 +197,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    Icons.visibility_off,
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.6),
                                   ),
-                                  onPressed: () {
-                                    // TODO: Implement password visibility toggle
-                                  },
+                                  onPressed: () => setState(() =>
+                                      _obscurePassword = !_obscurePassword),
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -214,7 +213,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                 fillColor:
                                     theme.colorScheme.surface.withOpacity(0.5),
                               ),
-                              obscureText: true,
+                              obscureText: _obscurePassword,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return loc?.passwordRequired ??

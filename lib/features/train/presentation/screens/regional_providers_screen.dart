@@ -216,7 +216,7 @@ class _RegionalProvidersScreenState extends State<RegionalProvidersScreen> {
           else
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                 itemCount: _filtered.length,
                 itemBuilder: (context, index) =>
                     _providerCard(theme, _filtered[index]),

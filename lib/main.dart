@@ -155,6 +155,7 @@ class _BcTransporterAppState extends State<BcTransporterApp>
                   Locale('it'), // Italiano (default)
                   Locale('en'), // Inglese
                   Locale('de'), // Tedesco
+                  Locale('fr'), // Francese
                 ],
                 home: const SplashScreen(),
               );

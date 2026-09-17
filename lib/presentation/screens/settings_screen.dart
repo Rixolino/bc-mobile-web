@@ -12,6 +12,9 @@ import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
 import 'dart:ui';
 import '../../features/train/presentation/widgets/railway_station_stats_screen.dart';
+import 'legal_document_screen.dart';
+import 'language_settings_screen.dart';
+import 'onboarding_screen.dart' deferred as onboarding;
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -46,6 +49,11 @@ class SettingsScreen extends StatelessWidget {
                           child: Divider(height: 1, thickness: 1),
                         ),
                         _buildThemeSelector(context, settings, theme),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Divider(height: 1, thickness: 1),
+                        ),
+                        _buildStartScreenSelector(context, settings, theme),
                       ],
                     ),
 
@@ -131,6 +139,17 @@ class SettingsScreen extends StatelessWidget {
                           child: Divider(height: 1, thickness: 1),
                         ),
                         _buildMapStyleSelector(context, settings, theme),
+                      ],
+                    ),
+
+                    // SEZIONE: GUIDA INTRODUTTIVA E NOTE LEGALI
+                    _buildSectionCard(
+                      context,
+                      theme,
+                      title: RuntimeLocalizations.t(context, 'settings_onboarding', fallback: 'Guida introduttiva'),
+                      icon: Icons.school_rounded,
+                      children: [
+                        _buildOnboardingTile(context, theme),
                       ],
                     ),
 
@@ -327,6 +346,7 @@ class SettingsScreen extends StatelessWidget {
       case 'it': return RuntimeLocalizations.t(context, 'language_italian');
       case 'en': return RuntimeLocalizations.t(context, 'language_english');
       case 'de': return RuntimeLocalizations.t(context, 'language_german');
+      case 'fr': return RuntimeLocalizations.t(context, 'language_french');
       default: return RuntimeLocalizations.t(context, 'automatic');
     }
   }
@@ -348,7 +368,12 @@ class SettingsScreen extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _showLanguageDialog(context, settings, theme),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => const LanguageSettingsScreen()),
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
         child: Row(
@@ -373,96 +398,6 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
-
-  void _showLanguageDialog(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: theme.surfaceColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Text(
-            RuntimeLocalizations.t(ctx, 'settings_language'),
-            style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
-          ),
-          contentPadding: const EdgeInsets.only(top: 16, bottom: 24),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDialogLanguageOption(
-                ctx, 
-                RuntimeLocalizations.t(ctx, 'automatic'), 
-                null, 
-                settings, 
-                theme, 
-                Icon(
-                  Icons.auto_awesome_rounded, 
-                  size: 18, 
-                  color: settings.isLocaleAutomatic ? theme.primaryColor : theme.secondaryTextColor,
-                ),
-              ),
-              _buildDialogLanguageOption(
-                ctx, 
-                RuntimeLocalizations.t(ctx, 'language_italian'), 
-                'it', 
-                settings, 
-                theme, 
-                const Text('🇮🇹', style: TextStyle(fontSize: 18)),
-              ),
-              _buildDialogLanguageOption(
-                ctx, 
-                RuntimeLocalizations.t(ctx, 'language_english'), 
-                'en', 
-                settings, 
-                theme, 
-                const Text('🇬🇧', style: TextStyle(fontSize: 18)),
-              ),
-              _buildDialogLanguageOption(
-                ctx, 
-                RuntimeLocalizations.t(ctx, 'language_german'), 
-                'de', 
-                settings, 
-                theme, 
-                const Text('🇩🇪', style: TextStyle(fontSize: 18)),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDialogLanguageOption(BuildContext ctx, String label, String? langCode, SettingsProvider settings, ThemeProvider theme, Widget leading) {
-    final isSelected = langCode == null ? settings.isLocaleAutomatic : settings.appLocale?.languageCode == langCode;
-    
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      leading: Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? theme.primaryColor.withOpacity(0.15) : theme.surfaceColor.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: leading, // Ora accetta direttamente il Text con l'emoji o l'Icon di sistema
-      ),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? theme.primaryColor : theme.textColor,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          fontSize: 15,
-        ),
-      ),
-      trailing: isSelected ? Icon(Icons.check_circle_rounded, color: theme.primaryColor) : null,
-      onTap: () {
-        settings.setAppLocale(langCode);
-        Navigator.pop(ctx);
-      },
-    );
-  }
-
 
   // --- FINE METODI PER LINGUA ---
 
@@ -517,6 +452,51 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStartScreenSelector(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    final options = [
+      (0, Icons.home_rounded, RuntimeLocalizations.t(context, 'start_screen_home', fallback: 'Home')),
+      (1, Icons.train_rounded, RuntimeLocalizations.t(context, 'start_screen_trains', fallback: 'Treni')),
+      (2, Icons.directions_bus_rounded, RuntimeLocalizations.t(context, 'start_screen_buses', fallback: 'Bus')),
+      (3, Icons.flight_rounded, RuntimeLocalizations.t(context, 'start_screen_planes', fallback: 'Aerei')),
+      (4, Icons.add_road_rounded, RuntimeLocalizations.t(context, 'start_screen_roads', fallback: 'Autostrade')),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          RuntimeLocalizations.t(context, 'settings_start_screen', fallback: 'Schermata iniziale'),
+          style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          RuntimeLocalizations.t(context, 'settings_start_screen_desc',
+              fallback: 'Scegli da quale schermata parte l\u2019app'),
+          style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final opt in options)
+              ChoiceChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(opt.$2, size: 14),
+                    const SizedBox(width: 6),
+                    Text(opt.$3),
+                  ],
+                ),
+                selected: settings.startScreenMode == opt.$1,
+                onSelected: (_) => settings.setStartScreenMode(opt.$1),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1306,6 +1286,161 @@ class SettingsScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildOnboardingTile(BuildContext context, ThemeProvider theme) {
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.play_circle_outline_rounded,
+                color: theme.primaryColor, size: 22),
+          ),
+          title: Text(
+            RuntimeLocalizations.t(context, 'settings_review_tour',
+                fallback: 'Rivedi il tour introduttivo'),
+            style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14),
+          ),
+          subtitle: Text(
+            RuntimeLocalizations.t(context, 'settings_review_tour_desc',
+                fallback: 'Riguarda le funzionalità principali dell\u2019app'),
+            style: TextStyle(
+                color: theme.secondaryTextColor, fontSize: 12),
+          ),
+          trailing: Icon(Icons.chevron_right_rounded,
+              color: theme.secondaryTextColor),
+          onTap: () async {
+            // Import differito: evita il ciclo home->settings->onboarding->home
+            await onboarding.loadLibrary();
+            if (context.mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => onboarding.OnboardingScreen()),
+              );
+            }
+          },
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Divider(height: 1, thickness: 1),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.shield_rounded,
+                color: theme.primaryColor, size: 22),
+          ),
+          title: Text(
+            RuntimeLocalizations.t(context, 'onboarding_privacy_link',
+                fallback: 'Privacy Policy'),
+            style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14),
+          ),
+          trailing: Icon(Icons.open_in_new_rounded,
+              color: theme.secondaryTextColor, size: 18),
+          onTap: () => _showLegalDialog(
+            context,
+            theme,
+            RuntimeLocalizations.t(context, 'onboarding_privacy_link',
+                fallback: 'Privacy Policy'),
+            RuntimeLocalizations.t(context, 'onboarding_privacy_text',
+                fallback: ''),
+          ),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.gavel_rounded,
+                color: theme.primaryColor, size: 22),
+          ),
+          title: Text(
+            RuntimeLocalizations.t(context, 'onboarding_eula_link',
+                fallback: 'EULA'),
+            style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14),
+          ),
+          trailing: Icon(Icons.open_in_new_rounded,
+              color: theme.secondaryTextColor, size: 18),
+          onTap: () => _showLegalDialog(
+            context,
+            theme,
+            RuntimeLocalizations.t(context, 'onboarding_eula_link',
+                fallback: 'EULA'),
+            RuntimeLocalizations.t(context, 'onboarding_eula_text',
+                fallback: ''),
+            icon: Icons.gavel_rounded,
+          ),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.description_rounded,
+                color: theme.primaryColor, size: 22),
+          ),
+          title: Text(
+            RuntimeLocalizations.t(context, 'onboarding_terms_link',
+                fallback: 'Termini di utilizzo'),
+            style: TextStyle(
+                color: theme.textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14),
+          ),
+          trailing: Icon(Icons.open_in_new_rounded,
+              color: theme.secondaryTextColor, size: 18),
+          onTap: () => _showLegalDialog(
+            context,
+            theme,
+            RuntimeLocalizations.t(context, 'onboarding_terms_link',
+                fallback: 'Termini di utilizzo'),
+            RuntimeLocalizations.t(context, 'onboarding_terms_text',
+                fallback: ''),
+            icon: Icons.description_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showLegalDialog(
+      BuildContext context, ThemeProvider theme, String title, String content,
+      {IconData icon = Icons.shield_rounded}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LegalDocumentScreen(
+          title: title,
+          content: content,
+          icon: icon,
+        ),
+      ),
     );
   }
 
