@@ -799,7 +799,8 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
   String _formatTime(String isoTime) {
     if (isoTime.isEmpty) return '--:--';
     try {
-      final dt = DateTime.parse(isoTime);
+      // Il backend fornisce ISO UTC: convertire sempre in ora locale
+      final dt = DateTime.parse(isoTime).toLocal();
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       if (isoTime.contains('T')) {
