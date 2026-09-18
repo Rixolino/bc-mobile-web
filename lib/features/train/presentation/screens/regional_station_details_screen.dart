@@ -7,6 +7,7 @@ import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../core/design_system.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import '../../../../core/services/tts_service.dart';
 import '../../data/models/regional_provider_model.dart';
 import '../widgets/regional_train_details_sheet.dart';
 
@@ -434,8 +435,61 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
                   ),
               ],
             ),
+            _buildTtsButton(dep, isArrival, theme),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTtsButton(Map<String, dynamic> dep, bool isArrival, ThemeProvider theme) {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (!settings.ttsEnabled) return const SizedBox.shrink();
+    
+    return GestureDetector(
+      onTap: () async {
+        final tts = TtsService();
+        final langCode = settings.appLocale?.languageCode ?? 'it';
+        tts.setLanguage(langCode);
+        
+        final cat = (dep['category']?.toString() ?? '').trim();
+        final num = (dep['tripNumber']?.toString() ?? '').trim();
+        final other = isArrival
+            ? (dep['origin'] ?? '').toString().trim()
+            : (dep['destination'] ?? '').toString().trim();
+        final scheduled = dep['scheduledTime']?.toString() ?? '';
+        final estimated = dep['estimatedTime']?.toString() ?? '';
+        final delayRaw = dep['delay'] ?? 0;
+        final delayInt = delayRaw is int ? delayRaw : int.tryParse(delayRaw.toString()) ?? 0;
+        
+        final timeStr = _formatTime(scheduled);
+        final estStr = estimated.isNotEmpty ? _formatTime(estimated) : null;
+        final displayTime = (estStr != null && estStr != timeStr) ? estStr : timeStr;
+        
+        String text = '';
+        if (cat.isNotEmpty || num.isNotEmpty) {
+          text += 'Treno $cat $num. ';
+        }
+        if (other.isNotEmpty) {
+          text += '${isArrival ? 'Provenienza' : 'Direzione'} $other. ';
+        }
+        if (displayTime.isNotEmpty && displayTime != '--:--') {
+          text += '${isArrival ? 'Arrivo' : 'Partenza'} alle $displayTime. ';
+        }
+        if (delayInt > 0) {
+          text += 'Ritardo $delayInt minuti. ';
+        } else if (delayInt == 0) {
+          text += 'In orario. ';
+        }
+        
+        if (text.isNotEmpty) {
+          await tts.speak(text);
+        }
+      },
+      child: Icon(
+        Icons.volume_up_rounded,
+        size: 20,
+        color: theme.primaryColor.withValues(alpha: 0.6),
       ),
     );
   }

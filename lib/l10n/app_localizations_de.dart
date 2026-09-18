@@ -117,15 +117,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get busClustering => 'Bus-Clustering';
 
   @override
-  String get busClusteringDesc =>
-      'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara';
+  String get busClusteringDesc => 'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara';
 
   @override
   String get stopClustering => 'Haltestellen-Clustering';
 
   @override
-  String get stopClusteringDesc =>
-      'Raggruppa le fermate vicine in cluster per una visualizzazione più chiara';
+  String get stopClusteringDesc => 'Raggruppa le fermate vicine in cluster per una visualizzazione più chiara';
 
   @override
   String get offlineSync => 'Offline-Synchronisation';
@@ -265,15 +263,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get youAreOffline => 'Sie sind offline';
 
   @override
-  String get connectToSearchStations =>
-      'Verbinden Sie sich, um neue Bahnhöfe zu suchen';
+  String get connectToSearchStations => 'Verbinden Sie sich, um neue Bahnhöfe zu suchen';
 
   @override
   String get savedTrains => 'Gespeicherte Züge';
 
   @override
-  String get accessOfflineData =>
-      'Auf heruntergeladene Offline-Daten zugreifen';
+  String get accessOfflineData => 'Auf heruntergeladene Offline-Daten zugreifen';
 
   @override
   String get savedTrainsOffline => 'Gespeicherte Züge (Offline)';
@@ -327,8 +323,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get arrivals2 => 'Ankünfte';
 
   @override
-  String get noFlightsForAirport =>
-      'Keine Flüge für diesen Flughafen verfügbar.';
+  String get noFlightsForAirport => 'Keine Flüge für diesen Flughafen verfügbar.';
 
   @override
   String get back => 'Zurueck';
@@ -474,8 +469,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get passwordMin8 => 'Das Passwort muss mindestens 8 Zeichen lang sein';
 
   @override
-  String get newPasswordMustDiffer =>
-      'Das neue Passwort muss sich vom aktuellen unterscheiden';
+  String get newPasswordMustDiffer => 'Das neue Passwort muss sich vom aktuellen unterscheiden';
 
   @override
   String get passwordChanged => 'Passwort erfolgreich geaendert!';
@@ -493,8 +487,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get newFeaturesComing => 'Neue Funktionen kommen!';
 
   @override
-  String get newFeaturesBody =>
-      'Wir arbeiten daran, Ihnen mit neuen exklusiven Funktionen ein noch besseres Erlebnis zu bieten.';
+  String get newFeaturesBody => 'Wir arbeiten daran, Ihnen mit neuen exklusiven Funktionen ein noch besseres Erlebnis zu bieten.';
 
   @override
   String get statistics => 'Statistiken';
@@ -639,35 +632,28 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trainArrivalPreNotice => 'Ankunftsvorankündigung';
 
   @override
-  String get trainArrivalPreNoticeDesc =>
-      'Erhalten Sie eine Benachrichtigung N Minuten vor der geschätzten Ankunft an Ihrer Haltestelle (5–20 Minuten).';
+  String get trainArrivalPreNoticeDesc => 'Erhalten Sie eine Benachrichtigung N Minuten vor der geschätzten Ankunft an Ihrer Haltestelle (5–20 Minuten).';
 
   @override
-  String get vectorTrainLogosDesc =>
-      'Laden Sie offizielle Logos für Zugkategorien herunter (z. B. Frecciarossa, Intercity) anstelle von einfachem Text.';
+  String get vectorTrainLogosDesc => 'Laden Sie offizielle Logos für Zugkategorien herunter (z. B. Frecciarossa, Intercity) anstelle von einfachem Text.';
 
   @override
   String get updateConfiguration => 'Konfiguration aktualisieren';
 
   @override
-  String get configurationUpdateDesc =>
-      'Laden Sie die neueste Busanbieter-Konfiguration vom Server herunter';
+  String get configurationUpdateDesc => 'Laden Sie die neueste Busanbieter-Konfiguration vom Server herunter';
 
   @override
-  String get updateProviderConfiguration =>
-      'Anbieterkonfiguration aktualisieren';
+  String get updateProviderConfiguration => 'Anbieterkonfiguration aktualisieren';
 
   @override
-  String get offlineSyncDesc =>
-      'Routen- und Fahrplandaten werden automatisch heruntergeladen, wenn Sie eine Stadt synchronisieren. Die Daten werden lokal gespeichert und auch ohne Verbindung verfügbar sein.';
+  String get offlineSyncDesc => 'Routen- und Fahrplandaten werden automatisch heruntergeladen, wenn Sie eine Stadt synchronisieren. Die Daten werden lokal gespeichert und auch ohne Verbindung verfügbar sein.';
 
   @override
-  String get disclaimerTitle =>
-      'BC Transporter ersetzt keine offiziellen Kanäle';
+  String get disclaimerTitle => 'BC Transporter ersetzt keine offiziellen Kanäle';
 
   @override
-  String get disclaimerText =>
-      'Diese Anwendung ist in keiner Weise dazu gedacht, die offiziellen Plattformen der Eisenbahngesellschaften oder deren Vertriebskanäle zu ersetzen. BC Transporter stellt Informationen und Tracking-Daten rein zu Informationszwecken bereit.\n\nFür den Ticketkauf sowie zur Überprüfung von Verfügbarkeit, Tarifen, Reisebedingungen und offiziellen Bestätigungen müssen Sie sich ausschließlich an die offiziellen Kanäle der Eisenbahngesellschaften wenden (Websites, offizielle Apps, autorisierte Agenturen oder zertifizierte Händler).\n\nTickets müssen über offizielle Plattformen erworben werden; BC Transporter verkauft keine Tickets und ersetzt keine offiziellen Vertriebskanäle.\n\nWir übernehmen keine Verantwortung für Käufe über inoffizielle Kanäle oder für veraltete Preis-/Bedingungsinformationen. Eventuelle Links zu Drittanbieterseiten werden aus Gründen der Bequemlichkeit bereitgestellt und implizieren keine Zustimmung oder Partnerschaft.';
+  String get disclaimerText => 'Diese Anwendung ist in keiner Weise dazu gedacht, die offiziellen Plattformen der Eisenbahngesellschaften oder deren Vertriebskanäle zu ersetzen. BC Transporter stellt Informationen und Tracking-Daten rein zu Informationszwecken bereit.\n\nFür den Ticketkauf sowie zur Überprüfung von Verfügbarkeit, Tarifen, Reisebedingungen und offiziellen Bestätigungen müssen Sie sich ausschließlich an die offiziellen Kanäle der Eisenbahngesellschaften wenden (Websites, offizielle Apps, autorisierte Agenturen oder zertifizierte Händler).\n\nTickets müssen über offizielle Plattformen erworben werden; BC Transporter verkauft keine Tickets und ersetzt keine offiziellen Vertriebskanäle.\n\nWir übernehmen keine Verantwortung für Käufe über inoffizielle Kanäle oder für veraltete Preis-/Bedingungsinformationen. Eventuelle Links zu Drittanbieterseiten werden aus Gründen der Bequemlichkeit bereitgestellt und implizieren keine Zustimmung oder Partnerschaft.';
 
   @override
   String get user => 'Benutzer';

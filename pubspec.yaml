@@ -31,6 +31,8 @@ dependencies:
   sliding_up_panel: ^2.0.0+1
   glassmorphism: ^3.0.0
   cupertino_icons: ^1.0.2
+  just_audio: ^0.9.43
+  crypto: ^3.0.3
 
   # Persistence & DB
   shared_preferences: ^2.5.4

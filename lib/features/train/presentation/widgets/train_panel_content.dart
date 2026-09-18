@@ -17,6 +17,7 @@ import 'shimmer_and_toggle.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'routing_details_screen.dart';
+import '../../../../core/services/tts_service.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
@@ -3033,6 +3034,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                         },
                       ),
                       const SizedBox(width: 4),
+                      _buildLiveTtsButton(category, number, origin, destination, departureTime, isDelayed, delay, theme),
+                      const SizedBox(width: 4),
                       _buildLivePlatformBox(stopsList, theme),
                     ],
                   ),
@@ -3154,6 +3157,48 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLiveTtsButton(String category, String number, String origin, String destination, String departureTime, bool isDelayed, int delay, ThemeProvider theme) {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (!settings.ttsEnabled) return const SizedBox.shrink();
+    
+    return GestureDetector(
+      onTap: () async {
+        final tts = TtsService();
+        final langCode = settings.appLocale?.languageCode ?? 'it';
+        tts.setLanguage(langCode);
+        
+        final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+        final isArrivals = trainProvider.isArrivalMode;
+        final String direction = isArrivals ? origin : destination;
+        
+        String text = '';
+        if (category.isNotEmpty || number.isNotEmpty) {
+          text += 'Treno $category $number. ';
+        }
+        if (direction.isNotEmpty) {
+          text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+        }
+        if (departureTime.isNotEmpty) {
+          text += '${isArrivals ? 'Arrivo' : 'Partenza'} alle $departureTime. ';
+        }
+        if (isDelayed && delay > 0) {
+          text += 'Ritardo $delay minuti. ';
+        } else {
+          text += 'In orario. ';
+        }
+        
+        if (text.isNotEmpty) {
+          await tts.speak(text);
+        }
+      },
+      child: Icon(
+        Icons.volume_up_rounded,
+        size: 20,
+        color: theme.primaryColor.withValues(alpha: 0.6),
       ),
     );
   }
@@ -3594,6 +3639,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                   ),
                 ),
                 _buildPlatformBox(dep.platform?.toString() ?? '-', theme),
+                _buildTtsButton(dep, theme),
               ],
             ),
           ),
@@ -3716,6 +3762,66 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTtsButton(dynamic dep, ThemeProvider theme) {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (!settings.ttsEnabled) return const SizedBox.shrink();
+    
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: GestureDetector(
+        onTap: () async {
+          final tts = TtsService();
+          final langCode = settings.appLocale?.languageCode ?? 'it';
+          tts.setLanguage(langCode);
+          
+          final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+          final isArrivals = trainProvider.isArrivalMode;
+          final trainNumber = dep.trainNumber?.toString() ?? '';
+          final category = dep.category?.toString() ?? '';
+          
+          // Per partenze: destination (fine corsa)
+          // Per arrivi: origin (da dove viene)
+          final String direction;
+          if (isArrivals) {
+            direction = dep.origin?.toString() ?? '';
+          } else {
+            direction = dep.destination?.toString() ?? '';
+          }
+          
+          final timeStr = dep.departureTime != null 
+              ? '${dep.departureTime!.hour.toString().padLeft(2, '0')}:${dep.departureTime!.minute.toString().padLeft(2, '0')}'
+              : '';
+          final delay = dep.delayMinutes ?? 0;
+          
+          String text = '';
+          if (category.isNotEmpty || trainNumber.isNotEmpty) {
+            text += 'Treno $category $trainNumber. ';
+          }
+          if (direction.isNotEmpty) {
+            text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+          }
+          if (timeStr.isNotEmpty) {
+            text += '${isArrivals ? 'Arrivo' : 'Partenza'} alle $timeStr. ';
+          }
+          if (delay > 0) {
+            text += 'Ritardo $delay minuti. ';
+          } else if (delay == 0) {
+            text += 'In orario. ';
+          }
+          
+          if (text.isNotEmpty) {
+            await tts.speak(text);
+          }
+        },
+        child: Icon(
+          Icons.volume_up_rounded,
+          size: 20,
+          color: theme.primaryColor.withValues(alpha: 0.6),
+        ),
       ),
     );
   }

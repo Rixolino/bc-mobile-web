@@ -12,6 +12,7 @@ import '../../../../presentation/providers/theme_provider.dart';
 import '../../../../core/api_constants.dart';
 import '../../../../core/design_system.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import '../../../../core/services/tts_service.dart';
 import 'dart:convert';
 
 /// Parse i formati ora delle API regionali (Trenord/FAL):
@@ -142,6 +143,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    // Annuncio vocale all'apertura del dettaglio treno
+    _speakTrainInfo();
     _fetchTripDetails();
   }
 
@@ -152,6 +155,90 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _fetchTimeoutTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _speakTrainInfo() async {
+    if (!_settingsProvider.ttsEnabled) return;
+    
+    final tts = TtsService();
+    final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
+    tts.setLanguage(langCode);
+    
+    final trip = _current;
+    final trainNumber = trip['tripNumber'] ?? trip['trainNumber'] ?? '';
+    final isArrivals = widget.isArrivalMode;
+    final stops = trip['stops'] as List? ?? [];
+    
+    // Per partenze: direzione = destination (fine corsa)
+    // Per arrivi: provenienza = origin (da dove viene)
+    String direction;
+    if (isArrivals) {
+      direction = (trip['origin'] ?? '').toString();
+    } else {
+      direction = (trip['destination'] ?? '').toString();
+    }
+    
+    // Se direction è vuoto, prova a ricavarlo dall'ultima/primera fermata
+    if (direction.isEmpty && stops.isNotEmpty) {
+      if (isArrivals) {
+        direction = (stops.first['stationName'] ?? stops.first['name'] ?? '').toString();
+      } else {
+        direction = (stops.last['stationName'] ?? stops.last['name'] ?? '').toString();
+      }
+    }
+    
+    String text = '';
+    if (trainNumber.toString().isNotEmpty) {
+      text += 'Treno $trainNumber. ';
+    }
+    if (direction.isNotEmpty) {
+      text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+    }
+    
+    if (stops.isNotEmpty) {
+      final now = DateTime.now();
+      Map<String, dynamic>? nextStop;
+      
+      for (var stop in stops) {
+        final depTime = _parseTime(stop['departure'] ?? stop['scheduledDeparture']);
+        if (depTime != null && depTime.isAfter(now)) {
+          nextStop = stop;
+          break;
+        }
+        final arrTime = _parseTime(stop['arrival'] ?? stop['scheduledArrival']);
+        if (arrTime != null && arrTime.isAfter(now)) {
+          nextStop = stop;
+          break;
+        }
+      }
+      
+      if (nextStop != null) {
+        final stopName = nextStop['stationName'] ?? nextStop['name'] ?? '';
+        final depTime = _parseTime(nextStop['departure'] ?? nextStop['scheduledDeparture']);
+        final arrTime = _parseTime(nextStop['arrival'] ?? nextStop['scheduledArrival']);
+        final time = depTime ?? arrTime;
+        
+        if (stopName.toString().isNotEmpty && time != null) {
+          final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+          text += 'Prossima fermata: $stopName alle $timeStr. ';
+        }
+      }
+    }
+    
+    if (text.isNotEmpty) {
+      await tts.speak(text);
+    }
+  }
+
+  DateTime? _parseTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) {
+      try {
+        return DateTime.parse(value);
+      } catch (_) {}
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------

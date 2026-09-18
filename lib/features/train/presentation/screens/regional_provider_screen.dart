@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../core/design_system.dart';
+import '../../../../core/services/tts_service.dart';
 import '../../data/models/regional_provider_model.dart';
 import '../widgets/regional_train_details_sheet.dart';
 import 'news_browser_screen.dart';
@@ -773,6 +774,7 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
                     ),
                   ),
                 const SizedBox(width: 4),
+                _buildTtsButton(item, isArrivals, theme),
                 Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outline),
               ],
             ),
@@ -792,6 +794,61 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
       child: Text(
         text,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+      ),
+    );
+  }
+
+  Widget _buildTtsButton(Map<String, dynamic> item, bool isArrivals, ThemeData theme) {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (!settings.ttsEnabled) return const SizedBox.shrink();
+    
+    return GestureDetector(
+      onTap: () async {
+        final tts = TtsService();
+        final langCode = settings.appLocale?.languageCode ?? 'it';
+        tts.setLanguage(langCode);
+        
+        final tripNumber = item['tripNumber']?.toString() ?? '';
+        final category = item['category']?.toString() ?? '';
+        final destination = item['destination']?.toString() ?? '';
+        final origin = item['origin']?.toString() ?? '';
+        final scheduledTime = item['scheduledTime']?.toString() ?? '';
+        final estimatedTime = item['estimatedTime']?.toString() ?? '';
+        final delay = item['delay'] ?? 0;
+        
+        final timeStr = _formatTime(estimatedTime.isNotEmpty ? estimatedTime : scheduledTime);
+        final delayInt = delay is int ? delay : int.tryParse(delay.toString()) ?? 0;
+        
+        String text = '';
+        if (category.isNotEmpty || tripNumber.isNotEmpty) {
+          text += 'Treno $category $tripNumber. ';
+        }
+        if (isArrivals) {
+          if (origin.isNotEmpty) {
+            text += 'Provenienza $origin. ';
+          }
+        } else {
+          if (destination.isNotEmpty) {
+            text += 'Direzione $destination. ';
+          }
+        }
+        if (timeStr.isNotEmpty && timeStr != '--:--') {
+          text += '${isArrivals ? 'Arrivo' : 'Partenza'} alle $timeStr. ';
+        }
+        if (delayInt > 0) {
+          text += 'Ritardo $delayInt minuti. ';
+        } else if (delayInt == 0) {
+          text += 'In orario. ';
+        }
+        
+        if (text.isNotEmpty) {
+          await tts.speak(text);
+        }
+      },
+      child: Icon(
+        Icons.volume_up_rounded,
+        size: 20,
+        color: theme.colorScheme.primary.withValues(alpha: 0.6),
       ),
     );
   }

@@ -13,6 +13,7 @@ import '../../core/services/runtime_localizations.dart';
 import 'dart:ui';
 import '../../features/train/presentation/widgets/railway_station_stats_screen.dart';
 import '../../core/services/tv_cursor_service.dart';
+import '../../core/services/tts_service.dart';
 import 'legal_document_screen.dart';
 import 'language_settings_screen.dart';
 import 'onboarding_screen.dart' deferred as onboarding;
@@ -156,6 +157,7 @@ class SettingsScreen extends StatelessWidget {
                       icon: Icons.accessibility_rounded,
                       children: [
                         _buildTextScaleSlider(context, settings, theme),
+                        _buildTtsToggle(context, settings, theme),
                       ],
                     ),
 
@@ -1086,6 +1088,155 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildTtsToggle(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return Column(
+      children: [
+        _buildSimpleToggle(
+          context,
+          theme,
+          title: RuntimeLocalizations.t(context, 'settings_tts_trains', fallback: 'Annunci vocali treni'),
+          description: RuntimeLocalizations.t(context, 'settings_tts_trains_desc',
+              fallback: 'Legge ad alta voce gli orari dei treni nelle partenze e arrivi (voce Oddcast).'),
+          value: settings.ttsEnabled,
+          onChanged: (value) {
+            settings.setTtsEnabled(value);
+            final tts = TtsService();
+            tts.setEnabled(value);
+            if (value) {
+              final langCode = settings.appLocale?.languageCode ?? 'it';
+              tts.setLanguage(langCode);
+              // Imposta la voce selezionata
+              final voices = TtsService.getVoicesForLanguage(langCode);
+              final selected = voices.firstWhere(
+                (v) => v.name == settings.ttsVoiceForLang(langCode),
+                orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+              );
+              tts.setSelectedVoice(selected);
+            }
+          },
+        ),
+        if (settings.ttsEnabled) _buildTtsVoiceSelector(context, settings, theme),
+      ],
+    );
+  }
+
+  Widget _buildTtsVoiceSelector(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    final langCode = settings.appLocale?.languageCode ?? 'it';
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    if (voices.isEmpty) return const SizedBox.shrink();
+
+    // Deduplica per nome
+    final seen = <String>{};
+    final uniqueVoices = voices.where((v) => seen.add(v.name)).toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TtsVoiceSheet(
+            settings: settings,
+            theme: theme,
+            voices: uniqueVoices,
+          ),
+          const SizedBox(height: 10),
+          _buildApiStatusIndicator(context, settings, theme),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _testTtsVoice(context, settings, langCode),
+              icon: Icon(Icons.play_circle_outline_rounded, size: 18, color: theme.primaryColor),
+              label: Text(
+                RuntimeLocalizations.t(context, 'settings_tts_test', fallback: 'Prova voce'),
+                style: TextStyle(color: theme.primaryColor, fontSize: 13),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: theme.primaryColor.withOpacity(0.3)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _testTtsVoice(BuildContext context, SettingsProvider settings, String langCode) {
+    final tts = TtsService();
+    tts.setLanguage(langCode);
+
+    final voiceName = settings.ttsVoiceForLang(langCode);
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    final seen = <String>{};
+    final uniqueVoices = voices.where((v) => seen.add(v.name)).toList();
+    if (uniqueVoices.any((v) => v.name == voiceName)) {
+      final voice = uniqueVoices.firstWhere((v) => v.name == voiceName);
+      tts.setSelectedVoice(voice);
+    }
+
+    final samples = {
+      'it': 'Il treno regionale quattro due tre uno, diretto Bari Centrale, partenza dal binario cinque.',
+      'en': 'The regional train four two three one, bound for London Paddington, departing from platform five.',
+      'de': 'Der Regionalzug vier zwei drei eins, Richtung Berlin Hauptbahnhof, Abfahrt von Gleis fünf.',
+      'fr': 'Le train régional quatre deux trois un, à destination de Paris Gare de Lyon, départ du quai cinq.',
+    };
+
+    final text = samples[langCode] ?? samples['it']!;
+    tts.testSpeak(text);
+  }
+
+  Widget _buildApiStatusIndicator(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    return FutureBuilder<bool>(
+      future: TtsService().checkApiStatus(),
+      builder: (context, snapshot) {
+        final isOnline = snapshot.data;
+        final Color dotColor;
+        final String label;
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          dotColor = Colors.grey;
+          label = RuntimeLocalizations.t(context, 'settings_tts_checking', fallback: 'Verifica in corso...');
+        } else if (isOnline == true) {
+          dotColor = Colors.green;
+          label = RuntimeLocalizations.t(context, 'settings_tts_online', fallback: 'Oddcast online');
+        } else {
+          dotColor = Colors.red;
+          label = RuntimeLocalizations.t(context, 'settings_tts_offline', fallback: 'Oddcast offline');
+        }
+
+        return Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: dotColor.withOpacity(0.4),
+                    blurRadius: 4,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: theme.secondaryTextColor,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSimpleToggle(BuildContext context, ThemeProvider theme, {required String title, required String description, required bool value, required Function(bool) onChanged}) {
     return Row(
       children: [
@@ -1560,6 +1711,151 @@ class SettingsScreen extends StatelessWidget {
           Text(
             RuntimeLocalizations.t(context, 'disclaimer_text'),
             style: TextStyle(color: theme.secondaryTextColor, fontSize: 12, height: 1.6),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TtsVoiceSheet extends StatefulWidget {
+  final SettingsProvider settings;
+  final ThemeProvider theme;
+  final List<OddcastVoice> voices;
+
+  const _TtsVoiceSheet({
+    required this.settings,
+    required this.theme,
+    required this.voices,
+  });
+
+  @override
+  State<_TtsVoiceSheet> createState() => _TtsVoiceSheetState();
+}
+
+class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final settings = widget.settings;
+    final voices = widget.voices;
+    final langCode = settings.appLocale?.languageCode ?? 'it';
+
+    final selectedVoice = voices.firstWhere(
+      (v) => v.name == settings.ttsVoiceForLang(langCode),
+      orElse: () => voices.first,
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header - always visible
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(Icons.record_voice_over, size: 20, color: theme.secondaryTextColor),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          RuntimeLocalizations.t(context, 'settings_tts_voice', fallback: 'Voce'),
+                          style: TextStyle(color: theme.textColor, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${selectedVoice.name} (${selectedVoice.gender == 'F' ? '♀' : '♂'})',
+                          style: TextStyle(color: theme.primaryColor, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_down, color: theme.secondaryTextColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Voice list - expands
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Container(
+              constraints: const BoxConstraints(maxHeight: 280),
+              decoration: BoxDecoration(
+                color: theme.backgroundColor,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(12),
+                  bottomRight: Radius.circular(12),
+                ),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: voices.length,
+                separatorBuilder: (_, __) => Divider(height: 1, color: theme.primaryColor.withOpacity(0.1)),
+                itemBuilder: (context, index) {
+                  final voice = voices[index];
+                  final isSelected = voice.name == settings.ttsVoiceForLang(langCode);
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        settings.setTtsVoice(voice.name, langCode: langCode);
+                        final tts = TtsService();
+                        tts.setSelectedVoice(voice);
+                        setState(() => _expanded = false);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        color: isSelected ? theme.primaryColor.withOpacity(0.1) : null,
+                        child: Row(
+                          children: [
+                            Icon(
+                              voice.gender == 'F' ? Icons.female : Icons.male,
+                              size: 18,
+                              color: isSelected ? theme.primaryColor : theme.secondaryTextColor,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                voice.name,
+                                style: TextStyle(
+                                  color: isSelected ? theme.primaryColor : theme.textColor,
+                                  fontSize: 14,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              Icon(Icons.check_circle, size: 18, color: theme.primaryColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 200),
           ),
         ],
       ),

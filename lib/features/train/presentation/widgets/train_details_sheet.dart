@@ -22,6 +22,7 @@ import '../../../favorites/providers/favorites_provider.dart';
 import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
+import '../../../../core/services/tts_service.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
@@ -693,6 +694,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    // Annuncio vocale all'apertura del dettaglio treno
+    _speakTrainInfo();
 
     // Carica i loghi se attivi ma non ancora in memoria
     // (es. sheet aperto da deep link senza passare dal pannello treni)
@@ -715,6 +718,79 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _fetchTimeoutTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _speakTrainInfo() async {
+    if (!_settingsProvider.ttsEnabled) return;
+    
+    final tts = TtsService();
+    final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
+    tts.setLanguage(langCode);
+    
+    final departure = widget.departure;
+    final trainNumber = departure.trainNumber ?? '';
+    final isArrivals = widget.isArrivalMode;
+    
+    // Per partenze: direzione = destination (fine corsa)
+    // Per arrivi: provenienza = origin (da dove viene)
+    String direction;
+    if (isArrivals) {
+      direction = departure.origin ?? '';
+    } else {
+      direction = departure.destination ?? '';
+    }
+    
+    // Se direction è vuoto, prova a ricavarlo dall'ultima/primera fermata
+    if (direction.isEmpty) {
+      final stops = departure.stops ?? [];
+      if (stops.isNotEmpty) {
+        if (isArrivals) {
+          direction = stops.first.stationName ?? '';
+        } else {
+          direction = stops.last.stationName ?? '';
+        }
+      }
+    }
+    
+    String text = '';
+    if (trainNumber.isNotEmpty) {
+      text += 'Treno $trainNumber. ';
+    }
+    if (direction.isNotEmpty) {
+      text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+    }
+    
+    // Cerca la prossima fermata (quella dopo la stazione corrente)
+    final stops = departure.stops ?? [];
+    if (stops.isNotEmpty) {
+      final now = DateTime.now();
+      TrainStop? nextStop;
+      
+      for (var stop in stops) {
+        if (stop.departure != null && stop.departure!.isAfter(now)) {
+          nextStop = stop;
+          break;
+        }
+        if (stop.arrival != null && stop.arrival!.isAfter(now)) {
+          nextStop = stop;
+          break;
+        }
+      }
+      
+      if (nextStop != null) {
+        final stopName = nextStop.stationName ?? '';
+        final time = nextStop.departure ?? nextStop.arrival;
+        
+        if (stopName.isNotEmpty && time != null) {
+          final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+          text += 'Prossima fermata: $stopName alle $timeStr. ';
+        }
+      }
+    }
+    
+    if (text.isNotEmpty) {
+      await tts.speak(text);
+    }
   }
 
   bool get _needsExternalFetch {

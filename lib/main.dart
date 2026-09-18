@@ -17,6 +17,7 @@ import 'core/services/android_background_service.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
+import 'core/services/tts_service.dart';
 
 void main() {
   runApp(const BcTransporterApp());
@@ -44,6 +45,7 @@ class _BcTransporterAppState extends State<BcTransporterApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initTts();
 
     // Android: richiedi permessi notifiche e pianifica i worker nativi
     // (Usiamo chiamate native via MethodChannel)
@@ -73,6 +75,16 @@ class _BcTransporterAppState extends State<BcTransporterApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _initTts() async {
+    final tts = TtsService();
+    await tts.init();
+    // Imposta la lingua in base alle impostazioni dell'app
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final langCode = settings.appLocale?.languageCode ?? 'it';
+    tts.setLanguage(langCode);
+    tts.setEnabled(settings.ttsEnabled);
   }
 
   @override

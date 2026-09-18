@@ -26,6 +26,8 @@ class SettingsProvider with ChangeNotifier {
   static const String keyVectorLogos = 'ui_vector_logos_enabled';
   static const String keyLogoSource = 'ui_logo_source';
   static const String keyLanguage = 'app_language';
+  static const String keyTtsEnabled = 'accessibility_tts_enabled';
+  static const String keyTtsVoice = 'accessibility_tts_voice';
 
   // Configurable parameters for background workers
   static const String keyTrainStationId = 'train_station_id';
@@ -71,6 +73,10 @@ class SettingsProvider with ChangeNotifier {
 
   // Zoom testi dell'app (non mappa): 1.0 = normale
   double _textScale = 1.0;
+
+  // Text-to-speech for train announcements
+  bool _ttsEnabled = false;
+  Map<String, String> _ttsVoices = {}; // langCode -> voiceName
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
@@ -127,6 +133,15 @@ class SettingsProvider with ChangeNotifier {
   // Zoom testi dell'app
   double get textScale => _textScale;
 
+  // Text-to-speech for train announcements
+  bool get ttsEnabled => _ttsEnabled;
+  String ttsVoiceForLang(String langCode) => _ttsVoices[langCode] ?? _defaultVoiceName(langCode);
+
+  String _defaultVoiceName(String langCode) {
+    const defaults = {'it': 'Roberto', 'en': 'Daniel', 'de': 'Anna', 'fr': 'Thomas'};
+    return defaults[langCode] ?? 'Roberto';
+  }
+
   // New: offline sync feature (beta)
   bool get offlineSyncEnabled => _offlineSyncEnabled;
 
@@ -171,6 +186,20 @@ class SettingsProvider with ChangeNotifier {
     _functionsWorkerEnabled = prefs.getBool(keyFunctionsWorker) ?? false;
     _startScreenMode = prefs.getInt(keyStartScreen) ?? 0;
     _textScale = (prefs.getDouble(keyTextScale) ?? 1.0).clamp(0.8, 1.4);
+    _ttsEnabled = prefs.getBool(keyTtsEnabled) ?? false;
+    // Load TTS voice per language
+    final savedVoice = prefs.getString(keyTtsVoice);
+    if (savedVoice != null && savedVoice.isNotEmpty) {
+      _ttsVoices['it'] = savedVoice;
+    }
+    // Load per-language voices from new key
+    final voicesJson = prefs.getString('accessibility_tts_voices');
+    if (voicesJson != null) {
+      try {
+        final Map<String, dynamic> decoded = jsonDecode(voicesJson);
+        _ttsVoices = decoded.map((k, v) => MapEntry(k, v.toString()));
+      } catch (_) {}
+    }
 
     // Load worker params
     _trainStationId = prefs.getString(keyTrainStationId) ?? '';
@@ -349,6 +378,25 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(keyTextScale, _textScale);
+  }
+
+  Future<void> setTtsEnabled(bool enabled) async {
+    _ttsEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyTtsEnabled, _ttsEnabled);
+  }
+
+  Future<void> setTtsVoice(String voiceName, {String? langCode}) async {
+    final lang = langCode ?? _appLocale?.languageCode ?? 'it';
+    _ttsVoices[lang] = voiceName;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('accessibility_tts_voices', jsonEncode(_ttsVoices));
+    // Keep legacy key in sync for Italian
+    if (lang == 'it') {
+      await prefs.setString(keyTtsVoice, voiceName);
+    }
   }
 
   Future<void> setTrainsWorkerEnabled(bool enabled) async {
