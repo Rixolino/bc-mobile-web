@@ -727,9 +727,19 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
     tts.setLanguage(langCode);
     
+    // Imposta voce per lingua
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    final selected = voices.firstWhere(
+      (v) => v.name == _settingsProvider.ttsVoiceForLang(langCode),
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+    );
+    tts.setSelectedVoice(selected);
+    
     final departure = widget.departure;
     final trainNumber = departure.trainNumber ?? '';
+    final category = TtsService.resolveCategory(departure.category, langCode);
     final isArrivals = widget.isArrivalMode;
+    final ttsStrings = TtsService.getTtsStrings(langCode);
     
     // Per partenze: direzione = destination (fine corsa)
     // Per arrivi: provenienza = origin (da dove viene)
@@ -753,11 +763,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
     
     String text = '';
-    if (trainNumber.isNotEmpty) {
-      text += 'Treno $trainNumber. ';
+    if (category.isNotEmpty || trainNumber.isNotEmpty) {
+      text += '${ttsStrings['train']} $category $trainNumber. ';
     }
     if (direction.isNotEmpty) {
-      text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+      text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
     }
     
     // Cerca la prossima fermata (quella dopo la stazione corrente)
@@ -783,7 +793,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         
         if (stopName.isNotEmpty && time != null) {
           final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-          text += 'Prossima fermata: $stopName alle $timeStr. ';
+          text += '${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr. ';
         }
       }
     }

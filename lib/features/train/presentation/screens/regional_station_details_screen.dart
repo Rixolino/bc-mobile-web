@@ -452,7 +452,15 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
         final langCode = settings.appLocale?.languageCode ?? 'it';
         tts.setLanguage(langCode);
         
-        final cat = (dep['category']?.toString() ?? '').trim();
+        // Imposta voce per lingua
+        final voices = TtsService.getVoicesForLanguage(langCode);
+        final selected = voices.firstWhere(
+          (v) => v.name == settings.ttsVoiceForLang(langCode),
+          orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+        );
+        tts.setSelectedVoice(selected);
+        
+        final cat = TtsService.resolveCategory(dep['category']?.toString(), langCode);
         final num = (dep['tripNumber']?.toString() ?? '').trim();
         final other = isArrival
             ? (dep['origin'] ?? '').toString().trim()
@@ -461,6 +469,7 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
         final estimated = dep['estimatedTime']?.toString() ?? '';
         final delayRaw = dep['delay'] ?? 0;
         final delayInt = delayRaw is int ? delayRaw : int.tryParse(delayRaw.toString()) ?? 0;
+        final ttsStrings = TtsService.getTtsStrings(langCode);
         
         final timeStr = _formatTime(scheduled);
         final estStr = estimated.isNotEmpty ? _formatTime(estimated) : null;
@@ -468,18 +477,18 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
         
         String text = '';
         if (cat.isNotEmpty || num.isNotEmpty) {
-          text += 'Treno $cat $num. ';
+          text += '${ttsStrings['train']} $cat $num. ';
         }
         if (other.isNotEmpty) {
-          text += '${isArrival ? 'Provenienza' : 'Direzione'} $other. ';
+          text += '${isArrival ? ttsStrings['from'] : ttsStrings['direction']} $other. ';
         }
         if (displayTime.isNotEmpty && displayTime != '--:--') {
-          text += '${isArrival ? 'Arrivo' : 'Partenza'} alle $displayTime. ';
+          text += '${isArrival ? ttsStrings['arrival'] : ttsStrings['departure']} $displayTime. ';
         }
         if (delayInt > 0) {
-          text += 'Ritardo $delayInt minuti. ';
+          text += '${ttsStrings['delay']} $delayInt ${ttsStrings['minutes']}. ';
         } else if (delayInt == 0) {
-          text += 'In orario. ';
+          text += '${ttsStrings['ontime']}. ';
         }
         
         if (text.isNotEmpty) {

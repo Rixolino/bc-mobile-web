@@ -56,6 +56,131 @@ class TtsService {
     'fr': OddcastVoice(name: 'Thomas', id: 5, engine: 4, gender: 'M'),
   };
 
+  /// Mappa categorie treni -> nomi pronunciati per lingua
+  static const Map<String, Map<String, String>> _categoryNames = {
+    'FR': {'it': 'Frecciarossa', 'en': 'Frecciarossa', 'de': 'Frecciarossa', 'fr': 'Frecciarossa'},
+    'FA': {'it': 'Frecciargento', 'en': 'Frecciargento', 'de': 'Frecciargento', 'fr': 'Frecciargento'},
+    'FB': {'it': 'Frecciabianca', 'en': 'Frecciabianca', 'de': 'Frecciabianca', 'fr': 'Frecciabianca'},
+    'IC': {'it': 'Intercity', 'en': 'Intercity', 'de': 'Intercity', 'fr': 'Intercité'},
+    'ICN': {'it': 'Intercity Notte', 'en': 'Night Intercity', 'de': 'Intercity Nacht', 'fr': 'Intercité Nuit'},
+    'EC': {'it': 'Eurocity', 'en': 'Eurocity', 'de': 'Eurocity', 'fr': 'Eurocity'},
+    'EN': {'it': 'EuroNight', 'en': 'EuroNight', 'de': 'EuroNight', 'fr': 'EuroNight'},
+    'ES': {'it': 'Eurostar Italia', 'en': 'Eurostar Italia', 'de': 'Eurostar Italien', 'fr': 'Eurostar Italie'},
+    'RV': {'it': 'Regionale Veloce', 'en': 'Fast Regional', 'de': 'Schnell regional', 'fr': 'Régional express'},
+    'R': {'it': 'Regionale', 'en': 'Regional', 'de': 'Regional', 'fr': 'Régional'},
+    'REG': {'it': 'Regionale', 'en': 'Regional', 'de': 'Regional', 'fr': 'Régional'},
+    'RM': {'it': 'Regionale Metropolitano', 'en': 'Metro Regional', 'de': 'S-Bahn', 'fr': 'Régional métro'},
+    'PM': {'it': 'Pendolino', 'en': 'Pendolino', 'de': 'Pendolino', 'fr': 'Pendolino'},
+    'AV': {'it': 'Alta Velocità', 'en': 'High Speed', 'de': 'Hochgeschwindigkeit', 'fr': 'Grande vitesse'},
+    'TGV': {'it': 'TGV', 'en': 'TGV', 'de': 'TGV', 'fr': 'TGV'},
+    'TER': {'it': 'TER', 'en': 'TER', 'de': 'TER', 'fr': 'TER'},
+    'ICE': {'it': 'ICE', 'en': 'ICE', 'de': 'ICE', 'fr': 'ICE'},
+    'THL': {'it': 'Thalys', 'en': 'Thalys', 'de': 'Thalys', 'fr': 'Thalys'},
+    'AVE': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
+    'RE': {'it': 'Regionale Express', 'en': 'Regional Express', 'de': 'RegionalExpress', 'fr': 'Regional Express'},
+    'RB': {'it': 'Regionale Bahn', 'en': 'Regional Bahn', 'de': 'RegionalBahn', 'fr': 'RegionalBahn'},
+    'S': {'it': 'S-Bahn', 'en': 'S-Bahn', 'de': 'S-Bahn', 'fr': 'S-Bahn'},
+    'RJ': {'it': 'Railjet', 'en': 'Railjet', 'de': 'Railjet', 'fr': 'Railjet'},
+    'NJ': {'it': 'Nightjet', 'en': 'Nightjet', 'de': 'Nightjet', 'fr': 'Nightjet'},
+    'SC': {'it': 'Swiss City', 'en': 'Swiss City', 'de': 'Swiss City', 'fr': 'S-Bahn Suisse'},
+    'IR': {'it': 'InterRegio', 'en': 'InterRegio', 'de': 'InterRegio', 'fr': 'InterRegio'},
+    'PE': {'it': "People's Train", 'en': "People's Train", 'de': 'Volkszug', 'fr': 'Train populaire'},
+    'SJ': {'it': 'SJ', 'en': 'SJ', 'de': 'SJ', 'fr': 'SJ'},
+    'OX': {'it': 'Oresundståg', 'en': 'Oresund Train', 'de': 'Oresund-Zug', 'fr': 'Train Oresund'},
+    'GWR': {'it': 'Great Western', 'en': 'Great Western Railway', 'de': 'Great Western', 'fr': 'Great Western'},
+    'VT': {'it': 'Virgin Trains', 'en': 'Virgin Trains', 'de': 'Virgin Trains', 'fr': 'Virgin Trains'},
+    'LM': {'it': 'London Midland', 'en': 'London Midland', 'de': 'London Midland', 'fr': 'London Midland'},
+    'GR': {'it': 'Govia Thameslink', 'en': 'Thameslink', 'de': 'Thameslink', 'fr': 'Thameslink'},
+    'XC': {'it': 'CrossCountry', 'en': 'CrossCountry', 'de': 'CrossCountry', 'fr': 'CrossCountry'},
+    'SW': {'it': 'South Western', 'en': 'South Western Railway', 'de': 'South Western', 'fr': 'South Western'},
+    'SE': {'it': 'Southeastern', 'en': 'Southeastern', 'de': 'Southeastern', 'fr': 'Southeastern'},
+    'LE': {'it': 'LNER', 'en': 'LNER', 'de': 'LNER', 'fr': 'LNER'},
+    'HX': {'it': 'Heathrow Express', 'en': 'Heathrow Express', 'de': 'Heathrow Express', 'fr': 'Heathrow Express'},
+    'SH': {'it': 'Shinkansen', 'en': 'Shinkansen', 'de': 'Shinkansen', 'fr': 'Shinkansen'},
+    'ALV': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
+    'TRD': {'it': 'Trenitalia', 'en': 'Trenitalia', 'de': 'Trenitalia', 'fr': 'Trenitalia'},
+    'MD': {'it': 'Media Distancia', 'en': 'Medium Distance', 'de': 'Mittelstrecke', 'fr': 'Moyenne distance'},
+    'AR': {'it': 'Cercanías', 'en': 'Commuter', 'de': 'Cercanías', 'fr': 'Cercanías'},
+    'ALFA': {'it': 'Alfa Pendular', 'en': 'Alfa Pendular', 'de': 'Alfa Pendular', 'fr': 'Alfa Pendular'},
+    'INT': {'it': 'Intercidades', 'en': 'Intercities', 'de': 'Intercidades', 'fr': 'Intercidades'},
+    'ICB': {'it': 'Intercity Direct', 'en': 'Intercity Direct', 'de': 'Intercity Direct', 'fr': 'Intercity Direct'},
+    'THA': {'it': 'Thalys', 'en': 'Thalys', 'de': 'Thalys', 'fr': 'Thalys'},
+    'FLI': {'it': 'FlixBus', 'en': 'FlixBus', 'de': 'FlixBus', 'fr': 'FlixBus'},
+    'EIP': {'it': 'EIP Pendolino', 'en': 'EIP Pendolino', 'de': 'EIP Pendolino', 'fr': 'EIP Pendolino'},
+    'EIC': {'it': 'EIC', 'en': 'EIC', 'de': 'EIC', 'fr': 'EIC'},
+    'TLK': {'it': 'TLK', 'en': 'TLK', 'de': 'TLK', 'fr': 'TLK'},
+    'KTX': {'it': 'KTX', 'en': 'KTX', 'de': 'KTX', 'fr': 'KTX'},
+  };
+
+  /// Risolve il nome pronunciato di una categoria treno
+  static String resolveCategory(String? category, String langCode) {
+    if (category == null || category.isEmpty) return '';
+    final upper = category.toUpperCase();
+    final names = _categoryNames[upper];
+    if (names != null) {
+      return names[langCode] ?? names['en'] ?? upper;
+    }
+    return category;
+  }
+
+  /// Restituisce le stringhe TTS localizzate per un dato codice lingua
+  static Map<String, String> getTtsStrings(String langCode) {
+    switch (langCode) {
+      case 'en':
+        return {
+          'train': 'Train',
+          'arriving': 'arriving',
+          'from': 'From',
+          'direction': 'Bound for',
+          'arrival': 'Arrival at',
+          'departure': 'Departure at',
+          'delay': 'Delay',
+          'minutes': 'minutes',
+          'ontime': 'On time',
+          'next_stop': 'Next stop:',
+        };
+      case 'de':
+        return {
+          'train': 'Zug',
+          'arriving': 'ankommend',
+          'from': 'Aus',
+          'direction': 'Richtung',
+          'arrival': 'Ankunft um',
+          'departure': 'Abfahrt um',
+          'delay': 'Verspätung',
+          'minutes': 'Minuten',
+          'ontime': 'Pünktlich',
+          'next_stop': 'Nächster Halt:',
+        };
+      case 'fr':
+        return {
+          'train': 'Train',
+          'arriving': 'en provenance',
+          'from': 'Depuis',
+          'direction': 'À destination de',
+          'arrival': 'Arrivée à',
+          'departure': 'Départ à',
+          'delay': 'Retard',
+          'minutes': 'minutes',
+          'ontime': "À l'heure",
+          'next_stop': 'Prochain arrêt:',
+        };
+      default: // it
+        return {
+          'train': 'Treno',
+          'arriving': 'in arrivo',
+          'from': 'Provenienza',
+          'direction': 'Direzione',
+          'arrival': 'Arrivo alle',
+          'departure': 'Partenza alle',
+          'delay': 'Ritardo',
+          'minutes': 'minuti',
+          'ontime': 'In orario',
+          'next_stop': 'Prossima fermata:',
+        };
+    }
+  }
+
   String _currentLangCode = 'it';
   OddcastVoice? _selectedVoice;
   bool? _apiOnline;

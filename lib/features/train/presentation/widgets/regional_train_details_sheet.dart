@@ -164,10 +164,20 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
     tts.setLanguage(langCode);
     
+    // Imposta voce per lingua
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    final selected = voices.firstWhere(
+      (v) => v.name == _settingsProvider.ttsVoiceForLang(langCode),
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+    );
+    tts.setSelectedVoice(selected);
+    
     final trip = _current;
     final trainNumber = trip['tripNumber'] ?? trip['trainNumber'] ?? '';
+    final category = TtsService.resolveCategory(trip['category']?.toString(), langCode);
     final isArrivals = widget.isArrivalMode;
     final stops = trip['stops'] as List? ?? [];
+    final ttsStrings = TtsService.getTtsStrings(langCode);
     
     // Per partenze: direzione = destination (fine corsa)
     // Per arrivi: provenienza = origin (da dove viene)
@@ -188,11 +198,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     
     String text = '';
-    if (trainNumber.toString().isNotEmpty) {
-      text += 'Treno $trainNumber. ';
+    if (category.isNotEmpty || trainNumber.toString().isNotEmpty) {
+      text += '${ttsStrings['train']} $category $trainNumber. ';
     }
     if (direction.isNotEmpty) {
-      text += '${isArrivals ? 'Provenienza' : 'Direzione'} $direction. ';
+      text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
     }
     
     if (stops.isNotEmpty) {
@@ -220,7 +230,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         
         if (stopName.toString().isNotEmpty && time != null) {
           final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-          text += 'Prossima fermata: $stopName alle $timeStr. ';
+          text += '${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr. ';
         }
       }
     }

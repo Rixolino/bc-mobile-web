@@ -449,7 +449,15 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
         final langCode = settings.appLocale?.languageCode ?? 'it';
         tts.setLanguage(langCode);
         
-        final cat = (dep.category ?? '').trim();
+        // Imposta voce per lingua
+        final voices = TtsService.getVoicesForLanguage(langCode);
+        final selected = voices.firstWhere(
+          (v) => v.name == settings.ttsVoiceForLang(langCode),
+          orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+        );
+        tts.setSelectedVoice(selected);
+        
+        final cat = TtsService.resolveCategory(dep.category, langCode);
         final num = (dep.trainNumber ?? '').trim();
         final dest = isArrival
             ? (dep.origin ?? '').trim()
@@ -457,6 +465,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
         final delay = dep.delayMinutes ?? 0;
         final scheduled = dep.scheduledTime;
         final estimated = dep.estimatedTime;
+        final ttsStrings = TtsService.getTtsStrings(langCode);
         
         final timeStr = formatCountryTime(scheduled, widget.country);
         final estStr = estimated != null ? formatCountryTime(estimated, widget.country) : null;
@@ -464,18 +473,18 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
         
         String text = '';
         if (cat.isNotEmpty || num.isNotEmpty) {
-          text += 'Treno $cat $num. ';
+          text += '${ttsStrings['train']} $cat $num. ';
         }
         if (dest.isNotEmpty) {
-          text += '${isArrival ? 'Provenienza' : 'Direzione'} $dest. ';
+          text += '${isArrival ? ttsStrings['from'] : ttsStrings['direction']} $dest. ';
         }
         if (displayTime.isNotEmpty) {
-          text += '${isArrival ? 'Arrivo' : 'Partenza'} alle $displayTime. ';
+          text += '${isArrival ? ttsStrings['arrival'] : ttsStrings['departure']} $displayTime. ';
         }
         if (delay > 0) {
-          text += 'Ritardo $delay minuti. ';
+          text += '${ttsStrings['delay']} $delay ${ttsStrings['minutes']}. ';
         } else if (delay == 0) {
-          text += 'In orario. ';
+          text += '${ttsStrings['ontime']}. ';
         }
         
         if (text.isNotEmpty) {
