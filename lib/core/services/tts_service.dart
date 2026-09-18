@@ -216,7 +216,7 @@ class TtsService {
           'calling_at': 'Calling at',
           'is_departing': 'is departing from',
           'is_arriving': 'is arriving at',
-          'attention': 'Attention please.',
+          'attention': 'Attention please,',
           'service_to': 'service to',
           'service_from': 'service from',
         };
@@ -239,7 +239,7 @@ class TtsService {
           'calling_at': 'Hält in',
           'is_departing': 'fährt ab von Gleis',
           'is_arriving': 'kommt an auf Gleis',
-          'attention': 'Bitte beachten Sie.',
+          'attention': 'Bitte beachten Sie,',
           'service_to': 'Verbindung nach',
           'service_from': 'Verbindung aus',
         };
@@ -262,7 +262,7 @@ class TtsService {
           'calling_at': 'desservant',
           'is_departing': 'part du quai',
           'is_arriving': 'arrive au quai',
-          'attention': 'Votre attention s\'il vous plaît.',
+          'attention': 'Votre attention s\'il vous plaît,',
           'service_to': 'desservant',
           'service_from': 'en provenance de',
         };
@@ -275,9 +275,9 @@ class TtsService {
           'direction': 'diretto a',
           'arrival': 'è in arrivo al binario',
           'departure': 'è in partenza dal binario',
-          'delay': 'con ritardo di',
+          'delay': 'è in ritardo di',
           'minutes': 'minuti',
-          'ontime': 'puntualmente',
+          'ontime': 'è in orario',
           'next_stop': 'Prossima fermata:',
           'at_time': 'delle ore',
           'hours': '',
@@ -285,7 +285,7 @@ class TtsService {
           'calling_at': 'ferma a',
           'is_departing': 'è in partenza dal binario',
           'is_arriving': 'è in arrivo al binario',
-          'attention': 'Attenzione.',
+          'attention': 'Attenzione,',
           'service_to': 'per',
           'service_from': 'proveniente da',
         };
