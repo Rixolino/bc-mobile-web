@@ -285,6 +285,8 @@ class _FlixbusTripDetailsSheetState extends State<FlixbusTripDetailsSheet> {
                   initialZoom: 5.0,
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.all,
+                    // Tastiera disabilitata: le frecce restano al cursore TV.
+                    keyboardOptions: KeyboardOptions.disabled(),
                   ),
                 ),
                 children: [

@@ -114,6 +114,11 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
         initialCenter: LatLng(mapState.lat, mapState.lng),
         initialZoom: mapState.zoom,
         backgroundColor: theme.surfaceColor,
+        // Tastiera disabilitata: le frecce restano al cursore TV,
+        // la mappa si muove con tap/drag del cursore.
+        interactionOptions: const InteractionOptions(
+          keyboardOptions: KeyboardOptions.disabled(),
+        ),
         onPositionChanged: (position, hasGesture) {
           // Salva sempre la posizione, sia per gesture manuali che cambiamenti programmatici
           mapState.updatePosition(

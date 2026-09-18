@@ -42,18 +42,22 @@ class _TvCursor extends StatelessWidget {
       builder: (context, cursor, _) {
         if (!cursor.visible) return const SizedBox.shrink();
         cursor.ensurePosition(MediaQuery.sizeOf(context));
+        final dragging = cursor.dragging;
+        final color = dragging
+            ? Colors.orange
+            : Theme.of(context).colorScheme.primary;
         return Positioned(
-          left: cursor.position.dx - 22,
-          top: cursor.position.dy - 22,
+          left: cursor.position.dx - 16,
+          top: cursor.position.dy - 16,
           child: IgnorePointer(
             child: Container(
-              width: 44,
-              height: 44,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary,
-                  width: 3,
+                  color: color,
+                  width: dragging ? 4 : 3,
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -64,10 +68,10 @@ class _TvCursor extends StatelessWidget {
               ),
               child: Center(
                 child: Container(
-                  width: 10,
-                  height: 10,
+                  width: dragging ? 11 : 8,
+                  height: dragging ? 11 : 8,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
+                    color: color,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -80,6 +84,42 @@ class _TvCursor extends StatelessWidget {
   }
 }
 
+/// Observer che nasconde i gestori viewport a ogni cambio schermata
+/// (push/pop/dialog): la scansione li rigenera per la nuova route.
+class TvNavObserver extends NavigatorObserver {
+  void _clear(NavigatorState? navigator) {
+    try {
+      final ctx = navigator?.context;
+      if (ctx == null) return;
+      Provider.of<TvCursorService>(ctx, listen: false).clearViewports();
+    } catch (_) {}
+  }
+
+  @override
+  void didPush(Route route, Route? previousRoute) {
+    _clear(navigator);
+    super.didPush(route, previousRoute);
+  }
+
+  @override
+  void didPop(Route route, Route? previousRoute) {
+    _clear(navigator);
+    super.didPop(route, previousRoute);
+  }
+
+  @override
+  void didRemove(Route route, Route? previousRoute) {
+    _clear(navigator);
+    super.didRemove(route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route? newRoute, Route? oldRoute}) {
+    _clear(navigator);
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+  }
+}
+
 /// Frecce generate per OGNI oggetto scrollabile rilevato: mini controllo
 /// su/giù sul bordo destro di ciascun viewport. Tappabili col cursore o al tocco.
 class _TvScrollButtons extends StatelessWidget {
@@ -89,23 +129,19 @@ class _TvScrollButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<TvCursorService>(
       builder: (context, cursor, _) {
-        final vps = cursor.viewports;
-        if (vps.isEmpty) return const SizedBox.shrink();
+        // Solo l'oggetto sotto il cursore ha le frecce (niente accatastamenti).
+        final vp = cursor.viewportAtCursor();
+        if (vp == null) return const SizedBox.shrink();
         final scheme = Theme.of(context).colorScheme;
         final screen = MediaQuery.sizeOf(context);
         const double w = 40;
-        return Stack(
-          children: [
-            for (int i = 0; i < vps.length; i++)
-              _viewportArrows(scheme, screen, vps[i], cursor, w),
-          ],
-        );
+        return _viewportArrows(scheme, screen, vp, cursor, w, key: ValueKey('tv-vp-${vp.id}'));
       },
     );
   }
 
   Widget _viewportArrows(ColorScheme scheme, Size screen, ViewportInfo vp,
-      TvCursorService cursor, double w) {
+      TvCursorService cursor, double w, {Key? key}) {
     final r = vp.rect;
     // Bordo destro del viewport, centrato verticalmente, dentro lo schermo
     final double left =
@@ -131,6 +167,7 @@ class _TvScrollButtons extends StatelessWidget {
     const gap = TvCursorService.scrollStep * 3;
     final bool horizontal = vp.axis == Axis.horizontal;
     return Positioned(
+      key: key,
       left: left,
       top: top,
       width: w,

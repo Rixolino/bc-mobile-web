@@ -161,6 +161,7 @@ class _BcTransporterAppState extends State<BcTransporterApp>
                   Locale('fr'), // Francese
                 ],
                 builder: (context, child) => TvRemoteHost(child: child),
+                navigatorObservers: [TvNavObserver()],
                 home: const SplashScreen(),
               );
             },

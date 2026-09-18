@@ -20,22 +20,59 @@ class TvCursorService extends ChangeNotifier {
   Offset _position = Offset.zero;
   bool _hasPosition = false;
   Size _screenSize = Size.zero;
-  Timer? _edgeScrollTimer;
   Timer? _scanTimer;
-  Timer? _hideTimer;
   List<ViewportInfo> _viewports = const [];
+  int _lastScanCount = -1;
+  // identityHashCode(ScrollableState) -> ID stabile (mai duplicato,
+  // mai riassegnato a un altro oggetto finché vive).
+  final Map<int, int> _viewportIds = {};
+  int _nextViewportId = 1;
+  bool _dragging = false;
+  DateTime? _selectDownAt;
 
-  /// Ultimo scan con viewport trovati: le frecce restano finché
-  /// non spariscono davvero (grazia per transizioni/sheet in chiusura).
-  static const Duration hideGrace = Duration(milliseconds: 1500);
+  /// trascinamento attivo (OK lungo): le frecce muovono il "dito".
+  bool get dragging => _dragging;
+
+  /// Soglia pressione lunga per entrare in drag.
+  static const Duration longPress = Duration(milliseconds: 500);
 
   /// Viewport rilevati a schermo (per frecce dedicate a ciascuno).
   List<ViewportInfo> get viewports => _viewports;
 
-  // Fascia bordi che attiva lo scroll automatico + passo scroll
-  static const double edgeZone = 100;
+  /// Il viewport sotto il cursore (il più interno in caso di annidati).
+  /// Fallback: il più vicino al cursore, così le frecce compaiono anche
+  /// quando il cursore sta su zone fisse (header, chip, dock).
+  ViewportInfo? viewportAtCursor() {
+    ViewportInfo? best;
+    double bestArea = double.infinity;
+    for (final vp in _viewports) {
+      try {
+        if (!vp.alive) continue;
+        if (!vp.rect.contains(_position)) continue;
+        final area = vp.rect.width * vp.rect.height;
+        if (area < bestArea) {
+          bestArea = area;
+          best = vp;
+        }
+      } catch (_) {}
+    }
+    if (best != null) return best;
+    double bestDist = double.infinity;
+    for (final vp in _viewports) {
+      try {
+        if (!vp.alive) continue;
+        final d = (vp.rect.center - _position).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = vp;
+        }
+      } catch (_) {}
+    }
+    return best;
+  }
+
+  // Passo scroll frecce
   static const double scrollStep = 50;
-  static const Duration edgeTick = Duration(milliseconds: 130);
 
   bool get enabled => _enabled;
   bool get tvDetected => _tvDetected;
@@ -99,37 +136,7 @@ class TvCursorService extends ChangeNotifier {
     } else {
       move(0, 0, screen);
     }
-    _ensureEdgeScrollTimer();
     _ensureScanTimer();
-  }
-
-  /// Timer che, a cursore visibile, trascina il contenuto sotto il cursore
-  /// quando sta nelle fasce alta/bassa dello schermo (scroll su/giù).
-  void _ensureEdgeScrollTimer() {
-    if (!visible || _edgeScrollTimer != null) return;
-    _edgeScrollTimer =
-        Timer.periodic(edgeTick, (_) => _edgeScrollTick());
-  }
-
-  void _stopEdgeScrollTimer() {
-    _edgeScrollTimer?.cancel();
-    _edgeScrollTimer = null;
-  }
-
-  /// Tick di scroll: segnale rotella sintetico nel punto del cursore.
-  /// Lo Scrollable sotto il cursore (qualsiasi: liste, sliver, dialog,
-  /// sheet, in qualunque schermata) scorre senza gesture arena né tap.
-  void _edgeScrollTick() {
-    if (!visible || _screenSize == Size.zero) {
-      if (!visible) _stopEdgeScrollTimer();
-      return;
-    }
-    final y = _position.dy;
-    if (y < edgeZone) {
-      _scrollBy(const Offset(0, -scrollStep)); // mostra contenuto sopra
-    } else if (y > _screenSize.height - edgeZone) {
-      _scrollBy(const Offset(0, scrollStep)); // mostra contenuto sotto
-    }
   }
 
   /// Muove DIRETTAMENTE lo scrollabile indicato (niente hit-test al tap:
@@ -165,27 +172,6 @@ class TvCursorService extends ChangeNotifier {
     );
   }
 
-  void _scrollBy(Offset delta) {
-    // Il cursore nelle fasce bordo spesso sta sopra chrome non scrollabile
-    // (AppBar, nav bar, maniglie sheet): invia il segnale più dentro,
-    // sul contenuto scrollabile, altrimenti si perde.
-    var dispatch = _position;
-    if (_position.dy < edgeZone) {
-      dispatch = Offset(
-        _position.dx,
-        (edgeZone + 40).clamp(0.0, _screenSize.height),
-      );
-    } else if (_position.dy > _screenSize.height - edgeZone) {
-      dispatch = Offset(
-        _position.dx,
-        (_screenSize.height - edgeZone - 40).clamp(0.0, _screenSize.height),
-      );
-    }
-    WidgetsBinding.instance.handlePointerEvent(
-      PointerScrollEvent(position: dispatch, scrollDelta: delta),
-    );
-  }
-
   void move(double dx, double dy, Size screen) {
     _screenSize = screen;
     final nx = (_position.dx + dx).clamp(0.0, screen.width);
@@ -194,9 +180,32 @@ class TvCursorService extends ChangeNotifier {
     if (next != _position) {
       _position = next;
       notifyListeners();
+      if (_dragging) {
+        // In drag: il dito segue il cursore
+        WidgetsBinding.instance.handlePointerEvent(
+          PointerMoveEvent(position: next),
+        );
+      }
     }
-    _ensureEdgeScrollTimer();
     _ensureScanTimer();
+  }
+
+  void _startDrag() {
+    if (_dragging) return;
+    _dragging = true;
+    WidgetsBinding.instance.handlePointerEvent(
+      PointerDownEvent(position: _position),
+    );
+    notifyListeners();
+  }
+
+  void _endDrag() {
+    if (!_dragging) return;
+    _dragging = false;
+    WidgetsBinding.instance.handlePointerEvent(
+      PointerUpEvent(position: _position),
+    );
+    notifyListeners();
   }
 
   void _ensureScanTimer() {
@@ -207,8 +216,6 @@ class TvCursorService extends ChangeNotifier {
       if (!visible) {
         _scanTimer?.cancel();
         _scanTimer = null;
-        _hideTimer?.cancel();
-        _hideTimer = null;
         if (_viewports.isNotEmpty) {
           _viewports = const [];
           notifyListeners();
@@ -224,6 +231,8 @@ class TvCursorService extends ChangeNotifier {
   void scanViewportTree() {
     if (!visible) return;
     final found = <ViewportInfo>[];
+    int skippedOffRoute = 0;
+    int skippedSmall = 0;
     try {
       final root = WidgetsBinding.instance.rootElement;
       if (root == null) return;
@@ -231,18 +240,46 @@ class TvCursorService extends ChangeNotifier {
       final full = Rect.fromLTWH(
           0, 0, screen.width == 0 ? 4096 : screen.width, screen.height == 0 ? 4096 : screen.height);
       void visit(Element el) {
+        final String elType = el.widget.runtimeType.toString();
+        // Mappe (flutter_map) e WebView (es. mapbox.html): non si scende
+        // nel sottoalbero (niente frecce interne, il cursore non resta
+        // inchiodato lì). Tap/drag restano liberi e naturali.
+        if (elType == 'FlutterMap' ||
+            elType == 'MapWidget' ||
+            elType == 'WebViewWidget') {
+          return;
+        }
         if (el is StatefulElement && el.state is ScrollableState) {
           final st = el.state as ScrollableState;
+          // Solo route corrente: mai contenuti delle schermate sotto.
+          if (!_isInCurrentRoute(st)) {
+            skippedOffRoute++;
+            return;
+          }
           try {
             final ro = st.context.findRenderObject();
             if (ro is RenderBox && ro.hasSize && ro.attached) {
+              // Escludi viewport di schermate coperte (route sotto/offstage):
+              // altrimenti a ogni push i numeri si accumulano.
+              if (_isHiddenByAncestor(ro)) {
+                skippedOffRoute++;
+                return;
+              }
               final Offset offset = ro.localToGlobal(Offset.zero);
               final rect = Rect.fromLTWH(
                       offset.dx, offset.dy, ro.size.width, ro.size.height)
                   .intersect(full);
-              // Solo oggetti visibili e abbastanza grandi (niente micro-scroller)
-              if (!rect.isEmpty && rect.width >= 80 && rect.height >= 80) {
-                found.add(ViewportInfo(st, rect, st.position.axis));
+              // Solo oggetti visibili e abbastanza grandi: liste/griglie
+              // oppure strisce orizzontali (chip), niente micro-scroller.
+              final bool bigEnough =
+                  (rect.width >= 80 && rect.height >= 80) ||
+                  (rect.width >= 240 && rect.height >= 44);
+              if (!rect.isEmpty && bigEnough) {
+                final hash = identityHashCode(st);
+                final id = _viewportIds.putIfAbsent(hash, () => _nextViewportId++);
+                found.add(ViewportInfo(id, st, rect, st.position.axis));
+              } else {
+                skippedSmall++;
               }
             }
           } catch (_) {}
@@ -251,29 +288,31 @@ class TvCursorService extends ChangeNotifier {
           el.visitChildren(visit);
         } catch (_) {}
       }
-  
+
       root.visitChildren(visit);
     } catch (_) {
       return;
     }
+    // Log solo se cambia qualcosa (niente spam ogni 900ms).
+    if (found.length != _lastScanCount) {
+      debugPrint(
+          '[TvScan] trovati=${found.length} (prima ${_lastScanCount}) scartatiOffRoute=$skippedOffRoute scartatiPiccoli=$skippedSmall');
+      _lastScanCount = found.length;
+    }
     // Aggiorna solo se cambiato (evita rebuild continui).
-    // Se vuoto: non nascondere subito, dai la grazia (transizioni/sheet).
+    // Se la scansione torna vuota NON nascondere: le frecce restano
+    // finché non cambia schermata (solo clearViewports le azzera).
     if (found.isEmpty) {
-      if (_viewports.isNotEmpty && _hideTimer == null) {
-        _hideTimer = Timer(hideGrace, () {
-          _hideTimer = null;
-          _viewports = const [];
-          notifyListeners();
-        });
-      }
       return;
     }
-    _hideTimer?.cancel();
-    _hideTimer = null;
+    // Pulisci gli ID degli oggetti spariti (mai riassegnati ad altri).
+    _viewportIds.removeWhere((hash, _) =>
+        !found.any((vp) => identityHashCode(vp.state) == hash));
     bool same = found.length == _viewports.length;
     if (same) {
       for (int i = 0; i < found.length; i++) {
-        if (found[i].rect != _viewports[i].rect) {
+        if (found[i].id != _viewports[i].id ||
+            found[i].rect != _viewports[i].rect) {
           same = false;
           break;
         }
@@ -281,6 +320,41 @@ class TvCursorService extends ChangeNotifier {
     }
     if (!same) {
       _viewports = found;
+      notifyListeners();
+    }
+  }
+
+  /// true se il render object è sotto un antenato nascosto
+  /// (route coperta/offstage): i suoi viewport non vanno contati.
+  bool _isHiddenByAncestor(RenderObject ro) {
+    try {
+      dynamic node = ro.parent;
+      while (node is RenderObject) {
+        if (node is RenderOffstage && node.offstage) return true;
+        node = node.parent;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// true solo se lo Scrollable sta nella route corrente (top-most):
+  /// dopo un push, i contenuti delle schermate sotto vengono esclusi
+  /// anche se ancora montati.
+  bool _isInCurrentRoute(ScrollableState st) {
+    try {
+      final route = ModalRoute.of(st.context);
+      if (route == null) return true;
+      return route.isCurrent;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Svuota subito i gestori (cambio schermata): la scansione
+  /// li rigenera per la nuova route.
+  void clearViewports() {
+    if (_viewports.isNotEmpty) {
+      _viewports = const [];
       notifyListeners();
     }
   }
@@ -295,6 +369,8 @@ class TvCursorService extends ChangeNotifier {
   }
 
   /// Tocca nel punto del cursore (down + up sintetizzati).
+  /// L'hit-test dà già priorità agli elementi sopra (marker, pulsanti,
+  /// popup); la superficie mappa ignora i tap semplici.
   Future<void> tapAtCursor() async {
     final binding = WidgetsBinding.instance;
     final pos = _position;
@@ -306,13 +382,42 @@ class TvCursorService extends ChangeNotifier {
   /// Gestisce i tasti del telecomando. Ritorna true se consumati.
   /// Non intercetta nulla quando si scrive in un campo di testo.
   bool handleKey(KeyEvent event, Size screen) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
     final focus = FocusManager.instance.primaryFocus;
     if (focus != null && focus.context != null) {
       final widget = focus.context!.widget;
       if (widget is EditableText) return false;
     }
     final key = event.logicalKey;
+    final isOk = key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.gameButtonA;
+    // Pressione lunga OK = trascinamento (mappe, slider, reorder...)
+    if (event is KeyDownEvent && isOk) {
+      _selectDownAt = DateTime.now();
+      return true;
+    }
+    if (event is KeyUpEvent && isOk) {
+      final held = _selectDownAt != null
+          ? DateTime.now().difference(_selectDownAt!)
+          : Duration.zero;
+      _selectDownAt = null;
+      if (!visible) return false;
+      if (held >= longPress) {
+        if (_dragging) {
+          _endDrag();
+        } else {
+          _startDrag();
+        }
+      } else {
+        if (_dragging) {
+          _endDrag();
+        } else {
+          unawaited(tapAtCursor());
+        }
+      }
+      return true;
+    }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
     if (key == LogicalKeyboardKey.arrowUp) {
       autoShow(screen);
       move(0, -step, screen);
@@ -333,13 +438,6 @@ class TvCursorService extends ChangeNotifier {
       move(step, 0, screen);
       return true;
     }
-    if (key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.gameButtonA) {
-      if (!visible) return false;
-      unawaited(tapAtCursor());
-      return true;
-    }
     return false;
   }
 }
@@ -347,10 +445,12 @@ class TvCursorService extends ChangeNotifier {
 /// Scrollable rilevato con stato diretto (niente hit-test al tap:
 /// le frecce muovono proprio questo oggetto).
 class ViewportInfo {
+  /// ID univoco e stabile: stesso Scrollable = stesso ID tra scansioni.
+  final int id;
   final ScrollableState state;
   final Rect rect;
   final Axis axis;
-  const ViewportInfo(this.state, this.rect, this.axis);
+  const ViewportInfo(this.id, this.state, this.rect, this.axis);
 
   bool get alive {
     try {
