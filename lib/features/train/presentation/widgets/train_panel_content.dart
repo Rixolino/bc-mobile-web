@@ -107,10 +107,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   // TTS auto-annuncio: set di chiavi già annunciate (separato per arrivals/departures)
   final Set<String> _spokenDepartureKeys = {};
   final Set<String> _spokenArrivalKeys = {};
-  final Set<String> _pendingDepartures = {}; // treni visti ma non ancora annunciati
+  final Set<String> _pendingDepartures = {};
   final Set<String> _pendingArrivals = {};
-  List<TrainDeparture> _previousDepartures = [];
-  List<TrainDeparture> _previousArrivals = [];
   bool? _lastArrivalMode;
 
   // Mappa dei fusi orari per paese
@@ -846,25 +844,23 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     final current = provider.departures;
     final isArrivals = provider.isArrivalMode;
 
-    // Se è cambiata la modalità, resetta i dati della modalità precedente
+    // Se è cambiata la modalità, resetta
     if (_lastArrivalMode != null && _lastArrivalMode != isArrivals) {
-      if (isArrivals) {
-        _previousDepartures = List.from(current);
-      } else {
-        _previousArrivals = List.from(current);
-      }
+      _spokenDepartureKeys.clear();
+      _spokenArrivalKeys.clear();
+      _pendingDepartures.clear();
+      _pendingArrivals.clear();
     }
     _lastArrivalMode = isArrivals;
 
     final spokenKeys = isArrivals ? _spokenArrivalKeys : _spokenDepartureKeys;
     final pendingKeys = isArrivals ? _pendingArrivals : _pendingDepartures;
-    final previousList = isArrivals ? _previousArrivals : _previousDepartures;
     final now = DateTime.now();
 
     String? textToSpeak;
 
     // Helper: calcola ora effettiva e se è nella finestra
-    (DateTime?, bool) getEffectiveInfo(TrainDeparture dep) {
+    bool isInWindow(TrainDeparture dep) {
       final schedTime = dep.scheduledTime;
       final estTime = dep.estimatedTime;
       final delay = dep.delayMinutes ?? 0;
@@ -874,15 +870,17 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       } else if (schedTime != null) {
         effectiveTime = schedTime.add(Duration(minutes: delay));
       }
-      bool isInWindow = false;
-      if (effectiveTime != null) {
-        final diff = effectiveTime.difference(now).inMinutes;
-        isInWindow = diff >= -5 && diff <= 3;
-      }
-      return (effectiveTime, isInWindow);
+      if (effectiveTime == null) return false;
+      final diff = effectiveTime.difference(now).inMinutes;
+      return diff >= -5 && diff <= 3;
     }
 
-    // 1. Controlla i treni in attesa (visti prima ma non annunciati)
+    final currentKeys = current.map(_trainKey).toSet();
+
+    // Pulisci pending di treni che non sono più nella lista
+    pendingKeys.removeWhere((k) => !currentKeys.contains(k));
+
+    // 1. Controlla i treni in attesa (entrati nella finestra)
     for (final pendingKey in pendingKeys.toList()) {
       final dep = current.cast<TrainDeparture?>().firstWhere(
         (d) => _trainKey(d!) == pendingKey,
@@ -892,8 +890,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         pendingKeys.remove(pendingKey);
         continue;
       }
-      final (_, isInWindow) = getEffectiveInfo(dep);
-      if (isInWindow) {
+      if (isInWindow(dep)) {
         pendingKeys.remove(pendingKey);
         spokenKeys.add(pendingKey);
         textToSpeak = _buildTtsText(dep, isArrivals, settings);
@@ -901,47 +898,29 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       }
     }
 
-    // 2. Se non c'è nulla da parlare, controlla treni nuovi e aggiornamenti ritardo
+    // 2. Se non c'è nulla da parlare, controlla treni nuovi
     if (textToSpeak == null) {
       for (final dep in current) {
         final key = _trainKey(dep);
-        final (_, isInWindow) = getEffectiveInfo(dep);
 
-        final prevDep = previousList.cast<TrainDeparture?>().firstWhere(
-          (p) => _trainKey(p!) == key,
-          orElse: () => null,
-        );
-
-        if (prevDep == null) {
-          // Nuovo treno
-          if (isInWindow) {
-            spokenKeys.add(key);
-            textToSpeak = _buildTtsText(dep, isArrivals, settings);
-            break;
-          } else if (!spokenKeys.contains(key)) {
-            // Aggiungi ai pending per dopo
-            pendingKeys.add(key);
-          }
+        // Già annunciato o già in pending → skip
+        if (spokenKeys.contains(key) || pendingKeys.contains(key)) {
           continue;
         }
 
-        // Treno esistente: ritardo cambiato significativamente
-        final oldDelay = prevDep.delayMinutes ?? 0;
-        final newDelay = dep.delayMinutes ?? 0;
-        if ((newDelay - oldDelay).abs() >= 3 && isInWindow) {
+        if (isInWindow(dep)) {
+          // Nuovo treno in finestra: annuncia subito
+          spokenKeys.add(key);
           textToSpeak = _buildTtsText(dep, isArrivals, settings);
           break;
+        } else {
+          // Nuovo treno fuori finestra: metti in pending
+          pendingKeys.add(key);
         }
       }
     }
 
-    // Aggiorna la lista precedente e pulisci chiavi vecchie
-    if (isArrivals) {
-      _previousArrivals = List.from(current);
-    } else {
-      _previousDepartures = List.from(current);
-    }
-    final currentKeys = current.map(_trainKey).toSet();
+    // Pulisci chiavi vecchie
     if (spokenKeys.length > 200) {
       spokenKeys.removeWhere((k) => !currentKeys.contains(k));
     }
@@ -949,7 +928,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       pendingKeys.removeWhere((k) => !currentKeys.contains(k));
     }
 
-    // Parla (solo se c'è qualcosa da dire)
+    // Parla
     if (textToSpeak != null && textToSpeak.isNotEmpty) {
       final tts = TtsService();
       final langCode = settings.appLocale?.languageCode ?? 'it';
