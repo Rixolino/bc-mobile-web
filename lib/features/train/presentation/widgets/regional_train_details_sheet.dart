@@ -1899,9 +1899,11 @@ class _TimelineRow extends StatelessWidget {
     final String? platform =
         _asStr(stop['platform']).isNotEmpty ? _asStr(stop['platform']) : null;
 
-    String buildTimeString(
+    ({String text, int delay}) buildTimeString(
         String type, DateTime? scheduled, DateTime? estimated, int? delay) {
-      if (scheduled == null && estimated == null) return '';
+      if (scheduled == null && estimated == null) {
+        return (text: '', delay: 0);
+      }
 
       // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
       // usa il ritardo del treno (stessa logica dello sheet nazionale).
@@ -1922,14 +1924,39 @@ class _TimelineRow extends StatelessWidget {
       final effective =
           estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
       final effStr = timeFormatter(effective, 'IT');
-      final delayStr = effectiveDelay != 0
-          ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)"
-          : "";
 
+      final String text;
       if (scheduled != null && (estimated != null || effectiveDelay != 0)) {
-        return '$type: $effStr$delayStr (${RuntimeLocalizations.t(context, 'scheduled_label') ?? 'Prog'}: ${timeFormatter(scheduled, 'IT')})';
+        text = '$type: $effStr (${RuntimeLocalizations.t(context, 'scheduled_label') ?? 'Prog'}: ${timeFormatter(scheduled, 'IT')})';
+      } else {
+        text = '$type: $effStr';
       }
-      return '$type: $effStr';
+      return (text: text, delay: effectiveDelay);
+    }
+
+    Widget delayBadge(int delay) {
+      final Color color;
+      if (delay <= 0) {
+        color = Colors.green;
+      } else if (delay <= 5) {
+        color = Colors.orange;
+      } else if (delay <= 15) {
+        color = Colors.deepOrange;
+      } else {
+        color = Colors.red;
+      }
+      final text = delay > 0 ? '+$delay\'' : '$delay\'';
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+        ),
+      );
     }
 
     final schedArr = _parseRegionalTime(stop['scheduledArrival']);
@@ -2026,41 +2053,61 @@ class _TimelineRow extends StatelessWidget {
                     ],
                   ),
                   if (schedArr != null || estArr != null)
-                    Text(
-                        buildTimeString(
-                            RuntimeLocalizations.t(context, 'arrival') ??
-                                'Arrivo',
-                            schedArr,
-                            estArr,
-                            isFuture ? totalDelay : arrDelay),
-                        style: TextStyle(
-                            color: cancelled
-                                ? theme.secondaryTextColor.withOpacity(0.5)
-                                : (isCompleted
-                                    ? theme.secondaryTextColor.withOpacity(0.4)
-                                    : theme.secondaryTextColor),
-                            fontSize: 12,
-                            decoration: cancelled
-                                ? TextDecoration.lineThrough
-                                : TextDecoration.none)),
+                    Builder(builder: (_) {
+                      final arr = buildTimeString(
+                          RuntimeLocalizations.t(context, 'arrival') ??
+                              'Arrivo',
+                          schedArr,
+                          estArr,
+                          isFuture ? totalDelay : arrDelay);
+                      if (arr.text.isEmpty) return const SizedBox.shrink();
+                      return Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          Text(arr.text,
+                              style: TextStyle(
+                                  color: cancelled
+                                      ? theme.secondaryTextColor.withOpacity(0.5)
+                                      : (isCompleted
+                                          ? theme.secondaryTextColor.withOpacity(0.4)
+                                          : theme.secondaryTextColor),
+                                  fontSize: 12,
+                                  decoration: cancelled
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none)),
+                          if (arr.delay != 0 && !cancelled) delayBadge(arr.delay),
+                        ],
+                      );
+                    }),
                   if (schedDep != null || estDep != null)
-                    Text(
-                        buildTimeString(
-                            RuntimeLocalizations.t(context, 'departure') ??
-                                'Partenza',
-                            schedDep,
-                            estDep,
-                            isFuture ? totalDelay : depDelay),
-                        style: TextStyle(
-                            color: cancelled
-                                ? theme.secondaryTextColor.withOpacity(0.5)
-                                : (isCompleted
-                                    ? theme.secondaryTextColor.withOpacity(0.4)
-                                    : theme.secondaryTextColor),
-                            fontSize: 12,
-                            decoration: cancelled
-                                ? TextDecoration.lineThrough
-                                : TextDecoration.none)),
+                    Builder(builder: (_) {
+                      final dep = buildTimeString(
+                          RuntimeLocalizations.t(context, 'departure') ??
+                              'Partenza',
+                          schedDep,
+                          estDep,
+                          isFuture ? totalDelay : depDelay);
+                      if (dep.text.isEmpty) return const SizedBox.shrink();
+                      return Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          Text(dep.text,
+                              style: TextStyle(
+                                  color: cancelled
+                                      ? theme.secondaryTextColor.withOpacity(0.5)
+                                      : (isCompleted
+                                          ? theme.secondaryTextColor.withOpacity(0.4)
+                                          : theme.secondaryTextColor),
+                                  fontSize: 12,
+                                  decoration: cancelled
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none)),
+                          if (dep.delay != 0 && !cancelled) delayBadge(dep.delay),
+                        ],
+                      );
+                    }),
                 ],
               ),
             ),

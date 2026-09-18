@@ -22,6 +22,7 @@ class SettingsProvider with ChangeNotifier {
 
   static const String keyMapStyle = 'map_style';
   static const String keyStartScreen = 'ui_start_screen';
+  static const String keyTextScale = 'ui_text_scale';
   static const String keyVectorLogos = 'ui_vector_logos_enabled';
   static const String keyLogoSource = 'ui_logo_source';
   static const String keyLanguage = 'app_language';
@@ -67,6 +68,9 @@ class SettingsProvider with ChangeNotifier {
 
   // Schermata iniziale: 0 Home, 1 Treni, 2 Bus, 3 Aerei, 4 Autostrade
   int _startScreenMode = 0;
+
+  // Zoom testi dell'app (non mappa): 1.0 = normale
+  double _textScale = 1.0;
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
@@ -120,6 +124,9 @@ class SettingsProvider with ChangeNotifier {
   // Schermata iniziale dell'app
   int get startScreenMode => _startScreenMode;
 
+  // Zoom testi dell'app
+  double get textScale => _textScale;
+
   // New: offline sync feature (beta)
   bool get offlineSyncEnabled => _offlineSyncEnabled;
 
@@ -163,6 +170,7 @@ class SettingsProvider with ChangeNotifier {
     _busesWorkerEnabled = prefs.getBool(keyBusesWorker) ?? false;
     _functionsWorkerEnabled = prefs.getBool(keyFunctionsWorker) ?? false;
     _startScreenMode = prefs.getInt(keyStartScreen) ?? 0;
+    _textScale = (prefs.getDouble(keyTextScale) ?? 1.0).clamp(0.8, 1.4);
 
     // Load worker params
     _trainStationId = prefs.getString(keyTrainStationId) ?? '';
@@ -334,6 +342,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(keyStartScreen, _startScreenMode);
+  }
+
+  Future<void> setTextScale(double value) async {
+    _textScale = value.clamp(0.8, 1.4);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(keyTextScale, _textScale);
   }
 
   Future<void> setTrainsWorkerEnabled(bool enabled) async {

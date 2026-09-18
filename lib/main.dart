@@ -160,7 +160,17 @@ class _BcTransporterAppState extends State<BcTransporterApp>
                   Locale('de'), // Tedesco
                   Locale('fr'), // Francese
                 ],
-                builder: (context, child) => TvRemoteHost(child: child),
+                builder: (context, child) {
+                  // Zoom testi app da impostazioni (non tocca la mappa)
+                  final scale = Provider.of<SettingsProvider>(context).textScale;
+                  final mq = MediaQuery.of(context);
+                  return MediaQuery(
+                    data: mq.copyWith(
+                      textScaler: TextScaler.linear(scale),
+                    ),
+                    child: TvRemoteHost(child: child),
+                  );
+                },
                 navigatorObservers: [TvNavObserver()],
                 home: const SplashScreen(),
               );

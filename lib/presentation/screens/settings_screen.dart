@@ -148,6 +148,17 @@ class SettingsScreen extends StatelessWidget {
                       ],
                     ),
 
+                    // SEZIONE: ACCESSIBILITÀ
+                    _buildSectionCard(
+                      context,
+                      theme,
+                      title: RuntimeLocalizations.t(context, 'settings_accessibility', fallback: 'Accessibilità'),
+                      icon: Icons.accessibility_rounded,
+                      children: [
+                        _buildTextScaleSlider(context, settings, theme),
+                      ],
+                    ),
+
                     // SEZIONE: GUIDA INTRODUTTIVA E NOTE LEGALI
                     _buildSectionCard(
                       context,
@@ -1019,6 +1030,59 @@ class SettingsScreen extends StatelessWidget {
               'Mostra un cursore comandato dal telecomando (Fire Stick, Google TV): frecce per muovere, OK per toccare.'),
       value: cursor.enabled,
       onChanged: (value) => cursor.setEnabled(value),
+    );
+  }
+
+  Widget _buildTextScaleSlider(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
+    final percent = (settings.textScale * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    RuntimeLocalizations.t(context, 'settings_app_zoom', fallback: 'Zoom testi app'),
+                    style: TextStyle(color: theme.textColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    RuntimeLocalizations.t(context, 'settings_app_zoom_desc',
+                        fallback: 'Ingrandisce i testi in tutta l\u2019app (non la mappa)'),
+                    style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$percent%',
+              style: TextStyle(
+                  color: theme.primaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16),
+            ),
+          ],
+        ),
+        Slider(
+          value: settings.textScale,
+          min: 0.8,
+          max: 1.4,
+          divisions: 6,
+          label: '$percent%',
+          activeColor: theme.primaryColor,
+          onChanged: (v) => settings.setTextScale(v),
+        ),
+        Center(
+          child: Text(
+            RuntimeLocalizations.t(context, 'settings_app_zoom_preview', fallback: 'Anteprima testo'),
+            style: TextStyle(color: theme.textColor, fontSize: 14),
+          ),
+        ),
+      ],
     );
   }
 

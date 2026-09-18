@@ -2850,8 +2850,10 @@ class _TimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool highlighted = isCompleted || isActiveStop || isTraversing;
 
-    String buildTimeString(String type, DateTime? scheduled, DateTime? estimated, int? delay) {
-      if (scheduled == null && estimated == null) return '';
+    ({String text, int delay}) buildTime(String type, DateTime? scheduled, DateTime? estimated, int? delay) {
+      if (scheduled == null && estimated == null) {
+        return (text: '', delay: 0);
+      }
 
       // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
       // usa il ritardo del treno (le fermate gia passate/attuale hanno subito
@@ -2871,12 +2873,39 @@ class _TimelineRow extends StatelessWidget {
 
       final effective = estimated ?? scheduled!.add(Duration(minutes: effectiveDelay));
       final effStr = timeFormatter(effective, stop.country);
-      final delayStr = effectiveDelay != 0 ? " (${effectiveDelay > 0 ? '+' : ''}${effectiveDelay}min)" : "";
-      
+
+      final String text;
       if (scheduled != null && (estimated != null || effectiveDelay != 0)) {
-        return '$type: $effStr$delayStr (${RuntimeLocalizations.t(context, 'scheduled_label')}: ${timeFormatter(scheduled, stop.country)})';
+        text = '$type: $effStr (${RuntimeLocalizations.t(context, 'scheduled_label')}: ${timeFormatter(scheduled, stop.country)})';
+      } else {
+        text = '$type: $effStr';
       }
-      return '$type: $effStr';
+      return (text: text, delay: effectiveDelay);
+    }
+
+    Widget delayBadge(int delay) {
+      final Color color;
+      if (delay <= 0) {
+        color = Colors.green;
+      } else if (delay <= 5) {
+        color = Colors.orange;
+      } else if (delay <= 15) {
+        color = Colors.deepOrange;
+      } else {
+        color = Colors.red;
+      }
+      final text = delay > 0 ? '+$delay\'' : '$delay\'';
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+        ),
+      );
     }
 
     return IntrinsicHeight(
@@ -2940,12 +2969,34 @@ class _TimelineRow extends StatelessWidget {
                         child: Text(RuntimeLocalizations.t(context, 'cancelled'), style: TextStyle(color: theme.errorColor, fontSize: 12, fontWeight: FontWeight.w800)),
                       ),
                   ],),
-                  if (stop.arrival != null) 
-                Text(buildTimeString(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : stop.arrivalDelay),
-                        style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                  if (stop.arrival != null)
+                    Builder(builder: (_) {
+                      final arr = buildTime(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : stop.arrivalDelay);
+                      if (arr.text.isEmpty) return const SizedBox.shrink();
+                      return Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          Text(arr.text,
+                              style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                          if (arr.delay != 0 && !stop.cancelled) delayBadge(arr.delay),
+                        ],
+                      );
+                    }),
                   if (stop.departure != null)
-                Text(buildTimeString(RuntimeLocalizations.t(context, 'departure'), stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : stop.departureDelay),
-                        style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                    Builder(builder: (_) {
+                      final dep = buildTime(RuntimeLocalizations.t(context, 'departure'), stop.departure, stop.estimatedDeparture, isFuture ? totalDelay : stop.departureDelay);
+                      if (dep.text.isEmpty) return const SizedBox.shrink();
+                      return Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          Text(dep.text,
+                              style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                          if (dep.delay != 0 && !stop.cancelled) delayBadge(dep.delay),
+                        ],
+                      );
+                    }),
 
                 ],
               ),
