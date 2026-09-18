@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:bc_transporter/core/services/tts_service.dart';
 import '../../core/services/android_background_service.dart';
 
 class SettingsProvider with ChangeNotifier {
@@ -215,6 +216,9 @@ class SettingsProvider with ChangeNotifier {
 
     notifyListeners();
 
+    // Sincronizza il TTS service con le impostazioni caricate
+    TtsService().setEnabled(_ttsEnabled);
+
     // Start fetching server rates for Auto mode
     _startServerPolling();
   }
@@ -383,6 +387,7 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setTtsEnabled(bool enabled) async {
     _ttsEnabled = enabled;
     notifyListeners();
+    TtsService().setEnabled(enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyTtsEnabled, _ttsEnabled);
   }

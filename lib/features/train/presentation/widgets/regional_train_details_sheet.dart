@@ -174,7 +174,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     
     final trip = _current;
     final trainNumberStr = (trip['tripNumber'] ?? trip['trainNumber'] ?? '').toString();
-    final categoryStr = trip['category']?.toString() ?? trip['operator']?.toString();
+    final categoryStr = trip['category']?.toString();
+    final operatorStr = trip['operator']?.toString();
     final isArrivals = widget.isArrivalMode;
     final stops = trip['stops'] as List? ?? [];
 
@@ -204,6 +205,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       delayMinutes: delayMin,
       platform: platform.isNotEmpty ? platform : null,
       langCode: langCode,
+      operator: operatorStr,
     );
 
     final ttsStrings = TtsService.getTtsStrings(langCode);
@@ -239,7 +241,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     
     if (text.isNotEmpty) {
-      await tts.speak(text);
+      final trainKey = '$categoryStr|$trainNumberStr|${_parseTime(trip['scheduledTime'])?.toIso8601String() ?? ''}';
+      await tts.speak(text, trainKey: trainKey);
     }
   }
 

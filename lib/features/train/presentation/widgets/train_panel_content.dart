@@ -104,7 +104,7 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
 
-  // TTS auto-annuncio: set di chiavi già annunciate (separato per arrivals/departures)
+// TTS auto-annuncio: set di chiavi già annunciate (separato per arrivals/departures)
   final Set<String> _spokenDepartureKeys = {};
   final Set<String> _spokenArrivalKeys = {};
   final Set<String> _pendingDepartures = {};
@@ -827,6 +827,12 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     _liveTrainsRefreshTimer?.cancel();
     _refreshTimer?.cancel();
 
+    // Sospendi TTS e svuota coda
+    try {
+      print('[TTS-Board] dispose → suspend()');
+      TtsService().suspend();
+    } catch (_) {}
+
     // Rimuovi listener TTS
     try {
       final provider = Provider.of<TrainProvider>(context, listen: false);
@@ -844,6 +850,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     final current = provider.departures;
     final isArrivals = provider.isArrivalMode;
 
+    print('[TTS-Board] _onDeparturesChanged: ${current.length} treni, isArrivals=$isArrivals');
+
     // Se è cambiata la modalità, resetta
     if (_lastArrivalMode != null && _lastArrivalMode != isArrivals) {
       _spokenDepartureKeys.clear();
@@ -858,6 +866,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     final now = DateTime.now();
 
     String? textToSpeak;
+    String? textTrainKey;
 
     // Helper: calcola ora effettiva e se è nella finestra
     bool isInWindow(TrainDeparture dep) {
@@ -872,10 +881,15 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       }
       if (effectiveTime == null) return false;
       final diff = effectiveTime.difference(now).inMinutes;
-      return diff >= -5 && diff <= 3;
+      // Annuncia circa 1 minuto prima dell'orario effettivo (±1 min per margine)
+      return diff >= -2 && diff <= 1;
     }
 
     final currentKeys = current.map(_trainKey).toSet();
+
+    // Aggiorna i treni attivi nel TTS service — scarta dalla coda quelli che non ci sono più
+    final tts = TtsService();
+    tts.updateActiveTrains(currentKeys);
 
     // Pulisci pending di treni che non sono più nella lista
     pendingKeys.removeWhere((k) => !currentKeys.contains(k));
@@ -894,6 +908,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         pendingKeys.remove(pendingKey);
         spokenKeys.add(pendingKey);
         textToSpeak = _buildTtsText(dep, isArrivals, settings);
+        textTrainKey = pendingKey;
         break;
       }
     }
@@ -912,6 +927,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
           // Nuovo treno in finestra: annuncia subito
           spokenKeys.add(key);
           textToSpeak = _buildTtsText(dep, isArrivals, settings);
+          textTrainKey = key;
           break;
         } else {
           // Nuovo treno fuori finestra: metti in pending
@@ -928,9 +944,18 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       pendingKeys.removeWhere((k) => !currentKeys.contains(k));
     }
 
+    // Aggiorna TTS con le chiavi di ENTRAMBI i modi (departures + arrivals)
+    // in modo che l'annuncio funzioni sia visualizzando arrivi sia partenze
+    final allTrainKeys = <String>{};
+    allTrainKeys.addAll(_spokenDepartureKeys);
+    allTrainKeys.addAll(_spokenArrivalKeys);
+    if (allTrainKeys.isNotEmpty) {
+      tts.updateActiveTrains(allTrainKeys);
+    }
+
     // Parla
     if (textToSpeak != null && textToSpeak.isNotEmpty) {
-      final tts = TtsService();
+      print('[TTS-Board] announce: key=$textTrainKey');
       final langCode = settings.appLocale?.languageCode ?? 'it';
       tts.setLanguage(langCode);
       final voices = TtsService.getVoicesForLanguage(langCode);
@@ -939,7 +964,9 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
       );
       tts.setSelectedVoice(selected);
-      tts.speak(textToSpeak);
+      tts.speak(textToSpeak, trainKey: textTrainKey);
+    } else {
+      print('[TTS-Board] niente da annunciare');
     }
   }
 
@@ -963,6 +990,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       delayMinutes: dep.delayMinutes ?? 0,
       platform: dep.platform?.toString(),
       langCode: langCode,
+      operator: dep.operator,
     );
   }
 

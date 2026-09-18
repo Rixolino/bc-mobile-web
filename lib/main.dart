@@ -45,12 +45,14 @@ class _BcTransporterAppState extends State<BcTransporterApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initTts();
 
     // Android: richiedi permessi notifiche e pianifica i worker nativi
     // (Usiamo chiamate native via MethodChannel)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
+        // Inizializza TTS dopo che le impostazioni sono caricate
+        await _initTts();
+
         await AndroidBackgroundService.requestPermission();
         final settings = Provider.of<SettingsProvider>(context, listen: false);
         if (settings.trainsWorkerEnabled)
@@ -80,11 +82,10 @@ class _BcTransporterAppState extends State<BcTransporterApp>
   Future<void> _initTts() async {
     final tts = TtsService();
     await tts.init();
-    // Imposta la lingua in base alle impostazioni dell'app
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final langCode = settings.appLocale?.languageCode ?? 'it';
     tts.setLanguage(langCode);
-    tts.setEnabled(settings.ttsEnabled);
+    // enabled viene sincronizzato da SettingsProvider._loadSettings()
   }
 
   @override

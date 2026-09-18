@@ -18,6 +18,12 @@ class OddcastVoice {
   });
 }
 
+class _QueueEntry {
+  final String text;
+  final String trainKey;
+  _QueueEntry(this.text, this.trainKey);
+}
+
 class TtsService {
   static final TtsService _instance = TtsService._internal();
   factory TtsService() => _instance;
@@ -58,11 +64,13 @@ class TtsService {
 
   /// Mappa categorie treni -> nomi pronunciati per lingua
   static const Map<String, Map<String, String>> _categoryNames = {
+    // Italia — Trenitalia
     'FR': {'it': 'Frecciarossa', 'en': 'Frecciarossa', 'de': 'Frecciarossa', 'fr': 'Frecciarossa'},
     'FA': {'it': 'Frecciargento', 'en': 'Frecciargento', 'de': 'Frecciargento', 'fr': 'Frecciargento'},
     'FB': {'it': 'Frecciabianca', 'en': 'Frecciabianca', 'de': 'Frecciabianca', 'fr': 'Frecciabianca'},
+    'FRV': {'it': 'Frecciarossa', 'en': 'Frecciarossa', 'de': 'Frecciarossa', 'fr': 'Frecciarossa'},
     'IC': {'it': 'Intercity', 'en': 'Intercity', 'de': 'Intercity', 'fr': 'Intercité'},
-    'ICN': {'it': 'Intercity Notte', 'en': 'Night Intercity', 'de': 'Intercity Nacht', 'fr': 'Intercité Nuit'},
+    'ICN': {'it': 'Intercity Notte', 'en': 'Intercity Night', 'de': 'Intercity Nacht', 'fr': 'Intercité Nuit'},
     'EC': {'it': 'Eurocity', 'en': 'Eurocity', 'de': 'Eurocity', 'fr': 'Eurocity'},
     'EN': {'it': 'EuroNight', 'en': 'EuroNight', 'de': 'EuroNight', 'fr': 'EuroNight'},
     'ES': {'it': 'Eurostar Italia', 'en': 'Eurostar Italia', 'de': 'Eurostar Italien', 'fr': 'Eurostar Italie'},
@@ -72,21 +80,41 @@ class TtsService {
     'RM': {'it': 'Regionale Metropolitano', 'en': 'Metro Regional', 'de': 'S-Bahn', 'fr': 'Régional métro'},
     'PM': {'it': 'Pendolino', 'en': 'Pendolino', 'de': 'Pendolino', 'fr': 'Pendolino'},
     'AV': {'it': 'Alta Velocità', 'en': 'High Speed', 'de': 'Hochgeschwindigkeit', 'fr': 'Grande vitesse'},
+    'ETR': {'it': 'Alta Velocità', 'en': 'High Speed', 'de': 'Hochgeschwindigkeit', 'fr': 'Grande vitesse'},
+    'NTV': {'it': 'Italo', 'en': 'Italo', 'de': 'Italo', 'fr': 'Italo'},
+    'TRD': {'it': 'Trenitalia', 'en': 'Trenitalia', 'de': 'Trenitalia', 'fr': 'Trenitalia'},
+    'RE': {'it': 'Regionale Veloce', 'en': 'Regional Express', 'de': 'RegionalExpress', 'fr': 'Regional Express'},
+    // Francia — SNCF
     'TGV': {'it': 'TGV', 'en': 'TGV', 'de': 'TGV', 'fr': 'TGV'},
+    'TGVIN': {'it': 'TGV InOui', 'en': 'TGV InOui', 'de': 'TGV InOui', 'fr': 'TGV InOui'},
+    'OUIGO': {'it': 'OUIGO', 'en': 'OUIGO', 'de': 'OUIGO', 'fr': 'OUIGO'},
     'TER': {'it': 'TER', 'en': 'TER', 'de': 'TER', 'fr': 'TER'},
-    'ICE': {'it': 'ICE', 'en': 'ICE', 'de': 'ICE', 'fr': 'ICE'},
+    'ICE': {'it': 'InterCity Express', 'en': 'InterCity Express', 'de': 'InterCity Express', 'fr': 'InterCity Express'},
     'THL': {'it': 'Thalys', 'en': 'Thalys', 'de': 'Thalys', 'fr': 'Thalys'},
-    'AVE': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
-    'RE': {'it': 'Regionale Express', 'en': 'Regional Express', 'de': 'RegionalExpress', 'fr': 'Regional Express'},
-    'RB': {'it': 'Regionale Bahn', 'en': 'Regional Bahn', 'de': 'RegionalBahn', 'fr': 'RegionalBahn'},
-    'S': {'it': 'S-Bahn', 'en': 'S-Bahn', 'de': 'S-Bahn', 'fr': 'S-Bahn'},
+    'THA': {'it': 'Thalys', 'en': 'Thalys', 'de': 'Thalys', 'fr': 'Thalys'},
+    'EUROSTAR': {'it': 'Eurostar', 'en': 'Eurostar', 'de': 'Eurostar', 'fr': 'Eurostar'},
+    'FRET': {'it': 'Fret SNCF', 'en': 'SNCF Freight', 'de': 'SNCF Fracht', 'fr': 'Fret SNCF'},
+    // Germania — DB
+    'RB': {'it': 'Regionale', 'en': 'Regional Bahn', 'de': 'RegionalBahn', 'fr': 'RegionalBahn'},
+    'S': {'it': 'Suburbano', 'en': 'S-Bahn', 'de': 'S-Bahn', 'fr': 'S-Bahn'},
+    'D': {'it': 'Eurocity', 'en': 'Eurocity', 'de': 'Eurocity', 'fr': 'Eurocity'},
+    'HKX': {'it': 'Hamburg-Köln Express', 'en': 'Hamburg-Köln Express', 'de': 'Hamburg-Köln-Express', 'fr': 'Hamburg-Köln Express'},
+    // Austria — ÖBB
     'RJ': {'it': 'Railjet', 'en': 'Railjet', 'de': 'Railjet', 'fr': 'Railjet'},
+    'RJX': {'it': 'Railjet Express', 'en': 'Railjet Express', 'de': 'Railjet Express', 'fr': 'Railjet Express'},
     'NJ': {'it': 'Nightjet', 'en': 'Nightjet', 'de': 'Nightjet', 'fr': 'Nightjet'},
-    'SC': {'it': 'Swiss City', 'en': 'Swiss City', 'de': 'Swiss City', 'fr': 'S-Bahn Suisse'},
+    'WEST': {'it': 'Westbahn', 'en': 'Westbahn', 'de': 'Westbahn', 'fr': 'Westbahn'},
+    // Spagna — Renfe
+    'AVE': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
+    'ALV': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
+    'AVLO': {'it': 'AVLO', 'en': 'AVLO', 'de': 'AVLO', 'fr': 'AVLO'},
+    'MD': {'it': 'Media Distancia', 'en': 'Medium Distance', 'de': 'Mittelstrecke', 'fr': 'Moyenne distance'},
+    'AR': {'it': 'Cercanías', 'en': 'Commuter', 'de': 'Cercanías', 'fr': 'Cercanías'},
     'IR': {'it': 'InterRegio', 'en': 'InterRegio', 'de': 'InterRegio', 'fr': 'InterRegio'},
-    'PE': {'it': "People's Train", 'en': "People's Train", 'de': 'Volkszug', 'fr': 'Train populaire'},
-    'SJ': {'it': 'SJ', 'en': 'SJ', 'de': 'SJ', 'fr': 'SJ'},
-    'OX': {'it': 'Oresundståg', 'en': 'Oresund Train', 'de': 'Oresund-Zug', 'fr': 'Train Oresund'},
+    // Svizzera — SBB/CFF
+    'SC': {'it': 'Swiss City', 'en': 'Swiss City', 'de': 'Swiss City', 'fr': 'S-Bahn Suisse'},
+    'FL': {'it': 'SBB', 'en': 'SBB', 'de': 'SBB', 'fr': 'CFF'},
+    // UK
     'GWR': {'it': 'Great Western', 'en': 'Great Western Railway', 'de': 'Great Western', 'fr': 'Great Western'},
     'VT': {'it': 'Virgin Trains', 'en': 'Virgin Trains', 'de': 'Virgin Trains', 'fr': 'Virgin Trains'},
     'LM': {'it': 'London Midland', 'en': 'London Midland', 'de': 'London Midland', 'fr': 'London Midland'},
@@ -96,20 +124,39 @@ class TtsService {
     'SE': {'it': 'Southeastern', 'en': 'Southeastern', 'de': 'Southeastern', 'fr': 'Southeastern'},
     'LE': {'it': 'LNER', 'en': 'LNER', 'de': 'LNER', 'fr': 'LNER'},
     'HX': {'it': 'Heathrow Express', 'en': 'Heathrow Express', 'de': 'Heathrow Express', 'fr': 'Heathrow Express'},
+    'EE': {'it': 'Emirates Airline', 'en': 'Emirates Airline', 'de': 'Emirates Airline', 'fr': 'Emirates Airline'},
+    // Giappone
     'SH': {'it': 'Shinkansen', 'en': 'Shinkansen', 'de': 'Shinkansen', 'fr': 'Shinkansen'},
-    'ALV': {'it': 'AVE', 'en': 'AVE', 'de': 'AVE', 'fr': 'AVE'},
-    'TRD': {'it': 'Trenitalia', 'en': 'Trenitalia', 'de': 'Trenitalia', 'fr': 'Trenitalia'},
-    'MD': {'it': 'Media Distancia', 'en': 'Medium Distance', 'de': 'Mittelstrecke', 'fr': 'Moyenne distance'},
-    'AR': {'it': 'Cercanías', 'en': 'Commuter', 'de': 'Cercanías', 'fr': 'Cercanías'},
+    // Portogallo
     'ALFA': {'it': 'Alfa Pendular', 'en': 'Alfa Pendular', 'de': 'Alfa Pendular', 'fr': 'Alfa Pendular'},
     'INT': {'it': 'Intercidades', 'en': 'Intercities', 'de': 'Intercidades', 'fr': 'Intercidades'},
     'ICB': {'it': 'Intercity Direct', 'en': 'Intercity Direct', 'de': 'Intercity Direct', 'fr': 'Intercity Direct'},
-    'THA': {'it': 'Thalys', 'en': 'Thalys', 'de': 'Thalys', 'fr': 'Thalys'},
-    'FLI': {'it': 'FlixBus', 'en': 'FlixBus', 'de': 'FlixBus', 'fr': 'FlixBus'},
+    // Nordics
+    'SJ': {'it': 'SJ', 'en': 'SJ', 'de': 'SJ', 'fr': 'SJ'},
+    'OX': {'it': 'Oresundståg', 'en': 'Oresund Train', 'de': 'Oresund-Zug', 'fr': 'Train Oresund'},
+    'PE': {'it': "People's Train", 'en': "People's Train", 'de': 'Volkszug', 'fr': 'Train populaire'},
+    'SJN': {'it': 'SJ Night', 'en': 'SJ Night', 'de': 'SJ Nacht', 'fr': 'SJ Nuit'},
+    // Polonia
     'EIP': {'it': 'EIP Pendolino', 'en': 'EIP Pendolino', 'de': 'EIP Pendolino', 'fr': 'EIP Pendolino'},
     'EIC': {'it': 'EIC', 'en': 'EIC', 'de': 'EIC', 'fr': 'EIC'},
     'TLK': {'it': 'TLK', 'en': 'TLK', 'de': 'TLK', 'fr': 'TLK'},
+    // Corea
     'KTX': {'it': 'KTX', 'en': 'KTX', 'de': 'KTX', 'fr': 'KTX'},
+    'KTXS': {'it': 'KTX-Sancheon', 'en': 'KTX-Sancheon', 'de': 'KTX-Sancheon', 'fr': 'KTX-Sancheon'},
+    // Generici
+    'FLI': {'it': 'FlixTrain', 'en': 'FlixTrain', 'de': 'FlixTrain', 'fr': 'FlixTrain'},
+    'MET': {'it': 'Metropolitano', 'en': 'Metro', 'de': 'U-Bahn', 'fr': 'Métro'},
+    'L': {'it': 'Locale', 'en': 'Local', 'de': 'Lokal', 'fr': 'Local'},
+    'M': {'it': 'Metropolitano', 'en': 'Metro', 'de': 'U-Bahn', 'fr': 'Métro'},
+    'X': {'it': 'Express', 'en': 'Express', 'de': 'Express', 'fr': 'Express'},
+    'N': {'it': 'Notturno', 'en': 'Night', 'de': 'Nacht', 'fr': 'Nuit'},
+    'B': {'it': 'Bus', 'en': 'Bus', 'de': 'Bus', 'fr': 'Bus'},
+    'BUS': {'it': 'Autobus', 'en': 'Bus', 'de': 'Bus', 'fr': 'Bus'},
+    'TR': {'it': 'Tram', 'en': 'Tram', 'de': 'Straßenbahn', 'fr': 'Tramway'},
+    'U': {'it': 'U-Bahn', 'en': 'Underground', 'de': 'U-Bahn', 'fr': 'Métro'},
+    'Z': {'it': 'Zug', 'en': 'Train', 'de': 'Zug', 'fr': 'Train'},
+    'F': {'it': 'Traghetto', 'en': 'Ferry', 'de': 'Fähre', 'fr': 'Ferry'},
+    'WBL': {'it': 'Wiesel', 'en': 'Wiesel', 'de': 'Wiesel', 'fr': 'Wiesel'},
   };
 
   /// Risolve il nome pronunciato di una categoria treno
@@ -248,8 +295,9 @@ class TtsService {
   /// Formatta un'ora DateTime per il TTS nella lingua corrente
   /// IT: "delle ore 19 e 25", EN: "at 7:25 PM", DE: "um 19 Uhr 25", FR: "à 19 heures 25"
   static String formatTtsTime(DateTime dateTime, String langCode) {
-    final hour = dateTime.hour;
-    final minute = dateTime.minute;
+    final local = dateTime.toLocal();
+    final hour = local.hour;
+    final minute = local.minute;
     final ttsStrings = getTtsStrings(langCode);
     final atTime = ttsStrings['at_time'] ?? '';
 
@@ -281,12 +329,14 @@ class TtsService {
     required int delayMinutes,
     required String? platform,
     required String langCode,
+    String? operator,
   }) {
     final s = getTtsStrings(langCode);
     final cat = resolveCategory(category, langCode);
     final num = speakDigits(trainNumber, langCode);
     final dir = isArrival ? (origin ?? '') : (destination ?? '');
     final timeSource = estimatedTime ?? scheduledTime;
+    final op = (operator != null && operator.isNotEmpty) ? operator : '';
 
     final buffer = StringBuffer();
 
@@ -294,7 +344,7 @@ class TtsService {
       // IT — stile Trenitalia
       buffer.write('${s['train']} ');
       if (cat.isNotEmpty || num.isNotEmpty) {
-        buffer.write('$cat $num ${s['of_oper']} Trenitalia ');
+        buffer.write('$cat $num ${s['of_oper']}${op.isNotEmpty ? ' $op' : ''} ');
       }
       if (isArrival) {
         buffer.write('${s['service_from']} $dir ');
@@ -302,7 +352,8 @@ class TtsService {
         buffer.write('${s['service_to']} $dir ');
       }
       if (timeSource != null) {
-        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)} ');
+        // formatTtsTime già include s['at_time']
+        buffer.write('${formatTtsTime(timeSource, langCode)} ');
       }
       buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ');
       if (platform != null && platform.isNotEmpty && platform != '-') {
@@ -318,14 +369,15 @@ class TtsService {
     } else if (langCode == 'en') {
       // EN — stile UK (National Rail)
       buffer.write('${s['attention']} ');
-      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      buffer.write('${s['train']} $cat $num ${s['of_oper']}${op.isNotEmpty ? ' $op' : ''} ');
       if (isArrival) {
         buffer.write('${s['service_from']} $dir ');
       } else {
         buffer.write('${s['service_to']} $dir ');
       }
       if (timeSource != null) {
-        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+        // formatTtsTime già include s['at_time']
+        buffer.write('${formatTtsTime(timeSource, langCode)}. ');
       }
       if (platform != null && platform.isNotEmpty && platform != '-') {
         buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ${s['platform']} $platform. ');
@@ -337,14 +389,15 @@ class TtsService {
       }
     } else if (langCode == 'de') {
       // DE — stile Deutsche Bahn
-      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      buffer.write('${s['train']} $cat $num ${s['of_oper']}${op.isNotEmpty ? ' $op' : ''} ');
       if (isArrival) {
         buffer.write('${s['service_from']} $dir ');
       } else {
         buffer.write('${s['service_to']} $dir ');
       }
       if (timeSource != null) {
-        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+        // formatTtsTime già include s['at_time']
+        buffer.write('${formatTtsTime(timeSource, langCode)}. ');
       }
       if (platform != null && platform.isNotEmpty && platform != '-') {
         buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} $platform. ');
@@ -357,14 +410,15 @@ class TtsService {
     } else {
       // FR — stile SNCF
       buffer.write('${s['attention']} ');
-      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      buffer.write('${s['train']} $cat $num ${s['of_oper']}${op.isNotEmpty ? ' $op' : ''} ');
       if (isArrival) {
         buffer.write('${s['service_from']} $dir ');
       } else {
         buffer.write('${s['service_to']} $dir ');
       }
       if (timeSource != null) {
-        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+        // formatTtsTime già include s['at_time']
+        buffer.write('${formatTtsTime(timeSource, langCode)}. ');
       }
       if (platform != null && platform.isNotEmpty && platform != '-') {
         buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ${s['platform']} $platform. ');
@@ -382,6 +436,9 @@ class TtsService {
   String _currentLangCode = 'it';
   OddcastVoice? _selectedVoice;
   bool? _apiOnline;
+  final List<_QueueEntry> _queue = [];
+  bool _isSpeaking = false;
+  final Set<String> _activeTrainKeys = {}; // treni attualmente nel tabellone
 
   /// Inizializza il servizio
   Future<void> init() async {
@@ -413,6 +470,7 @@ class TtsService {
 
   /// Abilita/disabilita il TTS
   void setEnabled(bool enabled) {
+    print('[TTS] setEnabled($enabled)');
     _enabled = enabled;
     if (!enabled) {
       stop();
@@ -452,49 +510,149 @@ class TtsService {
         '&useUTF8=1';
   }
 
-  /// Legge un testo ad alta voce usando Oddcast TTS
-  Future<void> speak(String text) async {
-    if (!_enabled || text.isEmpty) return;
+  /// Aggiunge un annuncio in coda per un treno specifico
+  Future<void> speak(String text, {String? trainKey}) async {
+    if (!_enabled || text.isEmpty) {
+      print('[TTS] speak() skip: enabled=$_enabled, empty=${text.isEmpty}');
+      return;
+    }
+    // Se il treno non è più attivo, scarta
+    if (trainKey != null && !_activeTrainKeys.contains(trainKey)) {
+      print('[TTS] speak() skip: treno $trainKey non attivo');
+      return;
+    }
+    print('[TTS] speak() coda+1: key=$trainKey, coda=${_queue.length}, testo=${text.substring(0, text.length > 50 ? 50 : text.length)}...');
+    _queue.add(_QueueEntry(text, trainKey ?? ''));
+    if (!_isSpeaking) {
+      await _processQueue();
+    }
+  }
+
+  Future<void> _processQueue() async {
+    if (_queue.isEmpty) {
+      _isSpeaking = false;
+      return;
+    }
+    _isSpeaking = true;
+
+    // Scarta entry di treni non più attivi
+    final prima = _queue.length;
+    _queue.removeWhere((e) => e.trainKey.isNotEmpty && !_activeTrainKeys.contains(e.trainKey));
+    if (_queue.length != prima) {
+      print('[TTS] _processQueue() scartati ${prima - _queue.length} treni non attivi');
+    }
+    if (_queue.isEmpty) {
+      print('[TTS] _processQueue() coda vuota dopo pulizia');
+      _isSpeaking = false;
+      return;
+    }
+
+    final entry = _queue.removeAt(0);
+
+    // Verifica ancora che il treno sia attivo
+    if (entry.trainKey.isNotEmpty && !_activeTrainKeys.contains(entry.trainKey)) {
+      print('[TTS] _processQueue() skip ${entry.trainKey} non attivo');
+      await _processQueue();
+      return;
+    }
 
     final voice = _selectedVoice ?? _defaultVoiceMap[_currentLangCode];
-    if (voice == null) return;
+    if (voice == null) {
+      print('[TTS] _processQueue() skip: nessuna voce');
+      await _processQueue();
+      return;
+    }
 
+    print('[TTS] _processQueue() parlo: key=${entry.trainKey}, voice=${voice.name}, coda rimasta=${_queue.length}');
     try {
-      // Ferma eventuali letture in corso
       await _player.stop();
+      if (!_isSpeaking) {
+        print('[TTS] _processQueue() interrotto dopo stop()');
+        return;
+      }
 
-      final url = _buildOddcastUrl(text, voice);
+      final url = _buildOddcastUrl(entry.text, voice);
 
-      // Verifica che l'URL sia raggiungibile
       final response = await http.head(Uri.parse(url)).timeout(
         const Duration(seconds: 5),
         onTimeout: () => throw Exception('Timeout'),
       );
 
-      if (response.statusCode != 200) {
-        print('Oddcast TTS error: HTTP ${response.statusCode}');
+      if (!_isSpeaking) {
+        print('[TTS] _processQueue() interrotto dopo HTTP check');
         return;
       }
 
-      // Riproduci l'MP3
+      if (response.statusCode != 200) {
+        print('[TTS] Oddcast HTTP error: ${response.statusCode}');
+        await _processQueue();
+        return;
+      }
+
+      print('[TTS] _processQueue() riproduco audio...');
       await _player.setUrl(url);
       await _player.play();
+
+      // Aspetta che finisca di parlare
+      await _player.playerStateStream.firstWhere(
+        (state) => state.processingState == ProcessingState.completed || state.processingState == ProcessingState.idle,
+      );
+      print('[TTS] _processQueue() audio finito');
     } catch (e) {
-      print('Oddcast TTS error: $e');
+      print('[TTS] _processQueue() errore: $e');
+    }
+    if (_isSpeaking) {
+      await _processQueue();
     }
   }
 
-  /// Ferma la lettura
+  /// Aggiorna i treni attivi nel tabellone — scarta dalla coda quelli che non ci sono più
+  void updateActiveTrains(Set<String> activeKeys) {
+    final removed = _activeTrainKeys.difference(activeKeys);
+    final added = activeKeys.difference(_activeTrainKeys);
+    print('[TTS] updateActiveTrains: +${added.length} -${removed.length}, coda=${_queue.length}');
+    if (removed.isNotEmpty) {
+      print('[TTS]   rimossi: ${removed.take(5).join(", ")}');
+    }
+    _activeTrainKeys
+      ..clear()
+      ..addAll(activeKeys);
+    // Pulisci subito la coda
+    final prima = _queue.length;
+    _queue.removeWhere((e) => e.trainKey.isNotEmpty && !_activeTrainKeys.contains(e.trainKey));
+    if (_queue.length != prima) {
+      print('[TTS]   coda: $prima -> ${_queue.length}');
+    }
+  }
+
+  /// Ferma tutto e sospende fino a nuova statione
+  void suspend() {
+    print('[TTS] suspend() — coda=${_queue.length}, active=${_activeTrainKeys.length}');
+    _queue.clear();
+    _activeTrainKeys.clear();
+    _isSpeaking = false;
+    _player.stop();
+  }
+
+  /// Ferma la lettura, svuota coda e pulisci treni attivi
   Future<void> stop() async {
+    print('[TTS] stop() — coda=${_queue.length}, active=${_activeTrainKeys.length}');
+    _queue.clear();
+    _activeTrainKeys.clear();
+    _isSpeaking = false;
     await _player.stop();
   }
 
-  /// Testa una voce senza controllare se il TTS è abilitato
+  /// Testa una voce: interrompe la coda e parla subito
   Future<void> testSpeak(String text) async {
     if (text.isEmpty) return;
 
     final voice = _selectedVoice ?? _defaultVoiceMap[_currentLangCode];
     if (voice == null) return;
+
+    // Svuota la coda e ferma tutto
+    _queue.clear();
+    _isSpeaking = false;
 
     try {
       await _player.stop();

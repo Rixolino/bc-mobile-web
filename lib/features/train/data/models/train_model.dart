@@ -69,9 +69,10 @@ class TrainDeparture {
   final List<TrainStop>? stops;
   final String country;
   final Map<String, dynamic>? metadata;
-  final List<Map<String, dynamic>>? messages; // optional messages/alerts for the trip
-  final Map<String, dynamic>? polyline; // GeoJSON FeatureCollection for the route path
-  final String? error; // Error message if fetch failed
+  final List<Map<String, dynamic>>? messages;
+  final Map<String, dynamic>? polyline;
+  final String? error;
+  final String? operator;
 
   TrainDeparture({
     this.trainNumber,
@@ -90,6 +91,7 @@ class TrainDeparture {
     this.messages,
     this.polyline,
     this.error,
+    this.operator,
   });
 
   factory TrainDeparture.fromJson(Map<String, dynamic> json, {bool isDeparture = true}) {
@@ -163,6 +165,7 @@ class TrainDeparture {
       metadata: actualData['metadata'] as Map<String, dynamic>?,
       messages: tripMessages,
       polyline: polylineData,
+      operator: _getStringValue(actualData['operator']),
     );
   }
 
@@ -218,12 +221,13 @@ class TrainDeparture {
       'messages': messages,
       'polyline': polyline,
       'error': error,
+      'operator': operator,
     };
   }
 
   TrainDeparture copyWith({
     String? origin,
-    String? destination, // Added destination just in case
+    String? destination,
     List<TrainStop>? stops,
     String? country,
     Map<String, dynamic>? metadata,
@@ -231,6 +235,7 @@ class TrainDeparture {
     String? error,
     bool clearError = false,
     int? delayMinutes,
+    String? operator,
   }) {
     return TrainDeparture(
       trainNumber: trainNumber,
@@ -249,6 +254,7 @@ class TrainDeparture {
       messages: messages,
       polyline: polyline ?? this.polyline,
       error: clearError ? null : (error ?? this.error),
+      operator: operator ?? this.operator,
     );
   }
 }

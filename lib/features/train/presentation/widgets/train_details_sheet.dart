@@ -749,6 +749,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       delayMinutes: departure.delayMinutes ?? 0,
       platform: departure.platform,
       langCode: langCode,
+      operator: departure.operator,
     );
 
     final stops = departure.stops ?? [];
@@ -781,7 +782,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
     
     if (text.isNotEmpty) {
-      await tts.speak(text);
+      final trainKey = '${departure.category ?? ''}|${departure.trainNumber ?? ''}|${departure.scheduledTime?.toIso8601String() ?? ''}';
+      await tts.speak(text, trainKey: trainKey);
     }
   }
 
