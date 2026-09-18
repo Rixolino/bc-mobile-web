@@ -173,38 +173,41 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     tts.setSelectedVoice(selected);
     
     final trip = _current;
-    final trainNumber = trip['tripNumber'] ?? trip['trainNumber'] ?? '';
-    final category = TtsService.resolveCategory(trip['category']?.toString(), langCode);
+    final trainNumberStr = (trip['tripNumber'] ?? trip['trainNumber'] ?? '').toString();
+    final categoryStr = trip['category']?.toString() ?? trip['operator']?.toString();
     final isArrivals = widget.isArrivalMode;
     final stops = trip['stops'] as List? ?? [];
-    final ttsStrings = TtsService.getTtsStrings(langCode);
-    
-    // Per partenze: direzione = destination (fine corsa)
-    // Per arrivi: provenienza = origin (da dove viene)
-    String direction;
+
+    String? origin;
+    String? destination;
     if (isArrivals) {
-      direction = (trip['origin'] ?? '').toString();
+      origin = _getEffectiveOrigin(trip);
+      destination = null;
     } else {
-      direction = (trip['destination'] ?? '').toString();
+      origin = null;
+      destination = _getEffectiveDestination(trip);
     }
-    
-    // Se direction è vuoto, prova a ricavarlo dall'ultima/primera fermata
-    if (direction.isEmpty && stops.isNotEmpty) {
-      if (isArrivals) {
-        direction = (stops.first['stationName'] ?? stops.first['name'] ?? '').toString();
-      } else {
-        direction = (stops.last['stationName'] ?? stops.last['name'] ?? '').toString();
-      }
-    }
-    
-    String text = '';
-    if (category.isNotEmpty || trainNumber.toString().isNotEmpty) {
-      text += '${ttsStrings['train']} $category $trainNumber. ';
-    }
-    if (direction.isNotEmpty) {
-      text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
-    }
-    
+
+    final scheduledTime = _parseTime(trip['scheduledTime']);
+    final estimatedTime = _parseTime(trip['estimatedTime']);
+    final platform = (trip['platform'] ?? '').toString();
+    final delayMin = _asInt(trip['delay'] ?? trip['delayMinutes']);
+
+    final announcement = TtsService.buildAnnouncement(
+      category: categoryStr,
+      trainNumber: trainNumberStr,
+      isArrival: isArrivals,
+      origin: origin,
+      destination: destination,
+      scheduledTime: scheduledTime,
+      estimatedTime: estimatedTime,
+      delayMinutes: delayMin,
+      platform: platform.isNotEmpty ? platform : null,
+      langCode: langCode,
+    );
+
+    final ttsStrings = TtsService.getTtsStrings(langCode);
+    String text = announcement;
     if (stops.isNotEmpty) {
       final now = DateTime.now();
       Map<String, dynamic>? nextStop;
@@ -229,8 +232,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         final time = depTime ?? arrTime;
         
         if (stopName.toString().isNotEmpty && time != null) {
-          final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-          text += '${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr. ';
+          final timeStr = TtsService.formatTtsTime(time, langCode);
+          text += '. ${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr';
         }
       }
     }

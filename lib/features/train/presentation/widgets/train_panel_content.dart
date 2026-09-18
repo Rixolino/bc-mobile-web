@@ -854,26 +854,32 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     }
     _lastArrivalMode = isArrivals;
 
-    // Scegli il set corretto in base alla modalità
     final spokenKeys = isArrivals ? _spokenArrivalKeys : _spokenDepartureKeys;
     final previousList = isArrivals ? _previousArrivals : _previousDepartures;
 
-    // Trova treni nuovi (non ancora annuncati)
+    String? textToSpeak;
+
     for (final dep in current) {
       final key = _trainKey(dep);
-      if (spokenKeys.contains(key)) continue;
+      final prevDep = previousList.cast<TrainDeparture?>().firstWhere(
+        (p) => _trainKey(p!) == key,
+        orElse: () => null,
+      );
 
-      // Verifica che il treno non fosse nella lista precedente
-      final wasPresent = previousList.any((p) => _trainKey(p) == key);
-      if (wasPresent) {
+      if (prevDep == null) {
+        // Nuovo treno: annuncia
         spokenKeys.add(key);
-        continue;
+        textToSpeak = _buildTtsText(dep, isArrivals, settings);
+        break;
       }
 
-      // Nuovo treno trovato: annuncialo
-      spokenKeys.add(key);
-      _autoSpeakTrain(dep, isArrivals, settings);
-      break; // Annuncia solo il primo nuovo treno per volta
+      // Treno esistente: controlla se il ritardo è cambiato significativamente (>=3 min)
+      final oldDelay = prevDep.delayMinutes ?? 0;
+      final newDelay = dep.delayMinutes ?? 0;
+      if ((newDelay - oldDelay).abs() >= 3) {
+        textToSpeak = _buildTtsText(dep, isArrivals, settings);
+        break;
+      }
     }
 
     // Aggiorna la lista precedente e pulisci chiavi vecchie
@@ -886,6 +892,20 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       final currentKeys = current.map(_trainKey).toSet();
       spokenKeys.removeWhere((k) => !currentKeys.contains(k));
     }
+
+    // Parla (solo se c'è qualcosa da dire)
+    if (textToSpeak != null && textToSpeak.isNotEmpty) {
+      final tts = TtsService();
+      final langCode = settings.appLocale?.languageCode ?? 'it';
+      tts.setLanguage(langCode);
+      final voices = TtsService.getVoicesForLanguage(langCode);
+      final selected = voices.firstWhere(
+        (v) => v.name == settings.ttsVoiceForLang(langCode),
+        orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+      );
+      tts.setSelectedVoice(selected);
+      tts.speak(textToSpeak);
+    }
   }
 
   String _trainKey(TrainDeparture dep) {
@@ -895,52 +915,20 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     return '$cat|$num|$time';
   }
 
-  void _autoSpeakTrain(TrainDeparture dep, bool isArrivals, SettingsProvider settings) {
-    final tts = TtsService();
+  String _buildTtsText(TrainDeparture dep, bool isArrivals, SettingsProvider settings) {
     final langCode = settings.appLocale?.languageCode ?? 'it';
-    tts.setLanguage(langCode);
-
-    // Imposta la voce per la lingua corrente
-    final voices = TtsService.getVoicesForLanguage(langCode);
-    final selected = voices.firstWhere(
-      (v) => v.name == settings.ttsVoiceForLang(langCode),
-      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+    return TtsService.buildAnnouncement(
+      category: dep.category,
+      trainNumber: dep.trainNumber?.toString(),
+      isArrival: isArrivals,
+      origin: dep.origin,
+      destination: dep.destination,
+      scheduledTime: dep.scheduledTime,
+      estimatedTime: dep.estimatedTime,
+      delayMinutes: dep.delayMinutes ?? 0,
+      platform: dep.platform?.toString(),
+      langCode: langCode,
     );
-    tts.setSelectedVoice(selected);
-
-    // Stringhe localizzate per TTS
-    final ttsStrings = TtsService.getTtsStrings(langCode);
-
-    final category = TtsService.resolveCategory(dep.category, langCode);
-    final trainNumber = dep.trainNumber?.toString() ?? '';
-    final direction = isArrivals ? (dep.origin?.toString() ?? '') : (dep.destination?.toString() ?? '');
-
-    String timeStr = '';
-    if (dep.scheduledTime != null) {
-      timeStr = '${dep.scheduledTime!.hour.toString().padLeft(2, '0')}:${dep.scheduledTime!.minute.toString().padLeft(2, '0')}';
-    }
-    final delay = dep.delayMinutes ?? 0;
-
-    String text = '';
-    if (isArrivals) {
-      if (category.isNotEmpty || trainNumber.isNotEmpty) text += '${ttsStrings['train']} $category $trainNumber ${ttsStrings['arriving']}. ';
-      if (direction.isNotEmpty) text += '${ttsStrings['from']} $direction. ';
-    } else {
-      if (category.isNotEmpty || trainNumber.isNotEmpty) text += '${ttsStrings['train']} $category $trainNumber. ';
-      if (direction.isNotEmpty) text += '${ttsStrings['direction']} $direction. ';
-    }
-    if (timeStr.isNotEmpty) {
-      text += '${isArrivals ? ttsStrings['arrival'] : ttsStrings['departure']} $timeStr. ';
-    }
-    if (delay > 0) {
-      text += '${ttsStrings['delay']} $delay ${ttsStrings['minutes']}. ';
-    } else if (delay == 0) {
-      text += '${ttsStrings['ontime']}. ';
-    }
-
-    if (text.isNotEmpty) {
-      tts.speak(text);
-    }
   }
 
   void _safeSetState(VoidCallback fn) {
@@ -3161,8 +3149,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                         },
                       ),
                       const SizedBox(width: 4),
-                      _buildLiveTtsButton(category, number, origin, destination, departureTime, isDelayed, delay, theme),
-                      const SizedBox(width: 4),
                       _buildLivePlatformBox(stopsList, theme),
                     ],
                   ),
@@ -3284,57 +3270,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildLiveTtsButton(String category, String number, String origin, String destination, String departureTime, bool isDelayed, int delay, ThemeProvider theme) {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    if (!settings.ttsEnabled) return const SizedBox.shrink();
-    
-    return GestureDetector(
-      onTap: () async {
-        final tts = TtsService();
-        final langCode = settings.appLocale?.languageCode ?? 'it';
-        tts.setLanguage(langCode);
-        
-        // Imposta voce per lingua
-        final voices = TtsService.getVoicesForLanguage(langCode);
-        final selected = voices.firstWhere(
-          (v) => v.name == settings.ttsVoiceForLang(langCode),
-          orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
-        );
-        tts.setSelectedVoice(selected);
-        
-        final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-        final isArrivals = trainProvider.isArrivalMode;
-        final String direction = isArrivals ? origin : destination;
-        final ttsStrings = TtsService.getTtsStrings(langCode);        final resolvedCategory = TtsService.resolveCategory(category, langCode);
-        
-        String text = '';
-        if (resolvedCategory.isNotEmpty || number.isNotEmpty) {
-          text += '${ttsStrings['train']} $resolvedCategory $number. ';
-        }
-        if (direction.isNotEmpty) {
-          text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
-        }
-        if (departureTime.isNotEmpty) {
-          text += '${isArrivals ? ttsStrings['arrival'] : ttsStrings['departure']} $departureTime. ';
-        }
-        if (isDelayed && delay > 0) {
-          text += '${ttsStrings['delay']} $delay ${ttsStrings['minutes']}. ';
-        } else {
-          text += '${ttsStrings['ontime']}. ';
-        }
-        
-        if (text.isNotEmpty) {
-          await tts.speak(text);
-        }
-      },
-      child: Icon(
-        Icons.volume_up_rounded,
-        size: 20,
-        color: theme.primaryColor.withValues(alpha: 0.6),
       ),
     );
   }
@@ -3775,7 +3710,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                   ),
                 ),
                 _buildPlatformBox(dep.platform?.toString() ?? '-', theme),
-                _buildTtsButton(dep, theme),
               ],
             ),
           ),
@@ -3898,74 +3832,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTtsButton(dynamic dep, ThemeProvider theme) {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    if (!settings.ttsEnabled) return const SizedBox.shrink();
-    
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: GestureDetector(
-        onTap: () async {
-          final tts = TtsService();
-          final langCode = settings.appLocale?.languageCode ?? 'it';
-          tts.setLanguage(langCode);
-          
-          // Imposta voce per lingua
-          final voices = TtsService.getVoicesForLanguage(langCode);
-          final selected = voices.firstWhere(
-            (v) => v.name == settings.ttsVoiceForLang(langCode),
-            orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
-          );
-          tts.setSelectedVoice(selected);
-          
-          final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-          final isArrivals = trainProvider.isArrivalMode;
-          final trainNumber = dep.trainNumber?.toString() ?? '';
-          final category = TtsService.resolveCategory(dep.category, langCode);
-          final ttsStrings = TtsService.getTtsStrings(langCode);          
-          // Per partenze: destination (fine corsa)
-          // Per arrivi: origin (da dove viene)
-          final String direction;
-          if (isArrivals) {
-            direction = dep.origin?.toString() ?? '';
-          } else {
-            direction = dep.destination?.toString() ?? '';
-          }
-          
-          final timeStr = dep.departureTime != null 
-              ? '${dep.departureTime!.hour.toString().padLeft(2, '0')}:${dep.departureTime!.minute.toString().padLeft(2, '0')}'
-              : '';
-          final delay = dep.delayMinutes ?? 0;
-          
-          String text = '';
-          if (category.isNotEmpty || trainNumber.isNotEmpty) {
-            text += '${ttsStrings['train']} $category $trainNumber. ';
-          }
-          if (direction.isNotEmpty) {
-            text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
-          }
-          if (timeStr.isNotEmpty) {
-            text += '${isArrivals ? ttsStrings['arrival'] : ttsStrings['departure']} $timeStr. ';
-          }
-          if (delay > 0) {
-            text += '${ttsStrings['delay']} $delay ${ttsStrings['minutes']}. ';
-          } else if (delay == 0) {
-            text += '${ttsStrings['ontime']}. ';
-          }
-          
-          if (text.isNotEmpty) {
-            await tts.speak(text);
-          }
-        },
-        child: Icon(
-          Icons.volume_up_rounded,
-          size: 20,
-          color: theme.primaryColor.withValues(alpha: 0.6),
-        ),
       ),
     );
   }

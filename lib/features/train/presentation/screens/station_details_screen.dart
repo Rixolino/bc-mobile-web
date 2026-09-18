@@ -433,69 +433,11 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                 ),
             ],
           ),
-          _buildTtsButton(dep, isArrival, theme),
+          const SizedBox.shrink(),
         ],
       ),
     );
   }
 
-  Widget _buildTtsButton(TrainDeparture dep, bool isArrival, ThemeProvider theme) {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    if (!settings.ttsEnabled) return const SizedBox.shrink();
-    
-    return GestureDetector(
-      onTap: () async {
-        final tts = TtsService();
-        final langCode = settings.appLocale?.languageCode ?? 'it';
-        tts.setLanguage(langCode);
-        
-        // Imposta voce per lingua
-        final voices = TtsService.getVoicesForLanguage(langCode);
-        final selected = voices.firstWhere(
-          (v) => v.name == settings.ttsVoiceForLang(langCode),
-          orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
-        );
-        tts.setSelectedVoice(selected);
-        
-        final cat = TtsService.resolveCategory(dep.category, langCode);
-        final num = (dep.trainNumber ?? '').trim();
-        final dest = isArrival
-            ? (dep.origin ?? '').trim()
-            : (dep.destination ?? '').trim();
-        final delay = dep.delayMinutes ?? 0;
-        final scheduled = dep.scheduledTime;
-        final estimated = dep.estimatedTime;
-        final ttsStrings = TtsService.getTtsStrings(langCode);
-        
-        final timeStr = formatCountryTime(scheduled, widget.country);
-        final estStr = estimated != null ? formatCountryTime(estimated, widget.country) : null;
-        final displayTime = (estStr != null && estStr != timeStr) ? estStr : timeStr;
-        
-        String text = '';
-        if (cat.isNotEmpty || num.isNotEmpty) {
-          text += '${ttsStrings['train']} $cat $num. ';
-        }
-        if (dest.isNotEmpty) {
-          text += '${isArrival ? ttsStrings['from'] : ttsStrings['direction']} $dest. ';
-        }
-        if (displayTime.isNotEmpty) {
-          text += '${isArrival ? ttsStrings['arrival'] : ttsStrings['departure']} $displayTime. ';
-        }
-        if (delay > 0) {
-          text += '${ttsStrings['delay']} $delay ${ttsStrings['minutes']}. ';
-        } else if (delay == 0) {
-          text += '${ttsStrings['ontime']}. ';
-        }
-        
-        if (text.isNotEmpty) {
-          await tts.speak(text);
-        }
-      },
-      child: Icon(
-        Icons.volume_up_rounded,
-        size: 20,
-        color: theme.primaryColor.withValues(alpha: 0.6),
-      ),
-    );
-  }
+
 }

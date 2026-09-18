@@ -774,7 +774,7 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
                     ),
                   ),
                 const SizedBox(width: 4),
-                _buildTtsButton(item, isArrivals, theme),
+                const SizedBox.shrink(),
                 Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outline),
               ],
             ),
@@ -798,69 +798,7 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
     );
   }
 
-  Widget _buildTtsButton(Map<String, dynamic> item, bool isArrivals, ThemeData theme) {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    if (!settings.ttsEnabled) return const SizedBox.shrink();
-    
-    return GestureDetector(
-      onTap: () async {
-        final tts = TtsService();
-        final langCode = settings.appLocale?.languageCode ?? 'it';
-        tts.setLanguage(langCode);
-        
-        // Imposta voce per lingua
-        final voices = TtsService.getVoicesForLanguage(langCode);
-        final selected = voices.firstWhere(
-          (v) => v.name == settings.ttsVoiceForLang(langCode),
-          orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
-        );
-        tts.setSelectedVoice(selected);
-        
-        final tripNumber = item['tripNumber']?.toString() ?? '';
-        final category = TtsService.resolveCategory(item['category']?.toString(), langCode);
-        final destination = item['destination']?.toString() ?? '';
-        final origin = item['origin']?.toString() ?? '';
-        final scheduledTime = item['scheduledTime']?.toString() ?? '';
-        final estimatedTime = item['estimatedTime']?.toString() ?? '';
-        final delay = item['delay'] ?? 0;
-        final ttsStrings = TtsService.getTtsStrings(langCode);
-        
-        final timeStr = _formatTime(estimatedTime.isNotEmpty ? estimatedTime : scheduledTime);
-        final delayInt = delay is int ? delay : int.tryParse(delay.toString()) ?? 0;
-        
-        String text = '';
-        if (category.isNotEmpty || tripNumber.isNotEmpty) {
-          text += '${ttsStrings['train']} $category $tripNumber. ';
-        }
-        if (isArrivals) {
-          if (origin.isNotEmpty) {
-            text += '${ttsStrings['from']} $origin. ';
-          }
-        } else {
-          if (destination.isNotEmpty) {
-            text += '${ttsStrings['direction']} $destination. ';
-          }
-        }
-        if (timeStr.isNotEmpty && timeStr != '--:--') {
-          text += '${isArrivals ? ttsStrings['arrival'] : ttsStrings['departure']} $timeStr. ';
-        }
-        if (delayInt > 0) {
-          text += '${ttsStrings['delay']} $delayInt ${ttsStrings['minutes']}. ';
-        } else if (delayInt == 0) {
-          text += '${ttsStrings['ontime']}. ';
-        }
-        
-        if (text.isNotEmpty) {
-          await tts.speak(text);
-        }
-      },
-      child: Icon(
-        Icons.volume_up_rounded,
-        size: 20,
-        color: theme.colorScheme.primary.withValues(alpha: 0.6),
-      ),
-    );
-  }
+
 
   String _formatTime(String isoTime) {
     if (isoTime.isEmpty) return '--:--';

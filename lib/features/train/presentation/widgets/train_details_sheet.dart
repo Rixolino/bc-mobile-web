@@ -736,42 +736,24 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     tts.setSelectedVoice(selected);
     
     final departure = widget.departure;
-    final trainNumber = departure.trainNumber ?? '';
-    final category = TtsService.resolveCategory(departure.category, langCode);
     final isArrivals = widget.isArrivalMode;
-    final ttsStrings = TtsService.getTtsStrings(langCode);
-    
-    // Per partenze: direzione = destination (fine corsa)
-    // Per arrivi: provenienza = origin (da dove viene)
-    String direction;
-    if (isArrivals) {
-      direction = departure.origin ?? '';
-    } else {
-      direction = departure.destination ?? '';
-    }
-    
-    // Se direction è vuoto, prova a ricavarlo dall'ultima/primera fermata
-    if (direction.isEmpty) {
-      final stops = departure.stops ?? [];
-      if (stops.isNotEmpty) {
-        if (isArrivals) {
-          direction = stops.first.stationName ?? '';
-        } else {
-          direction = stops.last.stationName ?? '';
-        }
-      }
-    }
-    
-    String text = '';
-    if (category.isNotEmpty || trainNumber.isNotEmpty) {
-      text += '${ttsStrings['train']} $category $trainNumber. ';
-    }
-    if (direction.isNotEmpty) {
-      text += '${isArrivals ? ttsStrings['from'] : ttsStrings['direction']} $direction. ';
-    }
-    
-    // Cerca la prossima fermata (quella dopo la stazione corrente)
+
+    final announcement = TtsService.buildAnnouncement(
+      category: departure.category,
+      trainNumber: departure.trainNumber,
+      isArrival: isArrivals,
+      origin: departure.origin,
+      destination: departure.destination,
+      scheduledTime: departure.scheduledTime,
+      estimatedTime: departure.estimatedTime,
+      delayMinutes: departure.delayMinutes ?? 0,
+      platform: departure.platform,
+      langCode: langCode,
+    );
+
     final stops = departure.stops ?? [];
+    final ttsStrings = TtsService.getTtsStrings(langCode);
+    String text = announcement;
     if (stops.isNotEmpty) {
       final now = DateTime.now();
       TrainStop? nextStop;
@@ -792,8 +774,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         final time = nextStop.departure ?? nextStop.arrival;
         
         if (stopName.isNotEmpty && time != null) {
-          final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-          text += '${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr. ';
+          final timeStr = TtsService.formatTtsTime(time, langCode);
+          text += '. ${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr';
         }
       }
     }

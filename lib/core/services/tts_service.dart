@@ -123,62 +123,260 @@ class TtsService {
     return category;
   }
 
+  /// Pronuncia un numero come cifre singole (es. 95→"nove cinque", 14→"uno quattro")
+  /// Usato per numeri treno che in Trenitalia vengono detti a spelling
+  static String speakDigits(String? number, String langCode) {
+    if (number == null || number.isEmpty) return '';
+    final digits = {
+      'it': ['zero', 'uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 'otto', 'nove'],
+      'en': ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'],
+      'de': ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun'],
+      'fr': ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'],
+    };
+    final langDigits = digits[langCode] ?? digits['it']!;
+    final parts = <String>[];
+    for (final ch in number.split('')) {
+      final idx = int.tryParse(ch);
+      if (idx != null && idx >= 0 && idx <= 9) {
+        parts.add(langDigits[idx]);
+      } else {
+        parts.add(ch);
+      }
+    }
+    return parts.join(' ');
+  }
+
   /// Restituisce le stringhe TTS localizzate per un dato codice lingua
+  /// Formato stile Trenitalia/SNCF/DB/UK
   static Map<String, String> getTtsStrings(String langCode) {
     switch (langCode) {
       case 'en':
         return {
-          'train': 'Train',
-          'arriving': 'arriving',
-          'from': 'From',
-          'direction': 'Bound for',
-          'arrival': 'Arrival at',
-          'departure': 'Departure at',
-          'delay': 'Delay',
+          'train': 'The',
+          'of_oper': 'service',
+          'arriving': 'arriving at',
+          'from': 'from',
+          'direction': 'to',
+          'arrival': 'arriving at',
+          'departure': 'departing at',
+          'delay': 'delayed by approximately',
           'minutes': 'minutes',
-          'ontime': 'On time',
+          'ontime': 'on time',
           'next_stop': 'Next stop:',
+          'at_time': 'at',
+          'hours': "o'clock",
+          'platform': 'Platform',
+          'calling_at': 'Calling at',
+          'is_departing': 'is departing from',
+          'is_arriving': 'is arriving at',
+          'attention': 'Attention please.',
+          'service_to': 'service to',
+          'service_from': 'service from',
         };
       case 'de':
         return {
-          'train': 'Zug',
-          'arriving': 'ankommend',
-          'from': 'Aus',
-          'direction': 'Richtung',
-          'arrival': 'Ankunft um',
-          'departure': 'Abfahrt um',
-          'delay': 'Verspätung',
+          'train': 'Der',
+          'of_oper': 'Zug',
+          'arriving': 'ankommend auf',
+          'from': 'aus',
+          'direction': 'nach',
+          'arrival': 'Ankunft auf Gleis',
+          'departure': 'Abfahrt auf Gleis',
+          'delay': 'verzögert sich um etwa',
           'minutes': 'Minuten',
-          'ontime': 'Pünktlich',
+          'ontime': 'pünktlich',
           'next_stop': 'Nächster Halt:',
+          'at_time': 'um',
+          'hours': 'Uhr',
+          'platform': 'Gleis',
+          'calling_at': 'Hält in',
+          'is_departing': 'fährt ab von Gleis',
+          'is_arriving': 'kommt an auf Gleis',
+          'attention': 'Bitte beachten Sie.',
+          'service_to': 'Verbindung nach',
+          'service_from': 'Verbindung aus',
         };
       case 'fr':
         return {
-          'train': 'Train',
-          'arriving': 'en provenance',
-          'from': 'Depuis',
-          'direction': 'À destination de',
-          'arrival': 'Arrivée à',
-          'departure': 'Départ à',
-          'delay': 'Retard',
+          'train': 'Le',
+          'of_oper': 'train',
+          'arriving': 'arrivée au',
+          'from': 'en provenance de',
+          'direction': 'à destination de',
+          'arrival': 'arrivée au quai',
+          'departure': 'départ du quai',
+          'delay': 'retardé d\'environ',
           'minutes': 'minutes',
-          'ontime': "À l'heure",
+          'ontime': 'à l\'heure',
           'next_stop': 'Prochain arrêt:',
+          'at_time': 'à',
+          'hours': 'heure',
+          'platform': 'quai',
+          'calling_at': 'desservant',
+          'is_departing': 'part du quai',
+          'is_arriving': 'arrive au quai',
+          'attention': 'Votre attention s\'il vous plaît.',
+          'service_to': 'desservant',
+          'service_from': 'en provenance de',
         };
       default: // it
         return {
-          'train': 'Treno',
-          'arriving': 'in arrivo',
-          'from': 'Provenienza',
-          'direction': 'Direzione',
-          'arrival': 'Arrivo alle',
-          'departure': 'Partenza alle',
-          'delay': 'Ritardo',
+          'train': 'Il treno',
+          'of_oper': 'di',
+          'arriving': 'in arrivo al binario',
+          'from': 'proveniente da',
+          'direction': 'diretto a',
+          'arrival': 'è in arrivo al binario',
+          'departure': 'è in partenza dal binario',
+          'delay': 'con ritardo di',
           'minutes': 'minuti',
-          'ontime': 'In orario',
+          'ontime': 'puntualmente',
           'next_stop': 'Prossima fermata:',
+          'at_time': 'delle ore',
+          'hours': '',
+          'platform': 'binario',
+          'calling_at': 'ferma a',
+          'is_departing': 'è in partenza dal binario',
+          'is_arriving': 'è in arrivo al binario',
+          'attention': 'Attenzione.',
+          'service_to': 'per',
+          'service_from': 'proveniente da',
         };
     }
+  }
+
+  /// Formatta un'ora DateTime per il TTS nella lingua corrente
+  /// IT: "delle ore 19 e 25", EN: "at 7:25 PM", DE: "um 19 Uhr 25", FR: "à 19 heures 25"
+  static String formatTtsTime(DateTime dateTime, String langCode) {
+    final hour = dateTime.hour;
+    final minute = dateTime.minute;
+    final ttsStrings = getTtsStrings(langCode);
+    final atTime = ttsStrings['at_time'] ?? '';
+
+    switch (langCode) {
+      case 'en': {
+        final h = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+        final ampm = hour < 12 ? 'AM' : 'PM';
+        return '$atTime $h:${minute.toString().padLeft(2, '0')} $ampm';
+      }
+      case 'de':
+        return '$atTime $hour ${ttsStrings['hours']} ${minute.toString().padLeft(2, '0')}';
+      case 'fr':
+        return '$atTime $hour ${ttsStrings['hours']} ${minute.toString().padLeft(2, '0')}';
+      default: // it — stile Trenitalia: "delle ore 19 e 25" o "delle ore 19"
+        if (minute == 0) return '$atTime $hour';
+        return '$atTime $hour e $minute';
+    }
+  }
+
+  /// Costruisce la frase TTS completa in stile stazione ferroviaria
+  static String buildAnnouncement({
+    required String? category,
+    required String? trainNumber,
+    required bool isArrival,
+    required String? origin,
+    required String? destination,
+    required DateTime? scheduledTime,
+    required DateTime? estimatedTime,
+    required int delayMinutes,
+    required String? platform,
+    required String langCode,
+  }) {
+    final s = getTtsStrings(langCode);
+    final cat = resolveCategory(category, langCode);
+    final num = speakDigits(trainNumber, langCode);
+    final dir = isArrival ? (origin ?? '') : (destination ?? '');
+    final timeSource = estimatedTime ?? scheduledTime;
+
+    final buffer = StringBuffer();
+
+    if (langCode == 'it') {
+      // IT — stile Trenitalia
+      buffer.write('${s['train']} ');
+      if (cat.isNotEmpty || num.isNotEmpty) {
+        buffer.write('$cat $num ${s['of_oper']} Trenitalia ');
+      }
+      if (isArrival) {
+        buffer.write('${s['service_from']} $dir ');
+      } else {
+        buffer.write('${s['service_to']} $dir ');
+      }
+      if (timeSource != null) {
+        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)} ');
+      }
+      buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ');
+      if (platform != null && platform.isNotEmpty && platform != '-') {
+        buffer.write('$platform. ');
+      } else {
+        buffer.write('. ');
+      }
+      if (delayMinutes > 0) {
+        buffer.write('${s['attention']} ${s['delay']} $delayMinutes ${s['minutes']}. ');
+      } else {
+        buffer.write('${s['ontime']}. ');
+      }
+    } else if (langCode == 'en') {
+      // EN — stile UK (National Rail)
+      buffer.write('${s['attention']} ');
+      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      if (isArrival) {
+        buffer.write('${s['service_from']} $dir ');
+      } else {
+        buffer.write('${s['service_to']} $dir ');
+      }
+      if (timeSource != null) {
+        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+      }
+      if (platform != null && platform.isNotEmpty && platform != '-') {
+        buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ${s['platform']} $platform. ');
+      }
+      if (delayMinutes > 0) {
+        buffer.write('This train is ${s['delay']} $delayMinutes ${s['minutes']}. ');
+      } else {
+        buffer.write('This train is ${s['ontime']}. ');
+      }
+    } else if (langCode == 'de') {
+      // DE — stile Deutsche Bahn
+      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      if (isArrival) {
+        buffer.write('${s['service_from']} $dir ');
+      } else {
+        buffer.write('${s['service_to']} $dir ');
+      }
+      if (timeSource != null) {
+        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+      }
+      if (platform != null && platform.isNotEmpty && platform != '-') {
+        buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} $platform. ');
+      }
+      if (delayMinutes > 0) {
+        buffer.write('${s['attention']} ${s['delay']} $delayMinutes ${s['minutes']}. ');
+      } else {
+        buffer.write('${s['ontime']}. ');
+      }
+    } else {
+      // FR — stile SNCF
+      buffer.write('${s['attention']} ');
+      buffer.write('${s['train']} $cat $num ${s['of_oper']} ');
+      if (isArrival) {
+        buffer.write('${s['service_from']} $dir ');
+      } else {
+        buffer.write('${s['service_to']} $dir ');
+      }
+      if (timeSource != null) {
+        buffer.write('${s['at_time']} ${formatTtsTime(timeSource, langCode)}. ');
+      }
+      if (platform != null && platform.isNotEmpty && platform != '-') {
+        buffer.write('${s[isArrival ? 'is_arriving' : 'is_departing']} ${s['platform']} $platform. ');
+      }
+      if (delayMinutes > 0) {
+        buffer.write('Ce train est ${s['delay']} $delayMinutes ${s['minutes']}. ');
+      } else {
+        buffer.write('Ce train est ${s['ontime']}. ');
+      }
+    }
+
+    return buffer.toString().trim();
   }
 
   String _currentLangCode = 'it';
