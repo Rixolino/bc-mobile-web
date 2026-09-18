@@ -107,6 +107,8 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   // TTS auto-annuncio: set di chiavi già annunciate (separato per arrivals/departures)
   final Set<String> _spokenDepartureKeys = {};
   final Set<String> _spokenArrivalKeys = {};
+  final Set<String> _pendingDepartures = {}; // treni visti ma non ancora annunciati
+  final Set<String> _pendingArrivals = {};
   List<TrainDeparture> _previousDepartures = [];
   List<TrainDeparture> _previousArrivals = [];
   bool? _lastArrivalMode;
@@ -855,30 +857,81 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     _lastArrivalMode = isArrivals;
 
     final spokenKeys = isArrivals ? _spokenArrivalKeys : _spokenDepartureKeys;
+    final pendingKeys = isArrivals ? _pendingArrivals : _pendingDepartures;
     final previousList = isArrivals ? _previousArrivals : _previousDepartures;
+    final now = DateTime.now();
 
     String? textToSpeak;
 
-    for (final dep in current) {
-      final key = _trainKey(dep);
-      final prevDep = previousList.cast<TrainDeparture?>().firstWhere(
-        (p) => _trainKey(p!) == key,
+    // Helper: calcola ora effettiva e se è nella finestra
+    (DateTime?, bool) getEffectiveInfo(TrainDeparture dep) {
+      final schedTime = dep.scheduledTime;
+      final estTime = dep.estimatedTime;
+      final delay = dep.delayMinutes ?? 0;
+      DateTime? effectiveTime;
+      if (estTime != null) {
+        effectiveTime = estTime;
+      } else if (schedTime != null) {
+        effectiveTime = schedTime.add(Duration(minutes: delay));
+      }
+      bool isInWindow = false;
+      if (effectiveTime != null) {
+        final diff = effectiveTime.difference(now).inMinutes;
+        isInWindow = diff >= -5 && diff <= 3;
+      }
+      return (effectiveTime, isInWindow);
+    }
+
+    // 1. Controlla i treni in attesa (visti prima ma non annunciati)
+    for (final pendingKey in pendingKeys.toList()) {
+      final dep = current.cast<TrainDeparture?>().firstWhere(
+        (d) => _trainKey(d!) == pendingKey,
         orElse: () => null,
       );
-
-      if (prevDep == null) {
-        // Nuovo treno: annuncia
-        spokenKeys.add(key);
+      if (dep == null) {
+        pendingKeys.remove(pendingKey);
+        continue;
+      }
+      final (_, isInWindow) = getEffectiveInfo(dep);
+      if (isInWindow) {
+        pendingKeys.remove(pendingKey);
+        spokenKeys.add(pendingKey);
         textToSpeak = _buildTtsText(dep, isArrivals, settings);
         break;
       }
+    }
 
-      // Treno esistente: controlla se il ritardo è cambiato significativamente (>=3 min)
-      final oldDelay = prevDep.delayMinutes ?? 0;
-      final newDelay = dep.delayMinutes ?? 0;
-      if ((newDelay - oldDelay).abs() >= 3) {
-        textToSpeak = _buildTtsText(dep, isArrivals, settings);
-        break;
+    // 2. Se non c'è nulla da parlare, controlla treni nuovi e aggiornamenti ritardo
+    if (textToSpeak == null) {
+      for (final dep in current) {
+        final key = _trainKey(dep);
+        final (_, isInWindow) = getEffectiveInfo(dep);
+
+        final prevDep = previousList.cast<TrainDeparture?>().firstWhere(
+          (p) => _trainKey(p!) == key,
+          orElse: () => null,
+        );
+
+        if (prevDep == null) {
+          // Nuovo treno
+          if (isInWindow) {
+            spokenKeys.add(key);
+            textToSpeak = _buildTtsText(dep, isArrivals, settings);
+            break;
+          } else if (!spokenKeys.contains(key)) {
+            // Aggiungi ai pending per dopo
+            pendingKeys.add(key);
+          }
+          continue;
+        }
+
+        // Treno esistente: ritardo cambiato significativamente
+        final oldDelay = prevDep.delayMinutes ?? 0;
+        final newDelay = dep.delayMinutes ?? 0;
+        if ((newDelay - oldDelay).abs() >= 3 && isInWindow) {
+          textToSpeak = _buildTtsText(dep, isArrivals, settings);
+          break;
+        }
       }
     }
 
@@ -888,9 +941,12 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     } else {
       _previousDepartures = List.from(current);
     }
+    final currentKeys = current.map(_trainKey).toSet();
     if (spokenKeys.length > 200) {
-      final currentKeys = current.map(_trainKey).toSet();
       spokenKeys.removeWhere((k) => !currentKeys.contains(k));
+    }
+    if (pendingKeys.length > 200) {
+      pendingKeys.removeWhere((k) => !currentKeys.contains(k));
     }
 
     // Parla (solo se c'è qualcosa da dire)
