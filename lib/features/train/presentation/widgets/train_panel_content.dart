@@ -873,12 +873,27 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       final schedTime = dep.scheduledTime;
       final estTime = dep.estimatedTime;
       final delay = dep.delayMinutes ?? 0;
+
+      // L'orario "atteso" da scheduledTime + delay è sempre calcolato quando
+      // possibile: è il valore più affidabile, perché 'delay' viene aggiornato
+      // ad ogni refresh mentre 'estimatedTime' può arrivare nullo o non
+      // allineato al ritardo più recente (es. dopo un aggiornamento parziale
+      // che tocca solo il campo delay). Se scheduledTime manca, si usa
+      // estimatedTime come fallback.
       DateTime? effectiveTime;
-      if (estTime != null) {
-        effectiveTime = estTime;
-      } else if (schedTime != null) {
+      if (schedTime != null) {
         effectiveTime = schedTime.add(Duration(minutes: delay));
+        // Se l'API fornisce un estimatedTime esplicito che indica un ritardo
+        // maggiore rispetto a scheduledTime + delay (es. delay non ancora
+        // aggiornato ma estimatedTime sì), usa il più "tardivo" dei due per
+        // non annunciare in anticipo.
+        if (estTime != null && estTime.isAfter(effectiveTime)) {
+          effectiveTime = estTime;
+        }
+      } else if (estTime != null) {
+        effectiveTime = estTime;
       }
+
       if (effectiveTime == null) return false;
       final diff = effectiveTime.difference(now).inMinutes;
       // Annuncia circa 1 minuto prima dell'orario effettivo (±1 min per margine)
@@ -894,7 +909,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     // Pulisci pending di treni che non sono più nella lista
     pendingKeys.removeWhere((k) => !currentKeys.contains(k));
 
-    // 1. Controlla i treni in attesa (entrati nella finestra)
+    // 1. Controlla TUTTI i treni in attesa: se sono entrati nella finestra, annuncia
     for (final pendingKey in pendingKeys.toList()) {
       final dep = current.cast<TrainDeparture?>().firstWhere(
         (d) => _trainKey(d!) == pendingKey,
