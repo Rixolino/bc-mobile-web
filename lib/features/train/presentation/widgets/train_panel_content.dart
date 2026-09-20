@@ -3609,9 +3609,10 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         Expanded(
           child: provider.isLoadingDepartures
               ? ShimmerLoading(baseColor: theme.secondaryTextColor)
-              : ListView.builder(
+              : ListView.separated(
                   padding: const EdgeInsets.only(top: 8, bottom: 100),
                   itemCount: filteredDepartures.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: theme.dividerColor),
                   itemBuilder: (ctx, i) => _buildTrainCard(ctx, filteredDepartures[i], i, theme),
                 ),
         ),
@@ -3727,69 +3728,169 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   }
 
   Widget _buildTrainCard(BuildContext context, dynamic dep, int index, ThemeProvider theme) {
-    final displayTime = dep.estimatedTime ??
-        (dep.scheduledTime?.add(Duration(minutes: dep.delayMinutes ?? 0))) ??
-        dep.scheduledTime;
+    // Stesso layout riga di StationDetailsScreen._buildDepartureItem,
+    // con in più il tap per aprire i dettagli del treno.
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
+    final isArrival = trainProvider.isArrivalMode;
+    final cat = (dep.category?.toString() ?? '').trim();
+    final num = (dep.trainNumber?.toString() ?? '').trim();
+    // Arrivi: mostra la provenienza (la destinazione è la stazione stessa).
+    // Partenze: mostra la destinazione.
+    final dest = isArrival
+        ? (dep.origin?.toString() ?? '').trim()
+        : (dep.destination?.toString() ?? '').trim();
+    final delay = dep.delayMinutes ?? 0;
+    final scheduled = dep.scheduledTime;
+    final estimated = dep.estimatedTime;
+    final platform = dep.platform?.toString();
     final country = dep.country?.toString().isNotEmpty == true
         ? dep.country.toString()
         : trainProvider.selectedStation?.country;
-    final timeStr = formatCountryTime(displayTime, country);
-    final delay = dep.delayMinutes ?? 0;
-    final isCancelled = dep.status == 'CANCELED';
+    final isHighSpeed = cat.toLowerCase().contains('fr') ||
+        cat.toLowerCase().contains('freccia') ||
+        cat.toLowerCase().contains('ec') ||
+        cat.toLowerCase().contains('ice') ||
+        cat.toLowerCase().contains('tgv');
+    final color = isHighSpeed ? Colors.redAccent : AppTokens.trainColor;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.surfaceColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.05)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 4))],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _showTrainDetails(context, dep, index, theme),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Column(
-                  children: [
-                    Text(
-                      timeStr,
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: theme.textColor, letterSpacing: -1),
-                    ),
-                    isCancelled
-                        ? _buildBadge('CANC', Colors.red)
-                        : (delay > 0
-                            ? _buildBadge('+$delay\'', Colors.orange)
-                            : Text(
-                                AppLocalizations.of(context)?.onTime ?? 'In orario',
-                                style: TextStyle(fontSize: 10, color: theme.successColor, fontWeight: FontWeight.bold),
-                              )),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTrainTypeBadge(dep, theme),
-                      const SizedBox(height: 4),
-                      _SmartTrainRouteText(
-                        departure: dep,
-                        index: index,
-                        theme: theme,
-                        isArrivalMode: Provider.of<TrainProvider>(context, listen: false).isArrivalMode,
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    String? logoUrl;
+    if (settings.vectorLogosEnabled) {
+      final key = cat.toUpperCase().replaceAll(' ', '_');
+      final logo = trainProvider.trainLogos[key];
+      logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
+    }
+
+    final timeStr = formatCountryTime(scheduled, country);
+    final estStr = estimated != null ? formatCountryTime(estimated, country) : null;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showTrainDetails(context, dep, index, theme),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              if (logoUrl != null)
+                Container(
+                  height: 24,
+                  constraints: const BoxConstraints(maxWidth: 50),
+                  padding: theme.isDark
+                      ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                      : EdgeInsets.zero,
+                  decoration: theme.isDark
+                      ? BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        )
+                      : null,
+                  child: Image.network(
+                    logoUrl,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 4,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                    ],
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                _buildPlatformBox(dep.platform?.toString() ?? '-', theme),
-              ],
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$cat $num',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: theme.textColor,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (delay > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '+$delay\'',
+                              style: const TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dest.isNotEmpty ? dest : '--',
+                      style: TextStyle(color: theme.secondaryTextColor, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Builder(
+                    builder: (_) {
+                      Color timeColor;
+                      if (delay <= 0) {
+                        timeColor = Colors.green;
+                      } else if (delay <= 5) {
+                        timeColor = Colors.orange;
+                      } else if (delay <= 15) {
+                        timeColor = Colors.deepOrange;
+                      } else {
+                        timeColor = Colors.red;
+                      }
+                      return Text(
+                        estStr != null && estStr != timeStr ? estStr : timeStr,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: estStr != null && estStr != timeStr ? timeColor : theme.textColor,
+                          fontSize: 15,
+                        ),
+                      );
+                    },
+                  ),
+                  if (estStr != null && estStr != timeStr)
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontSize: 11,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  if (platform != null && platform.isNotEmpty)
+                    Text(
+                      'Bin $platform',
+                      style: TextStyle(color: theme.secondaryTextColor, fontSize: 10),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
