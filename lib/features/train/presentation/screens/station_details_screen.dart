@@ -8,6 +8,7 @@ import 'package:bc_transporter/presentation/providers/theme_provider.dart';
 import 'package:bc_transporter/presentation/providers/settings_provider.dart';
 import 'package:bc_transporter/core/design_system.dart';
 import 'package:bc_transporter/core/services/runtime_localizations.dart';
+import 'package:bc_transporter/l10n/app_localizations.dart';
 import 'package:bc_transporter/core/utils/country_time.dart';
 import 'package:bc_transporter/core/services/tts_service.dart';
 
@@ -35,6 +36,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
   bool _isArrivalsMode = false;
   String? _error;
   Timer? _refreshTimer;
+  String? _selectedPlatformFilter;
 
   @override
   void initState() {
@@ -107,6 +109,15 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
     final items = _isArrivalsMode ? _arrivals : _departures;
+    final availablePlatforms = items
+        .map((e) => (e.platform ?? '').trim())
+        .where((e) => e.isNotEmpty && e != '-')
+        .toSet()
+        .toList()
+      ..sort();
+    final filtered = _selectedPlatformFilter == null
+        ? items
+        : items.where((e) => (e.platform ?? '').trim() == _selectedPlatformFilter).toList();
 
     return Scaffold(
       backgroundColor: theme.backgroundColor,
@@ -141,14 +152,36 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
       body: Column(
         children: [
           _buildModeToggle(theme),
+          if (availablePlatforms.isNotEmpty && !_isLoading && _error == null)
+            SizedBox(
+              height: 50,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                children: [
+                  _buildFilterChip(
+                    AppLocalizations.of(context)?.allPlatforms ?? 'Tutti i Binari',
+                    _selectedPlatformFilter == null,
+                    theme,
+                    () => setState(() => _selectedPlatformFilter = null),
+                  ),
+                  ...availablePlatforms.map((p) => _buildFilterChip(
+                        '${AppLocalizations.of(context)?.platform ?? 'Binario'} $p',
+                        _selectedPlatformFilter == p,
+                        theme,
+                        () => setState(() => _selectedPlatformFilter = p),
+                      )),
+                ],
+              ),
+            ),
           Expanded(
             child: _isLoading
                 ? _buildLoading(theme)
                 : _error != null
                     ? _buildError(theme)
-                    : items.isEmpty
+                    : filtered.isEmpty
                         ? _buildEmpty(theme)
-                        : _buildDepartureList(items, theme),
+                        : _buildDepartureList(filtered, theme),
           ),
         ],
       ),
@@ -172,7 +205,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    RuntimeLocalizations.t(context, 'departures'),
+                    RuntimeLocalizations.t(context, 'regional_provider_departures'),
                     style: TextStyle(
                       color: !_isArrivalsMode ? Colors.white : theme.textColor,
                       fontWeight: FontWeight.bold,
@@ -195,7 +228,7 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    RuntimeLocalizations.t(context, 'arrivals'),
+                    RuntimeLocalizations.t(context, 'regional_provider_arrivals'),
                     style: TextStyle(
                       color: _isArrivalsMode ? Colors.white : theme.textColor,
                       fontWeight: FontWeight.bold,
@@ -379,6 +412,19 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                           style: const TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                       ),
+                    ] else if (delay < 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '$delay\'',
+                          style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -392,10 +438,17 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Builder(
+              if (platform != null && platform.isNotEmpty) ...[
+                _buildPlatformTicket(platform, theme),
+                const SizedBox(width: 10),
+              ],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Builder(
                 builder: (_) {
                   Color timeColor;
                   if (delay <= 0) {
@@ -417,24 +470,107 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
                   );
                 },
               ),
-              if (estStr != null && estStr != timeStr)
-                Text(
-                  timeStr,
-                  style: TextStyle(
-                    color: theme.secondaryTextColor,
-                    fontSize: 11,
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-              if (platform != null && platform.isNotEmpty)
-                Text(
-                  'Bin $platform',
-                  style: TextStyle(color: theme.secondaryTextColor, fontSize: 10),
-                ),
+                  if (estStr != null && estStr != timeStr)
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontSize: 11,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
-          const SizedBox.shrink(),
         ],
+      ),
+    );
+  }
+
+  /// Cartello binario stile "ticket": riquadro scuro con numero bianco
+  /// e tacche laterali, a sinistra degli orari (come nel tabellone principale).
+  Widget _buildPlatformTicket(String bin, ThemeProvider theme) {
+    final bg = theme.isDark ? const Color(0xFF5A5A5A) : const Color(0xFF4A4A4A);
+    return Semantics(
+      label: '${AppLocalizations.of(context)?.platform ?? 'Binario'} $bin',
+      child: Container(
+        width: 32,
+        height: 36,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  bin,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Positioned(
+              right: -4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, bool isSelected, ThemeProvider theme, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? theme.primaryColor : theme.surfaceColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? theme.primaryColor : theme.secondaryTextColor.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.white : theme.textColor,
+            ),
+          ),
+        ),
       ),
     );
   }

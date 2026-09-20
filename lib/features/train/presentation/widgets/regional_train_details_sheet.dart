@@ -433,16 +433,18 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             });
           } else {
             setState(() {
+              // Il ritardo fresco dal trip endpoint vince su quello vecchio:
+              // altrimenti il refresh mostrerebbe sempre il dato stantio.
               _tripData = {
                 ...tripMap,
-                'delay': _current['delay'] ??
-                    _current['delayMinutes'] ??
-                    tripMap['delay'] ??
-                    tripMap['delayMinutes'],
-                'delayMinutes': _current['delayMinutes'] ??
-                    _current['delay'] ??
+                'delay': tripMap['delay'] ??
                     tripMap['delayMinutes'] ??
-                    tripMap['delay']
+                    _current['delay'] ??
+                    _current['delayMinutes'],
+                'delayMinutes': tripMap['delayMinutes'] ??
+                    tripMap['delay'] ??
+                    _current['delayMinutes'] ??
+                    _current['delay']
               };
               _isLoading = false;
               _hasLoadedData = true;

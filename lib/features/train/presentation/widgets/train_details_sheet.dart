@@ -678,6 +678,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   // Evita fallback ritardo concorrenti
   bool _isRefreshingDelayFallback = false;
 
+  // Refresh manuale in corso (feedback sul chip Aggiorna)
+  bool _isManualRefreshing = false;
+
   @override
   void initState() {
     super.initState();
@@ -1070,8 +1073,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     if (mounted) setState(() {});
   }
 
-  void _refreshTrainDetails() {
-    if (!mounted) return;
+  Future<void> _refreshTrainDetails() async {
+    if (!mounted || _isManualRefreshing) return;
     if (_preventOnlineAutoRefresh || _trainProvider.isUsingOfflineCache || _isNetworkOffline) {
       _autoRefreshTimer?.cancel();
       _autoRefreshTimer = null;
@@ -1079,21 +1082,40 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       return;
     }
 
-    final index = _trainProvider.departures.indexWhere((d) =>
-      (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
-      (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
-    );
-    if (index != -1) {
-      // Modalita tabellone: ricarica completa continua (fermate/orari/ritardi),
-      // poi ritardo fresco dalle bacheche. Il provider non sovrascrive mai col vuoto.
-      _trainProvider.expandTrainDetails(index, forceRefresh: true).then((_) {
-        if (mounted) _refreshDelayFallback();
-      });
-    } else {
-      // Modalita link (treno esterno al tabellone): ricarica trip + fallback stazioni
-      _refreshExternalTripDetails().then((_) {
-        if (mounted) _refreshDelayFallback();
-      });
+    setState(() => _isManualRefreshing = true);
+    try {
+      // 1. Ricarica il tabellone della stazione: ritardo/orario/binario freschi.
+      // (expandTrainDetails aggiorna solo le fermate, quindi senza questo
+      // passo l'header resterebbe con i dati vecchi e sembrerebbe "non agire".)
+      final station = _trainProvider.selectedStation;
+      if (station != null && station.id.isNotEmpty) {
+        await _trainProvider.fetchDepartures(
+          station.id,
+          country: station.country,
+          silent: true,
+        );
+      }
+      if (!mounted) return;
+
+      // 2. Ricarica i dettagli della corsa (fermate).
+      final index = _trainProvider.departures.indexWhere((d) =>
+        (widget.departure.tripId != null && d.tripId == widget.departure.tripId) ||
+        (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination)
+      );
+      if (index != -1) {
+        // Modalita tabellone: ricarica completa continua (fermate/orari/ritardi),
+        // poi ritardo fresco dalle bacheche. Il provider non sovrascrive mai col vuoto.
+        await _trainProvider.expandTrainDetails(index, forceRefresh: true);
+      } else {
+        // Modalita link (treno esterno al tabellone): ricarica trip + fallback stazioni
+        await _refreshExternalTripDetails();
+      }
+      if (!mounted) return;
+
+      // 3. Ritardo fresco dalle bacheche delle prossime stazioni.
+      await _refreshDelayFallback();
+    } finally {
+      if (mounted) setState(() => _isManualRefreshing = false);
     }
   }
 
@@ -1487,10 +1509,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             },
           ),
           _buildInfoChip(
-            Icons.refresh_rounded,
+            _isManualRefreshing ? Icons.hourglass_empty_rounded : Icons.refresh_rounded,
             RuntimeLocalizations.t(context, 'update') ?? RuntimeLocalizations.t(context, 'update') ?? 'Aggiorna',
             theme,
-            _refreshTrainDetails,
+            _isManualRefreshing ? null : () => _refreshTrainDetails(),
           ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
@@ -2365,10 +2387,10 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 ),
 
                 _buildInfoChip(
-                  Icons.refresh_rounded,
+                  _isManualRefreshing ? Icons.hourglass_empty_rounded : Icons.refresh_rounded,
                   RuntimeLocalizations.t(context, 'update'),
                   theme,
-                  _refreshTrainDetails,
+                  _isManualRefreshing ? null : () => _refreshTrainDetails(),
                 ),
 
                 Consumer<TrainProvider>(

@@ -3836,6 +3836,19 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                               style: const TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ),
+                        ] else if (delay < 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '$delay\'',
+                              style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -3849,45 +3862,49 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Builder(
-                    builder: (_) {
-                      Color timeColor;
-                      if (delay <= 0) {
-                        timeColor = Colors.green;
-                      } else if (delay <= 5) {
-                        timeColor = Colors.orange;
-                      } else if (delay <= 15) {
-                        timeColor = Colors.deepOrange;
-                      } else {
-                        timeColor = Colors.red;
-                      }
-                      return Text(
-                        estStr != null && estStr != timeStr ? estStr : timeStr,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: estStr != null && estStr != timeStr ? timeColor : theme.textColor,
-                          fontSize: 15,
-                        ),
-                      );
-                    },
-                  ),
-                  if (estStr != null && estStr != timeStr)
-                    Text(
-                      timeStr,
-                      style: TextStyle(
-                        color: theme.secondaryTextColor,
-                        fontSize: 11,
-                        decoration: TextDecoration.lineThrough,
+                  if (platform != null && platform.isNotEmpty) ...[
+                    _buildPlatformBox(platform, theme),
+                    const SizedBox(width: 10),
+                  ],
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Builder(
+                        builder: (_) {
+                          Color timeColor;
+                          if (delay <= 0) {
+                            timeColor = Colors.green;
+                          } else if (delay <= 5) {
+                            timeColor = Colors.orange;
+                          } else if (delay <= 15) {
+                            timeColor = Colors.deepOrange;
+                          } else {
+                            timeColor = Colors.red;
+                          }
+                          return Text(
+                            estStr != null && estStr != timeStr ? estStr : timeStr,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: estStr != null && estStr != timeStr ? timeColor : theme.textColor,
+                              fontSize: 15,
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  if (platform != null && platform.isNotEmpty)
-                    Text(
-                      'Bin $platform',
-                      style: TextStyle(color: theme.secondaryTextColor, fontSize: 10),
-                    ),
+                      if (estStr != null && estStr != timeStr)
+                        Text(
+                          timeStr,
+                          style: TextStyle(
+                            color: theme.secondaryTextColor,
+                            fontSize: 11,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -3992,25 +4009,62 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     );
   }
 
+  /// Cartello binario stile "ticket" (come da riferimento): riquadro scuro
+  /// con numero bianco e tacche laterali, a sinistra degli orari.
   Widget _buildPlatformBox(String bin, ThemeProvider theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.primaryColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            RuntimeLocalizations.t(context, 'platform_abbr'),
-            style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: theme.primaryColor),
-          ),
-          Text(
-            bin,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
-          ),
-        ],
+    final bg = theme.isDark ? const Color(0xFF5A5A5A) : const Color(0xFF4A4A4A);
+    return Semantics(
+      label: '${RuntimeLocalizations.t(context, 'platform')} $bin',
+      child: Container(
+        width: 32,
+        height: 36,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  bin,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Positioned(
+              right: -4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
