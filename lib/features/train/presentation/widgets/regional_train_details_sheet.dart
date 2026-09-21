@@ -137,7 +137,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   String? _presenceKey;
   // Ultime fermate buone inviate all'API: il primo utente che apre il treno
   // le pubblica mentre la sheet è aperta, e non si perdono più.
-  List<Map<String, dynamic>>? _lastPresenceStops;
+  List<Map<String, dynamic>>? _lastPresenceStopsRaw;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -199,13 +199,22 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     print('[Presence] regional tick key=$key');
     final trip = _current;
     // Migliori fermate da tutte le fonti + ricordo dell'ultimo buono.
+    // Scarta quelle con nome spazzatura (mai inviare 'N/A' all'API).
     final rawStops = trip['stops'];
     if (rawStops is List && rawStops.isNotEmpty) {
-      _lastPresenceStops = List<Map<String, dynamic>>.from(rawStops
+      final cleaned = List<Map<String, dynamic>>.from(rawStops
           .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e)));
-      print('[Presence] fermate pubblicate: ${_lastPresenceStops!.length}');
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((s) => !_isJunkPresenceStr(
+              (s['stationName'] ?? s['station'] ?? s['name'])?.toString())));
+      if (cleaned.isNotEmpty) {
+        _lastPresenceStopsRaw = cleaned;
+        print(
+            '[Presence] fermate pubblicate: ${_lastPresenceStopsRaw!.length}');
+      }
     }
+    final effOrigin = _getEffectiveOrigin(trip);
+    final effDestination = _getEffectiveDestination(trip);
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
       screen: 'regional',
@@ -213,8 +222,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         'category': trip['category']?.toString(),
         'trainNumber':
             (trip['tripNumber'] ?? trip['trainNumber'] ?? '').toString(),
-        'origin': _getEffectiveOrigin(trip),
-        'destination': _getEffectiveDestination(trip),
+        'origin': _isJunkPresenceStr(effOrigin) ? null : effOrigin,
+        'destination':
+            _isJunkPresenceStr(effDestination) ? null : effDestination,
         'scheduledTime':
             _parseTime(trip['scheduledTime'])?.toIso8601String(),
         'estimatedTime':
@@ -227,7 +237,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         // Dati completi per la sezione "più visualizzati": tutte le
         // fermate così il dettaglio è completo come la vista normale.
         'tripId': widget.tripId.isNotEmpty ? widget.tripId : null,
-        'stops': _lastPresenceStops ?? trip['stops'],
+        'stops': _lastPresenceStopsRaw ?? trip['stops'],
       },
     );
     print('[Presence] regional viewers=$count (was $_viewersCount)');
@@ -535,7 +545,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           }
           // Pubblica subito le fermate all'API (primo utente che apre
           // il treno), senza aspettare il prossimo tick da 5s.
-          if (_lastPresenceStops == null) {
+          if (_lastPresenceStopsRaw == null) {
             _presenceTick();
           }
           // All'apertura: cerca il ritardo fresco nei tabelloni delle
@@ -1254,6 +1264,13 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       label.isNotEmpty ? label : 'Treno',
       style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color),
     );
+  }
+
+  /// 'N/A' e simili non sono nomi veri: non vanno mai inviati all'API.
+  static bool _isJunkPresenceStr(String? v) {
+    if (v == null) return true;
+    final s = v.trim().toUpperCase();
+    return s.isEmpty || s == 'N/A' || s == 'N/D' || s == '--' || s == '-';
   }
 
   /// Contatore spettatori live sopra i pulsanti, allineato a sinistra.

@@ -100,14 +100,58 @@ class TrainPresenceService {
   /// Legge la classifica dei treni più visualizzati adesso
   /// (GET /api/train-presence/live, già ordinata per viewer desc).
   /// Ritorna lista di {trainKey, viewers, screen, train, lastSeen}, mai eccezioni.
-  Future<List<Map<String, dynamic>>> fetchMostViewed() async {
+  /// Null in caso di errore (i chiamanti devono tenere i dati vecchi).
+  Future<List<Map<String, dynamic>>?> fetchMostViewed() async {
+    final data = await fetchLiveData();
+    return data?.trains;
+  }
+
+  /// GET /live completo: treni + totale utenti collegati adesso.
+  /// Null in caso di errore (i chiamanti devono tenere i dati vecchi,
+  /// altrimenti un timeout svuoterebbe le sezioni senza motivo).
+  Future<({List<Map<String, dynamic>> trains, int totalViewers})?>
+      fetchLiveData() async {
     try {
       final resp = await http
           .get(
             Uri.parse('${ApiConstants.baseUrl}/api/train-presence/live'),
           )
           .timeout(_timeout);
-      if (resp.statusCode != 200) return [];
+      if (resp.statusCode != 200) return null;
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map) {
+        final trains = decoded['trains'] is List
+            ? (decoded['trains'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+            : <Map<String, dynamic>>[];
+        final total = decoded['totalViewers'] is int
+            ? decoded['totalViewers'] as int
+            : trains.fold<int>(
+                0,
+                (s, t) =>
+                    s + ((t['viewers'] is int) ? t['viewers'] as int : 0));
+        return (trains: trains, totalViewers: total);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Treni visti nell'ultima ora (GET /api/train-presence/recent),
+  /// anche se ora non li guarda più nessuno. Stesso formato di /live
+  /// + peakViewers. Null in caso di errore (tenere i dati vecchi).
+  Future<List<Map<String, dynamic>>?> fetchRecentTrains({int limit = 20}) async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse(
+                '${ApiConstants.baseUrl}/api/train-presence/recent?limit=$limit'),
+          )
+          .timeout(_timeout);
+      if (resp.statusCode != 200) return null;
       final decoded = jsonDecode(resp.body);
       if (decoded is Map && decoded['trains'] is List) {
         return (decoded['trains'] as List)
@@ -115,9 +159,9 @@ class TrainPresenceService {
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
       }
-      return [];
+      return null;
     } catch (_) {
-      return [];
+      return null;
     }
   }
 

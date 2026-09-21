@@ -98,6 +98,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   // Treni più visualizzati adesso (classifica presence backend)
   List<Map<String, dynamic>> _mostViewedTrains = [];
+  // Treni visti nell'ultima ora (storico backend 1h)
+  List<Map<String, dynamic>> _recentTrains = [];
+  // Totale utenti collegati adesso sui dettagli treno
+  int _totalViewersLive = 0;
+  // Sezioni comprimibili
+  bool _mostViewedExpanded = true;
+  bool _recentExpanded = false;
 
   bool _isSearchingRouting = false;
   Map<String, dynamic>? _routingData;
@@ -1089,7 +1096,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     Future.microtask(() => _loadLiveTrains(silent: false));
     Future.microtask(() => _loadMostViewed());
     _liveTrainsRefreshTimer?.cancel();
-    _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
         _loadLiveTrains(silent: true);
         _loadMostViewed();
@@ -1097,14 +1104,30 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     });
   }
 
-  /// Treni più visualizzati adesso (GET /live, top 5).
+  /// Treni più visualizzati adesso (GET /live, top 5 + totale utenti)
+  /// e treni visti nell'ultima ora (GET /recent).
   Future<void> _loadMostViewed() async {
     if (_isOffline || !mounted) return;
     try {
-      final live = await TrainPresenceService().fetchMostViewed();
+      final results = await Future.wait([
+        TrainPresenceService().fetchLiveData(),
+        TrainPresenceService().fetchRecentTrains(limit: 10),
+      ]);
       if (!mounted) return;
+      final live = results[0]
+          as ({List<Map<String, dynamic>> trains, int totalViewers})?;
+      final recent = results[1] as List<Map<String, dynamic>>?;
+      // Solo risposte riuscite aggiornano lo stato: un timeout/errore
+      // non deve mai svuotare le sezioni senza motivo.
+      if (live == null && recent == null) return;
       _safeSetState(() {
-        _mostViewedTrains = live.take(5).toList();
+        if (live != null) {
+          _mostViewedTrains = live.trains.take(5).toList();
+          _totalViewersLive = live.totalViewers;
+        }
+        if (recent != null) {
+          _recentTrains = recent;
+        }
       });
     } catch (_) {}
   }
@@ -1161,6 +1184,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       'destination': destination,
       'scheduledTime': scheduled,
       'estimatedTime': estimated,
+      'platform': (t['platform'] ?? '').toString(),
       'stops': stops,
       'viewers': entry['viewers'] ?? 0,
     };
@@ -3159,9 +3183,17 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     
     final mostViewed =
         _mostViewedTrains.map(_normalizePresenceTrain).toList();
-    final hasMostViewed = mostViewed.isNotEmpty;
+    // Recenti non già live (evita duplicati con la sezione sopra).
+    final recent = _recentTrains
+        .where((e) =>
+            (e['viewers'] is int ? e['viewers'] as int : 0) == 0)
+        .take(5)
+        .map(_normalizePresenceTrain)
+        .toList();
 
-    if (_cachedLiveTrains.isEmpty && !hasMostViewed) {
+    if (_cachedLiveTrains.isEmpty &&
+        mostViewed.isEmpty &&
+        recent.isEmpty) {
       if (_isLoadingLiveTrains) {
         return ShimmerLoading(baseColor: theme.secondaryTextColor);
       }
@@ -3185,56 +3217,123 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       );
     }
     
+    final children = <Widget>[];
+    if (mostViewed.isNotEmpty) {
+      children.add(_buildSectionHeader(
+        theme,
+        titleKey: 'most_viewed_trains',
+        fallback: 'Treni più visualizzati',
+        total: _totalViewersLive,
+        expanded: _mostViewedExpanded,
+        onToggle: () =>
+            _safeSetState(() => _mostViewedExpanded = !_mostViewedExpanded),
+      ));
+      if (_mostViewedExpanded) {
+        for (final t in mostViewed) {
+          children.add(_buildTrainListCard(t, theme));
+        }
+      }
+    }
+    for (final t in _cachedLiveTrains) {
+      children.add(_buildTrainListCard(t, theme));
+    }
+    if (recent.isNotEmpty) {
+      children.add(_buildSectionHeader(
+        theme,
+        titleKey: 'recent_trains',
+        fallback: 'Treni recenti',
+        expanded: _recentExpanded,
+        onToggle: () =>
+            _safeSetState(() => _recentExpanded = !_recentExpanded),
+      ));
+      if (_recentExpanded) {
+        for (final t in recent) {
+          children.add(_buildTrainListCard(t, theme));
+        }
+      }
+    }
     return RefreshIndicator(
       onRefresh: () async {
         await _loadLiveTrains(silent: false);
         await _loadMostViewed();
       },
-      child: ListView.builder(
+      child: ListView.separated(
         padding: const EdgeInsets.only(bottom: 100, top: 4),
-        itemCount:
-            (hasMostViewed ? 1 + mostViewed.length : 0) + _cachedLiveTrains.length,
-        itemBuilder: (ctx, i) {
-          var idx = i;
-          if (hasMostViewed) {
-            if (idx == 0) return _buildMostViewedHeader(theme);
-            idx -= 1;
-            if (idx < mostViewed.length) {
-              return _buildTrainListCard(mostViewed[idx], theme);
-            }
-            idx -= mostViewed.length;
-          }
-          return _buildTrainListCard(_cachedLiveTrains[idx], theme);
-        },
+        itemCount: children.length,
+        separatorBuilder: (_, __) =>
+            Divider(height: 1, color: theme.dividerColor),
+        itemBuilder: (_, i) => children[i],
       ),
     );
   }
 
-  /// Titolo sezione "più visualizzati" sopra le card.
-  Widget _buildMostViewedHeader(ThemeProvider theme) {
+  /// Titolo sezione comprimibile (più visualizzati / recenti) con
+  /// eventuale badge del totale utenti collegati adesso.
+  Widget _buildSectionHeader(
+    ThemeProvider theme, {
+    required String titleKey,
+    required String fallback,
+    int? total,
+    required bool expanded,
+    required VoidCallback onToggle,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
-            ),
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  RuntimeLocalizations.t(context, titleKey) ?? fallback,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: theme.secondaryTextColor,
+                  ),
+                ),
+              ),
+              if (total != null && total > 0) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$total',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Icon(
+                expanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: theme.secondaryTextColor,
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          Text(
-            RuntimeLocalizations.t(context, 'most_viewed_trains') ??
-                'Treni più visualizzati',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: theme.secondaryTextColor,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -3302,10 +3401,21 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     DateTime? scheduled;
     final sRaw = (m['scheduledTime'] ?? '').toString();
     if (sRaw.isNotEmpty) scheduled = DateTime.tryParse(sRaw);
-    if (scheduled == null && stopsList.isNotEmpty && stopsList[0] is Map) {
-      final t0 = (stopsList[0] as Map)['scheduledDeparture']?.toString() ?? '';
-      if (t0.isNotEmpty) scheduled = DateTime.tryParse(t0);
+    DateTime? estimated;
+    final eRaw = (m['estimatedTime'] ?? '').toString();
+    if (eRaw.isNotEmpty) estimated = DateTime.tryParse(eRaw);
+    if (stopsList.isNotEmpty && stopsList[0] is Map) {
+      final s0 = stopsList[0] as Map;
+      if (scheduled == null) {
+        final t0 = (s0['scheduledDeparture'] ?? '').toString();
+        if (t0.isNotEmpty) scheduled = DateTime.tryParse(t0);
+      }
+      if (estimated == null) {
+        final t1 = (s0['estimatedDeparture'] ?? '').toString();
+        if (t1.isNotEmpty) estimated = DateTime.tryParse(t1);
+      }
     }
+    final platformStr = (m['platform'] ?? '').toString();
     return TrainDeparture(
       tripId: m['trip_id']?.toString() ?? m['tripId']?.toString(),
       trainNumber: (m['trip_number'] ?? m['trainNumber'] ?? '').toString(),
@@ -3313,6 +3423,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       origin: origin,
       destination: destination,
       scheduledTime: scheduled,
+      estimatedTime: estimated,
+      platform: platformStr.isNotEmpty ? platformStr : null,
       delayMinutes: delay,
       status: delay > 0 ? 'DELAYED' : 'ON_TIME',
       country: (m['country'] ?? m['countryCode'] ?? m['provider'] ?? 'EU').toString(),
@@ -3399,295 +3511,245 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
               debugPrint('[MostViewed] card num=${train['trip_number']}: solo dati presence parziali');
             }
           }
-          final category = (train['category'] ?? '').toString().trim();
-          final number = (train['trip_number'] ?? '').toString().trim();
-          final tripId = train['trip_id']?.toString() ?? train['tripId']?.toString();
-          final delay = train['delay'] ?? 0;
-          final stopsList = train['stops'] as List? ?? [];
-          final operator = train['operator'] ?? 'N/A';
-          final country = (train['country'] ?? train['countryCode'] ?? train['provider'] ?? 'EU').toString();
+          final m = train is Map
+              ? Map<String, dynamic>.from(train)
+              : <String, dynamic>{};
+          final dep = _buildDepartureFromMap(m);
+          final viewers = m['viewers'] is int ? m['viewers'] as int : 0;
 
-          String origin = 'N/A';
-          if (stopsList.isNotEmpty && stopsList[0]['stationName'] != null) {
-            origin = stopsList[0]['stationName'].toString();
+          final cat = (dep.category ?? '').trim();
+          final num = (dep.trainNumber ?? '').trim();
+          final delay = dep.delayMinutes ?? 0;
+          final origin = (dep.origin ?? '').trim();
+          final dest = (dep.destination ?? '').trim();
+          final route = origin.isNotEmpty &&
+                  origin != 'N/A' &&
+                  dest.isNotEmpty &&
+                  dest != 'N/A'
+              ? '$origin → $dest'
+              : (dest.isNotEmpty && dest != 'N/A'
+                  ? dest
+                  : (origin.isNotEmpty ? origin : '--'));
+          String? platform = dep.platform;
+          DateTime? scheduled = dep.scheduledTime;
+          DateTime? estimated = dep.estimatedTime;
+          if (dep.stops != null && dep.stops!.isNotEmpty) {
+            final s0 = dep.stops!.first;
+            scheduled ??= s0.departure ?? s0.arrival;
+            estimated ??= s0.estimatedDeparture ?? s0.estimatedArrival;
+            if (platform == null || platform.isEmpty) platform = s0.platform;
           }
-          String destination = 'N/A';
-          if (stopsList.isNotEmpty && stopsList[stopsList.length - 1]['stationName'] != null) {
-            destination = stopsList[stopsList.length - 1]['stationName'].toString();
+          final country = dep.country.isNotEmpty ? dep.country : 'EU';
+          final isHighSpeed = cat.toLowerCase().contains('fr') ||
+              cat.toLowerCase().contains('freccia') ||
+              cat.toLowerCase().contains('ec') ||
+              cat.toLowerCase().contains('ice') ||
+              cat.toLowerCase().contains('tgv');
+          final color = isHighSpeed ? Colors.redAccent : AppTokens.trainColor;
+
+          final trainProvider =
+              Provider.of<TrainProvider>(context, listen: false);
+          final settings =
+              Provider.of<SettingsProvider>(context, listen: false);
+          String? logoUrl;
+          if (settings.vectorLogosEnabled) {
+            final key = cat.toUpperCase().replaceAll(' ', '_');
+            final logo = trainProvider.trainLogos[key];
+            logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
           }
 
-          String departureTime = '--:--';
-          if (stopsList.isNotEmpty) {
-            final firstStop = stopsList[0];
-            String timeStr = firstStop['scheduledDeparture'] ??
-                firstStop['estimatedDeparture'] ??
-                firstStop['departureTime'] ??
-                '';
-            if (timeStr.isNotEmpty) {
-              try {
-                final date = DateTime.parse(timeStr);
-                departureTime =
-                    '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-              } catch (_) {
-                departureTime = timeStr;
-              }
-            }
-          }
+          final timeStr = formatCountryTime(scheduled, country);
+          final estStr =
+              estimated != null ? formatCountryTime(estimated, country) : null;
 
-          final isDelayed = delay > 0;
-
-          DateTime? cardScheduled;
-          if (stopsList.isNotEmpty && stopsList[0] is Map) {
-            final ts = ((stopsList[0] as Map)['scheduledDeparture'] ?? '')
-                .toString();
-            if (ts.isNotEmpty) cardScheduled = DateTime.tryParse(ts);
-          }
-          final dep = TrainDeparture(
-            tripId: tripId,
-            trainNumber: number,
-            category: category,
-            origin: origin,
-            destination: destination,
-            scheduledTime: cardScheduled,
-            delayMinutes: delay,
-            status: isDelayed ? 'DELAYED' : 'ON_TIME',
-            country: country,
-            stops: stopsList.map((s) => TrainStop.fromJson(s as Map<String, dynamic>)).toList(),
-          );
-
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: theme.surfaceColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.secondaryTextColor.withValues(alpha: 0.05)),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 4))],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _openTrainCard(context, dep, train, theme),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Column(
-                        children: [
-                          Text(
-                            departureTime,
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: theme.textColor,
-                              letterSpacing: -1,
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openTrainCard(context, dep, m, theme),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    if (logoUrl != null)
+                      Container(
+                        height: 24,
+                        constraints: const BoxConstraints(maxWidth: 50),
+                        padding: theme.isDark
+                            ? const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2)
+                            : EdgeInsets.zero,
+                        decoration: theme.isDark
+                            ? BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                              )
+                            : null,
+                        child: Image.network(
+                          logoUrl,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.centerLeft,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 4,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
-                          isDelayed
-                              ? _buildBadge('+$delay\'', Colors.orange)
-                              : Text(
-                                  '🟢 Live',
-                                  style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
-                                ),
-                          if (train['viewers'] is int &&
-                              (train['viewers'] as int) > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${train['viewers']}',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildLiveTrainTypeBadge(category, number, operator, theme),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(Icons.radio_button_unchecked, size: 12, color: theme.secondaryTextColor),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    origin,
-                                    style: TextStyle(fontSize: 14, color: theme.secondaryTextColor),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Icon(Icons.location_on_rounded, size: 14, color: theme.primaryColor),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    destination,
-                                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.textColor),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        width: 4,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.bar_chart_rounded, color: theme.primaryColor),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => train_stats.TrainStatsScreen(
-                                category: category,
-                                tripNumber: number,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '$cat $num',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.textColor,
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                              if (delay > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange
+                                        .withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '+$delay\'',
+                                    style: const TextStyle(
+                                        color: Colors.orange,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ] else if (delay < 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green
+                                        .withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '$delay\'',
+                                    style: const TextStyle(
+                                        color: Colors.green,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                              if (viewers > 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$viewers',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            route,
+                            style: TextStyle(
+                                color: theme.secondaryTextColor, fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      _buildLivePlatformBox(stopsList, theme),
-                    ],
-                  ),
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (platform != null && platform.isNotEmpty) ...[
+                          _buildPlatformBox(platform, theme),
+                          const SizedBox(width: 10),
+                        ],
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Builder(
+                              builder: (_) {
+                                Color timeColor;
+                                if (delay <= 0) {
+                                  timeColor = Colors.green;
+                                } else if (delay <= 5) {
+                                  timeColor = Colors.orange;
+                                } else if (delay <= 15) {
+                                  timeColor = Colors.deepOrange;
+                                } else {
+                                  timeColor = Colors.red;
+                                }
+                                return Text(
+                                  estStr != null && estStr != timeStr
+                                      ? estStr
+                                      : timeStr,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: estStr != null && estStr != timeStr
+                                        ? timeColor
+                                        : theme.textColor,
+                                    fontSize: 15,
+                                  ),
+                                );
+                              },
+                            ),
+                            if (estStr != null && estStr != timeStr)
+                              Text(
+                                timeStr,
+                                style: TextStyle(
+                                  color: theme.secondaryTextColor,
+                                  fontSize: 11,
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
           );
-  }
-
-  Widget _buildLiveTrainTypeBadge(String category, String number, String operator, ThemeProvider theme) {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-    final cat = category.isNotEmpty ? category : 'TRN';
-    final num = number.isNotEmpty ? number : '---';
-
-    if (settings.vectorLogosEnabled) {
-      final key = cat.toUpperCase().replaceAll(' ', '_');
-      final logo = trainProvider.trainLogos[key];
-      String? logoUrl;
-      if (logo != null) {
-        logoUrl = logo['png'] ?? logo['svg'];
-      }
-      debugPrint('[LogoBadge] key="$key" found=${logo != null} url=$logoUrl logosCount=${trainProvider.trainLogos.length}');
-      if (logoUrl != null) {
-        return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            height: 20,
-            constraints: const BoxConstraints(maxWidth: 60),
-            padding: theme.isDark
-                ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
-                : EdgeInsets.zero,
-            decoration: theme.isDark
-                ? BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(6),
-                  )
-                : null,
-            child: Image.network(
-              logoUrl,
-              fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              errorBuilder: (_, __, ___) => _buildLiveColorBadge(cat, num, theme),
-              loadingBuilder: (_, child, progress) {
-                if (progress == null) return child;
-                return SizedBox(
-                  width: 20,
-                  child: Center(
-                    child: SizedBox(
-                      width: 10,
-                      height: 10,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(num, style: TextStyle(fontWeight: FontWeight.bold, color: theme.textColor)),
-        ],
-      );
-      }
-    }
-    return _buildLiveColorBadge(cat, num, theme);
-  }
-
-  Widget _buildLiveColorBadge(String category, String number, ThemeProvider theme) {
-    final isHighSpeed = category.toLowerCase().contains('fr') ||
-        category.toLowerCase().contains('freccia') ||
-        category.toLowerCase().contains('ec') ||
-        category.toLowerCase().contains('ic');
-    final color = isHighSpeed ? Colors.redAccent : theme.primaryColor;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        '$category $number',
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
-      ),
-    );
-  }
-
-  Widget _buildLivePlatformBox(List<dynamic> stops, ThemeProvider theme) {
-    String platform = '-';
-    if (stops.isNotEmpty) {
-      final firstStop = stops[0];
-      platform = firstStop['platform']?.toString() ??
-          firstStop['scheduledPlatform']?.toString() ??
-          firstStop['actualPlatform']?.toString() ??
-          '-';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.primaryColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            RuntimeLocalizations.t(context, 'platform_abbr'),
-            style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: theme.primaryColor),
-          ),
-          Text(
-            platform,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.textColor),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildTrainSearchResults(ThemeProvider theme) {
@@ -4328,21 +4390,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       child: Text(
         '$category $number',
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
-      ),
-    );
-  }
-
-  Widget _buildBadge(String label, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: color),
       ),
     );
   }

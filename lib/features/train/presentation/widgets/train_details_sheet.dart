@@ -779,17 +779,27 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             : (_externalDep?.stops?.isNotEmpty == true
                 ? _externalDep?.stops
                 : widget.departure.stops);
-    if (bestStops != null && bestStops.isNotEmpty) {
-      _lastPresenceStops = bestStops;
+    final cleanedStops = _cleanPresenceStops(bestStops);
+    if (cleanedStops != null) {
+      _lastPresenceStops = cleanedStops;
     }
+    // Mai inviare 'N/A' (fallback locale quando i nomi mancano): il server
+    // lo scarterebbe comunque, ma così non inquiniamo proprio il payload.
+    final bestOrigin = _firstValidPresenceStr(
+        [current.origin, _externalDep?.origin, widget.departure.origin]);
+    final bestDestination = _firstValidPresenceStr([
+      current.destination,
+      _externalDep?.destination,
+      widget.departure.destination
+    ]);
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
       screen: 'national',
       train: {
         'category': current.category,
         'trainNumber': current.trainNumber,
-        'origin': current.origin,
-        'destination': current.destination,
+        'origin': bestOrigin,
+        'destination': bestDestination,
         'scheduledTime': current.scheduledTime?.toIso8601String(),
         'estimatedTime': current.estimatedTime?.toIso8601String(),
         'delayMinutes': current.delayMinutes,
@@ -800,7 +810,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         // Dati completi per la sezione "più visualizzati": tripId per
         // ricaricare il trip + tutte le fermate così il dettaglio è completo.
         'tripId': _lastPresenceTripId ?? bestTripId,
-        'stops': (_lastPresenceStops ?? bestStops)
+        'stops': (_lastPresenceStops ?? cleanedStops)
             ?.map((s) => s.toJson())
             .toList(),
       },
@@ -913,6 +923,28 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           : null,
       metadata: tripData['metadata'] as Map<String, dynamic>?,
     );
+  }
+
+  /// 'N/A' e simili non sono nomi veri: non vanno mai inviati all'API.
+  static bool _isJunkPresenceStr(String? v) {
+    if (v == null) return true;
+    final s = v.trim().toUpperCase();
+    return s.isEmpty || s == 'N/A' || s == 'N/D' || s == '--' || s == '-';
+  }
+
+  static String? _firstValidPresenceStr(List<String?> values) {
+    for (final v in values) {
+      if (!_isJunkPresenceStr(v)) return v;
+    }
+    return null;
+  }
+
+  /// Scarta le fermate con nome spazzatura (fallback 'N/A' locali).
+  static List<TrainStop>? _cleanPresenceStops(List<TrainStop>? stops) {
+    if (stops == null || stops.isEmpty) return null;
+    final cleaned =
+        stops.where((s) => !_isJunkPresenceStr(s.stationName)).toList();
+    return cleaned.isEmpty ? null : cleaned;
   }
 
   /// Estrae una stringa da un valore che puo essere String, Map o null.
