@@ -674,7 +674,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   // Scroll controller per navigare alle fermate
   final ScrollController _scrollController = ScrollController();
-  bool _showScrollToCurrent = false;
 
   // Evita fallback ritardo concorrenti
   bool _isRefreshingDelayFallback = false;
@@ -686,6 +685,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   Timer? _presenceTimer;
   int? _viewersCount;
   String? _presenceKey;
+  // Ultimo tripId / fermate buoni inviati all'API: il primo utente che apre
+  // il treno li pubblica mentre la sheet è aperta, e non si perdono più
+  // (il refresh del tabellone può temporaneamente azzerarli).
+  String? _lastPresenceTripId;
+  List<TrainStop>? _lastPresenceStops;
 
   @override
   void initState() {
@@ -756,6 +760,28 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
     print('[Presence] tick key=$key');
     final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    // Miglior tripId / fermate da tutte le fonti: il primo utente che apre
+    // il treno li pubblica all'API mentre la sheet è aperta.
+    final bestTripId = current.tripId?.isNotEmpty == true
+        ? current.tripId
+        : (_externalDep?.tripId?.isNotEmpty == true
+            ? _externalDep?.tripId
+            : widget.departure.tripId);
+    if (bestTripId != null &&
+        bestTripId.isNotEmpty &&
+        bestTripId != _lastPresenceTripId) {
+      _lastPresenceTripId = bestTripId;
+      print('[Presence] tripId pubblicato: $bestTripId');
+    }
+    final List<TrainStop>? bestStops =
+        current.stops?.isNotEmpty == true
+            ? current.stops
+            : (_externalDep?.stops?.isNotEmpty == true
+                ? _externalDep?.stops
+                : widget.departure.stops);
+    if (bestStops != null && bestStops.isNotEmpty) {
+      _lastPresenceStops = bestStops;
+    }
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
       screen: 'national',
@@ -771,6 +797,12 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         'operator': current.operator,
         'country': _sheetCountry,
         'isArrival': widget.isArrivalMode,
+        // Dati completi per la sezione "più visualizzati": tripId per
+        // ricaricare il trip + tutte le fermate così il dettaglio è completo.
+        'tripId': _lastPresenceTripId ?? bestTripId,
+        'stops': (_lastPresenceStops ?? bestStops)
+            ?.map((s) => s.toJson())
+            .toList(),
       },
     );
     print('[Presence] viewers=$count (was $_viewersCount)');
@@ -950,6 +982,12 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         _externalDep = frozen;
         _hasLoadedExternalData = true;
       });
+      // Pubblica subito tripId + fermate all'API (primo utente che apre
+      // il treno), senza aspettare il prossimo tick da 5s.
+      if ((_lastPresenceTripId == null || _lastPresenceTripId!.isEmpty) ||
+          _lastPresenceStops == null) {
+        _presenceTick();
+      }
       debugPrint('[NationalDelay] Trip esterno aggiornato: ${frozen.stops?.length} fermate');
     } catch (e) {
       debugPrint('[NationalDelay] Errore refresh trip esterno: $e');
@@ -1020,6 +1058,13 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             _isLoadingExternalDetails = false;
             _hasLoadedExternalData = true;
           });
+          // Pubblica subito tripId + fermate all'API (primo utente che
+          // apre il treno), senza aspettare il prossimo tick da 5s.
+          if ((_lastPresenceTripId == null ||
+                  _lastPresenceTripId!.isEmpty) ||
+              _lastPresenceStops == null) {
+            _presenceTick();
+          }
           return;
         }
       }
@@ -1330,8 +1375,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 ),
               ],
             ),
-            // Floating button per navigare alla posizione attuale del treno
-            _buildScrollToCurrentButton(context, theme, trainProvider),
           ],
         ),
       ),
@@ -1373,14 +1416,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildTrainIdentifier(context, theme, currentDep),
-                            _buildViewersRow(theme),
-                          ],
-                        ),
+                        child: _buildTrainIdentifier(context, theme, currentDep),
                       ),
                       const SizedBox(width: 8),
                       _buildProgressButton(context, theme, trainProvider),
@@ -1392,7 +1428,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               ),
               const SizedBox(height: 12),
               _buildRouteRow(context, theme, trainProvider),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              _buildViewersRow(theme),
+              const SizedBox(height: 8),
               _buildActionChips(context, theme, trainProvider),
             ],
           ),
@@ -1440,6 +1478,29 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         }
       }
       progress = progress.clamp(0.0, 1.0);
+    }
+
+    // Indice fermata corrente per il pulsante "vai alla posizione"
+    int scrollIdx = -1;
+    if (stops.isNotEmpty) {
+      final nowUtc2 = DateTime.now().toUtc();
+      for (int i = 0; i < stops.length; i++) {
+        final arrTime =
+            stops[i].estimatedArrival?.toUtc() ?? stops[i].arrival?.toUtc();
+        final depTime = stops[i].estimatedDeparture?.toUtc() ??
+            stops[i].departure?.toUtc();
+        if (arrTime != null &&
+            depTime != null &&
+            nowUtc2.isAfter(arrTime) &&
+            nowUtc2.isBefore(depTime)) {
+          scrollIdx = i;
+          break;
+        }
+        if (depTime != null && nowUtc2.isBefore(depTime)) {
+          scrollIdx = i;
+          break;
+        }
+      }
     }
 
     return Container(
@@ -1511,11 +1572,36 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   style: AppTextStyle.labelSmall(color: theme.secondaryTextColor),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  origin,
-                  style: AppTextStyle.titleMedium(color: theme.textColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        origin,
+                        style: AppTextStyle.titleMedium(color: theme.textColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (scrollIdx >= 0) ...[
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _scrollToStop(scrollIdx),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: AppTokens.trainColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.my_location_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 20),
                 // Destination label
@@ -1961,59 +2047,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
   }
 
-  Widget _buildScrollToCurrentButton(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
-    // Mostra il solo se il treno è in transito o in una stazione
-    final currentDep = trainProvider.departures.firstWhere(
-      (d) => (d.tripId != null && d.tripId == widget.departure.tripId) ||
-             (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
-      orElse: () => _externalDep ?? widget.departure,
-    );
-
-    if (currentDep.stops == null || currentDep.stops!.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    // Trova la fermata corrente
-    final DateTime nowUtc = DateTime.now().toUtc();
-    int currentIdx = -1;
-    for (int i = 0; i < currentDep.stops!.length; i++) {
-      final stop = currentDep.stops![i];
-      final arrTime = stop.estimatedArrival?.toUtc() ?? stop.arrival?.toUtc();
-      final depTime = stop.estimatedDeparture?.toUtc() ?? stop.departure?.toUtc();
-
-      if (arrTime != null && depTime != null && nowUtc.isAfter(arrTime) && nowUtc.isBefore(depTime)) {
-        currentIdx = i;
-        break;
-      }
-      if (depTime != null && nowUtc.isBefore(depTime)) {
-        currentIdx = i;
-        break;
-      }
-    }
-
-    if (currentIdx < 0) {
-      return const SizedBox.shrink();
-    }
-
-    return Positioned(
-      bottom: 24,
-      right: 16,
-      child: FloatingActionButton.small(
-        heroTag: 'scroll_to_current_train',
-        onPressed: () {
-          // Calcola l'offset approssimato della fermata corrente
-          const itemHeight = 72.0; // Altezza approssimativa di ogni riga fermata
-          final targetOffset = (currentIdx * itemHeight).clamp(0.0, _scrollController.position.maxScrollExtent);
-          _scrollController.animateTo(
-            targetOffset,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOutCubic,
-          );
-        },
-        backgroundColor: AppTokens.trainColor,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.my_location_rounded, size: 20),
-      ),
+  /// Scorre la timeline fino alla fermata [index].
+  void _scrollToStop(int index) {
+    if (!_scrollController.hasClients) return;
+    // Calcola l'offset approssimato della fermata corrente
+    const itemHeight = 72.0; // Altezza approssimativa di ogni riga fermata
+    final targetOffset =
+        (index * itemHeight).clamp(0.0, _scrollController.position.maxScrollExtent);
+    _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -2580,15 +2624,18 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     return _buildColorText(category, number, theme);
   }
 
-  /// Contatore spettatori live sotto nome/numero treno.
+  /// Contatore spettatori live sopra i pulsanti, allineato a sinistra.
   Widget _buildViewersRow(ThemeProvider theme) {
     if (_viewersCount == null || _viewersCount! <= 0) {
       return const SizedBox.shrink();
     }
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 8,
@@ -2598,7 +2645,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Flexible(
             child: Text(
               _viewersCount == 1
@@ -2608,12 +2655,66 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       'viewers_watching_many',
                       params: {'count': '$_viewersCount'},
                     ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 color: theme.secondaryTextColor,
+                height: 1.3,
               ),
             ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _showViewersInfo(context, theme),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(
+                    alpha: theme.isDark ? 0.25 : 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.primaryColor.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Icon(
+                Icons.info_rounded,
+                size: 14,
+                color: theme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+
+  /// Popup che spiega come viene raccolto il numero di spettatori.
+  void _showViewersInfo(BuildContext context, ThemeProvider theme) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          RuntimeLocalizations.t(ctx, 'viewers_info_title') ??
+              'Come contiamo gli spettatori',
+          style: TextStyle(
+              color: theme.textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          RuntimeLocalizations.t(ctx, 'viewers_info_body') ?? '',
+          style: TextStyle(color: theme.textColor, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(RuntimeLocalizations.t(ctx, 'close') ?? 'Chiudi'),
           ),
         ],
       ),

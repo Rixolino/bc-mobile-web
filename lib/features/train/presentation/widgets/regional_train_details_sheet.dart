@@ -135,6 +135,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   Timer? _presenceTimer;
   int? _viewersCount;
   String? _presenceKey;
+  // Ultime fermate buone inviate all'API: il primo utente che apre il treno
+  // le pubblica mentre la sheet è aperta, e non si perdono più.
+  List<Map<String, dynamic>>? _lastPresenceStops;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -195,6 +198,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     print('[Presence] regional tick key=$key');
     final trip = _current;
+    // Migliori fermate da tutte le fonti + ricordo dell'ultimo buono.
+    final rawStops = trip['stops'];
+    if (rawStops is List && rawStops.isNotEmpty) {
+      _lastPresenceStops = List<Map<String, dynamic>>.from(rawStops
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)));
+      print('[Presence] fermate pubblicate: ${_lastPresenceStops!.length}');
+    }
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
       screen: 'regional',
@@ -213,6 +224,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         'operator': trip['operator']?.toString(),
         'provider': widget.provider.name,
         'isArrival': widget.isArrivalMode,
+        // Dati completi per la sezione "più visualizzati": tutte le
+        // fermate così il dettaglio è completo come la vista normale.
+        'tripId': widget.tripId.isNotEmpty ? widget.tripId : null,
+        'stops': _lastPresenceStops ?? trip['stops'],
       },
     );
     print('[Presence] regional viewers=$count (was $_viewersCount)');
@@ -517,6 +532,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               _hasLoadedData = true;
               _error = null;
             });
+          }
+          // Pubblica subito le fermate all'API (primo utente che apre
+          // il treno), senza aspettare il prossimo tick da 5s.
+          if (_lastPresenceStops == null) {
+            _presenceTick();
           }
           // All'apertura: cerca il ritardo fresco nei tabelloni delle
           // fermate (stessa logica del flusso nazionale) e aggiornalo.
@@ -891,7 +911,6 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                 ),
               ],
             ),
-            _buildScrollToCurrentButton(context, theme),
           ],
         ),
       ),
@@ -934,14 +953,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                       theme: theme),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildTrainIdentifier(context, theme, current),
-                        _buildViewersRow(theme),
-                      ],
-                    ),
+                    child: _buildTrainIdentifier(context, theme, current),
                   ),
                   const SizedBox(width: 8),
                   _buildProgressButton(context, theme),
@@ -951,7 +963,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               ),
               const SizedBox(height: 12),
               _buildRouteRow(context, theme),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              _buildViewersRow(theme),
+              const SizedBox(height: 8),
               _buildActionChips(context, theme),
             ],
           ),
@@ -1001,6 +1015,28 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         }
       }
       progress = progress.clamp(0.0, 1.0);
+    }
+
+    // Indice fermata corrente per il pulsante "vai alla posizione"
+    int scrollIdx = -1;
+    if (stops.isNotEmpty) {
+      final nowUtc2 = DateTime.now().toUtc();
+      for (int i = 0; i < stops.length; i++) {
+        final times = _estimateRegionalStopTimes(stops[i], _delay);
+        final arrTime = times['arr'];
+        final depTime = times['dep'];
+        if (arrTime != null &&
+            depTime != null &&
+            nowUtc2.isAfter(arrTime) &&
+            nowUtc2.isBefore(depTime)) {
+          scrollIdx = i;
+          break;
+        }
+        if (depTime != null && nowUtc2.isBefore(depTime)) {
+          scrollIdx = i;
+          break;
+        }
+      }
     }
 
     return Container(
@@ -1077,11 +1113,37 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                       AppTextStyle.labelSmall(color: theme.secondaryTextColor),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  origin.isNotEmpty ? origin : '--',
-                  style: AppTextStyle.titleMedium(color: theme.textColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        origin.isNotEmpty ? origin : '--',
+                        style:
+                            AppTextStyle.titleMedium(color: theme.textColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (scrollIdx >= 0) ...[
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _scrollToStop(scrollIdx),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: AppTokens.trainColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.my_location_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 20),
                 // Destination label
@@ -1194,15 +1256,18 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     );
   }
 
-  /// Contatore spettatori live sotto nome/numero treno.
+  /// Contatore spettatori live sopra i pulsanti, allineato a sinistra.
   Widget _buildViewersRow(ThemeProvider theme) {
     if (_viewersCount == null || _viewersCount! <= 0) {
       return const SizedBox.shrink();
     }
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12),
+        child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 8,
@@ -1212,7 +1277,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Flexible(
             child: Text(
               _viewersCount == 1
@@ -1222,12 +1287,66 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                       'viewers_watching_many',
                       params: {'count': '$_viewersCount'},
                     ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 color: theme.secondaryTextColor,
+                height: 1.3,
               ),
             ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _showViewersInfo(context, theme),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(
+                    alpha: theme.isDark ? 0.25 : 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.primaryColor.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Icon(
+                Icons.info_rounded,
+                size: 14,
+                color: theme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+
+  /// Popup che spiega come viene raccolto il numero di spettatori.
+  void _showViewersInfo(BuildContext context, ThemeProvider theme) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          RuntimeLocalizations.t(ctx, 'viewers_info_title') ??
+              'Come contiamo gli spettatori',
+          style: TextStyle(
+              color: theme.textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          RuntimeLocalizations.t(ctx, 'viewers_info_body') ?? '',
+          style: TextStyle(color: theme.textColor, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(RuntimeLocalizations.t(ctx, 'close') ?? 'Chiudi'),
           ),
         ],
       ),
@@ -1528,54 +1647,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     );
   }
 
-  Widget _buildScrollToCurrentButton(
-      BuildContext context, ThemeProvider theme) {
-    final stops = _stops;
-    if (stops.isEmpty) return const SizedBox.shrink();
-
-    // Trova la fermata corrente
-    final DateTime nowUtc = DateTime.now().toUtc();
-    int currentIdx = -1;
-    for (int i = 0; i < stops.length; i++) {
-      final times = _estimateRegionalStopTimes(stops[i], _delay);
-      final arrTime = times['arr'];
-      final depTime = times['dep'];
-
-      if (arrTime != null &&
-          depTime != null &&
-          nowUtc.isAfter(arrTime) &&
-          nowUtc.isBefore(depTime)) {
-        currentIdx = i;
-        break;
-      }
-      if (depTime != null && nowUtc.isBefore(depTime)) {
-        currentIdx = i;
-        break;
-      }
-    }
-
-    if (currentIdx < 0) return const SizedBox.shrink();
-
-    return Positioned(
-      bottom: 24,
-      right: 16,
-      child: FloatingActionButton.small(
-        heroTag: 'scroll_to_current_regional_train',
-        onPressed: () {
-          const itemHeight = 72.0;
-          if (!_scrollController.hasClients) return;
-          final targetOffset = (currentIdx * itemHeight)
-              .clamp(0.0, _scrollController.position.maxScrollExtent);
-          _scrollController.animateTo(
-            targetOffset,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOutCubic,
-          );
-        },
-        backgroundColor: AppTokens.trainColor,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.my_location_rounded, size: 20),
-      ),
+  /// Scorre la timeline fino alla fermata [index].
+  void _scrollToStop(int index) {
+    const itemHeight = 72.0;
+    if (!_scrollController.hasClients) return;
+    final targetOffset = (index * itemHeight)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
     );
   }
 

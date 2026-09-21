@@ -97,6 +97,30 @@ class TrainPresenceService {
     } catch (_) {}
   }
 
+  /// Legge la classifica dei treni più visualizzati adesso
+  /// (GET /api/train-presence/live, già ordinata per viewer desc).
+  /// Ritorna lista di {trainKey, viewers, screen, train, lastSeen}, mai eccezioni.
+  Future<List<Map<String, dynamic>>> fetchMostViewed() async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse('${ApiConstants.baseUrl}/api/train-presence/live'),
+          )
+          .timeout(_timeout);
+      if (resp.statusCode != 200) return [];
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map && decoded['trains'] is List) {
+        return (decoded['trains'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Legge il numero di viewer attuali per [trainKey] (null se errore).
   Future<int?> fetchViewers(String trainKey) async {
     try {

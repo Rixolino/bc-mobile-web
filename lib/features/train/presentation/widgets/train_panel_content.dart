@@ -24,6 +24,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
+import '../../../../core/services/train_presence_service.dart';
 import 'railway_station_stats_screen.dart' as station_stats;
 import 'train_stats_screen.dart' as train_stats;
 import 'package:intl/intl.dart';
@@ -94,6 +95,9 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   bool _isLoadingLiveTrains = false;
   Timer? _liveTrainsRefreshTimer;
   bool _isFirstLiveLoad = true;
+
+  // Treni più visualizzati adesso (classifica presence backend)
+  List<Map<String, dynamic>> _mostViewedTrains = [];
 
   bool _isSearchingRouting = false;
   Map<String, dynamic>? _routingData;
@@ -1044,6 +1048,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             : _countries;
         _onSearchChanged(_searchController.text, provider, displayedCountries);
         _loadLiveTrains(silent: true);
+        _loadMostViewed();
       }
     }
   }
@@ -1082,12 +1087,105 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
   void _startLiveTrainsRefresh() {
     Future.microtask(() => _loadLiveTrains(silent: false));
+    Future.microtask(() => _loadMostViewed());
     _liveTrainsRefreshTimer?.cancel();
     _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
         _loadLiveTrains(silent: true);
+        _loadMostViewed();
       }
     });
+  }
+
+  /// Treni più visualizzati adesso (GET /live, top 5).
+  Future<void> _loadMostViewed() async {
+    if (_isOffline || !mounted) return;
+    try {
+      final live = await TrainPresenceService().fetchMostViewed();
+      if (!mounted) return;
+      _safeSetState(() {
+        _mostViewedTrains = live.take(5).toList();
+      });
+    } catch (_) {}
+  }
+
+  /// Normalizza una entry presence /live nello stesso formato dei treni live,
+  /// così la card della lista è identica (stesso stile, stesso tap dettagli).
+  /// Usa tripId + tutte le fermate inviate dall'heartbeat: il dettaglio che
+  /// si apre è completo come la visualizzazione normale.
+  Map<String, dynamic> _normalizePresenceTrain(Map<String, dynamic> entry) {
+    final t = entry['train'] is Map
+        ? Map<String, dynamic>.from(entry['train'] as Map)
+        : <String, dynamic>{};
+    final origin = (t['origin'] ?? '').toString();
+    final destination = (t['destination'] ?? '').toString();
+    final scheduled = (t['scheduledTime'] ?? '').toString();
+    final estimated = (t['estimatedTime'] ?? '').toString();
+    final stops = <Map<String, dynamic>>[];
+    final rawStops = t['stops'];
+    if (rawStops is List && rawStops.isNotEmpty) {
+      for (final s in rawStops) {
+        if (s is Map) {
+          stops.add(_normalizePresenceStop(Map<String, dynamic>.from(s)));
+        }
+      }
+    }
+    if (stops.isEmpty) {
+      if (origin.isNotEmpty) {
+        stops.add({
+          'stationName': origin,
+          'scheduledDeparture': scheduled,
+          'estimatedDeparture': estimated,
+        });
+      }
+      if (destination.isNotEmpty) {
+        stops.add({
+          'stationName': destination,
+          'scheduledDeparture': '',
+          'estimatedDeparture': '',
+        });
+      }
+    }
+    return {
+      'category': (t['category'] ?? '').toString(),
+      'trip_number': (t['trip_number'] ?? t['trainNumber'] ?? '').toString(),
+      'trip_id': t['trip_id']?.toString() ?? t['tripId']?.toString(),
+      'delay': t['delayMinutes'] ?? t['delay'] ?? 0,
+      'operator': (t['operator'] ?? '').toString().isNotEmpty
+          ? (t['operator'] ?? '').toString()
+          : 'N/A',
+      'country': (t['country'] ??
+              (_selectedCountry.isNotEmpty ? _selectedCountry : 'IT'))
+          .toString(),
+      'origin': origin,
+      'destination': destination,
+      'scheduledTime': scheduled,
+      'estimatedTime': estimated,
+      'stops': stops,
+      'viewers': entry['viewers'] ?? 0,
+    };
+  }
+
+  /// Porta una fermata presence (formato board oppure TrainStop.toJson)
+  /// nelle chiavi lette dalle card (stationName, scheduledDeparture,
+  /// estimatedDeparture, platform).
+  Map<String, dynamic> _normalizePresenceStop(Map<String, dynamic> s) {
+    String str(dynamic v) => (v ?? '').toString();
+    return {
+      ...s,
+      'stationName': str(s['stationName'] ?? s['station'] ?? s['name']),
+      'scheduledDeparture': str(s['scheduledDeparture'] ??
+          s['departure'] ??
+          s['departureTime'] ??
+          s['scheduledTime'] ??
+          s['arrival'] ??
+          s['time']),
+      'estimatedDeparture': str(s['estimatedDeparture'] ?? s['actualDeparture']),
+      'platform': str(s['platform'] ??
+          s['actualPlatform'] ??
+          s['plannedPlatform'] ??
+          s['scheduledPlatform']),
+    };
   }
 
   Future<void> _checkStationStatus(String stationId) async {
@@ -2038,6 +2136,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                 _safeSetState(() => _selectedIndex = newIndex);
                 if (newIndex == 1 && _trainSearchController.text.isEmpty) {
                   Future.microtask(() => _loadLiveTrains(silent: false));
+                  Future.microtask(() => _loadMostViewed());
                 }
                  if (newIndex == 2) {
                 // Naviga verso la schermata di ricerca soluzioni
@@ -3058,7 +3157,11 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       return ShimmerLoading(baseColor: theme.secondaryTextColor);
     }
     
-    if (_cachedLiveTrains.isEmpty) {
+    final mostViewed =
+        _mostViewedTrains.map(_normalizePresenceTrain).toList();
+    final hasMostViewed = mostViewed.isNotEmpty;
+
+    if (_cachedLiveTrains.isEmpty && !hasMostViewed) {
       if (_isLoadingLiveTrains) {
         return ShimmerLoading(baseColor: theme.secondaryTextColor);
       }
@@ -3085,12 +3188,217 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     return RefreshIndicator(
       onRefresh: () async {
         await _loadLiveTrains(silent: false);
+        await _loadMostViewed();
       },
       child: ListView.builder(
         padding: const EdgeInsets.only(bottom: 100, top: 4),
-        itemCount: _cachedLiveTrains.length,
+        itemCount:
+            (hasMostViewed ? 1 + mostViewed.length : 0) + _cachedLiveTrains.length,
         itemBuilder: (ctx, i) {
-          final train = _cachedLiveTrains[i];
+          var idx = i;
+          if (hasMostViewed) {
+            if (idx == 0) return _buildMostViewedHeader(theme);
+            idx -= 1;
+            if (idx < mostViewed.length) {
+              return _buildTrainListCard(mostViewed[idx], theme);
+            }
+            idx -= mostViewed.length;
+          }
+          return _buildTrainListCard(_cachedLiveTrains[idx], theme);
+        },
+      ),
+    );
+  }
+
+  /// Titolo sezione "più visualizzati" sopra le card.
+  Widget _buildMostViewedHeader(ThemeProvider theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            RuntimeLocalizations.t(context, 'most_viewed_trains') ??
+                'Treni più visualizzati',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: theme.secondaryTextColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cerca il treno presence nella lista live (dati completi: tripId +
+  /// tutte le fermate). Così il dettaglio aperto dai "più visualizzati"
+  /// è completo come la vista normale invece di mostrare solo origine
+  /// e destinazione.
+  Map<String, dynamic>? _findLiveTrainForPresence(Map<String, dynamic> p) {
+    final number = (p['trip_number'] ?? p['trainNumber'] ?? '').toString();
+    if (number.isEmpty || _cachedLiveTrains.isEmpty) {
+      debugPrint('[MostViewed] skip resolve: num="$number" liveCount=${_cachedLiveTrains.length}');
+      return null;
+    }
+    final origin = (p['origin'] ?? '').toString().toLowerCase();
+    final destination = (p['destination'] ?? '').toString().toLowerCase();
+    Map<String, dynamic>? fallback;
+    for (final e in _cachedLiveTrains) {
+      if (e is! Map) continue;
+      if ((e['trip_number'] ?? '').toString() != number) continue;
+      final live = Map<String, dynamic>.from(e);
+      fallback ??= live;
+      final stops = live['stops'];
+      if (stops is List && stops.isNotEmpty) {
+        final first = stops.first is Map
+            ? ((stops.first as Map)['stationName'] ?? '').toString().toLowerCase()
+            : '';
+        final last = stops.last is Map
+            ? ((stops.last as Map)['stationName'] ?? '').toString().toLowerCase()
+            : '';
+        final originOk = origin.isEmpty || first == origin;
+        final destOk = destination.isEmpty || last == destination;
+        if (originOk && destOk) {
+          debugPrint('[MostViewed] resolve num="$number": match ${live['trip_number']} (tripId=${live['trip_id']}, stops=${(live['stops'] as List?)?.length})');
+          return live;
+        }
+      }
+    }
+    debugPrint('[MostViewed] resolve num="$number": ${fallback == null ? 'nessun match' : 'fallback senza match origine/dest'}');
+    return fallback;
+  }
+
+  /// Costruisce una TrainDeparture completa da una mappa live/presence
+  /// (usato dal tap con fallback su live freschi).
+  TrainDeparture _buildDepartureFromMap(Map<String, dynamic> m) {
+    final stopsRaw = m['stops'];
+    final stopsList = stopsRaw is List ? stopsRaw : <dynamic>[];
+    String origin = 'N/A';
+    String destination = 'N/A';
+    if (stopsList.isNotEmpty &&
+        stopsList[0] is Map &&
+        (stopsList[0] as Map)['stationName'] != null) {
+      origin = (stopsList[0] as Map)['stationName'].toString();
+    }
+    if (stopsList.isNotEmpty &&
+        stopsList.last is Map &&
+        (stopsList.last as Map)['stationName'] != null) {
+      destination = (stopsList.last as Map)['stationName'].toString();
+    }
+    int delay = 0;
+    final dRaw = m['delay'] ?? m['delayMinutes'];
+    if (dRaw is int) delay = dRaw;
+    if (dRaw is double) delay = dRaw.round();
+    if (dRaw is String) delay = int.tryParse(dRaw) ?? 0;
+    DateTime? scheduled;
+    final sRaw = (m['scheduledTime'] ?? '').toString();
+    if (sRaw.isNotEmpty) scheduled = DateTime.tryParse(sRaw);
+    if (scheduled == null && stopsList.isNotEmpty && stopsList[0] is Map) {
+      final t0 = (stopsList[0] as Map)['scheduledDeparture']?.toString() ?? '';
+      if (t0.isNotEmpty) scheduled = DateTime.tryParse(t0);
+    }
+    return TrainDeparture(
+      tripId: m['trip_id']?.toString() ?? m['tripId']?.toString(),
+      trainNumber: (m['trip_number'] ?? m['trainNumber'] ?? '').toString(),
+      category: (m['category'] ?? '').toString(),
+      origin: origin,
+      destination: destination,
+      scheduledTime: scheduled,
+      delayMinutes: delay,
+      status: delay > 0 ? 'DELAYED' : 'ON_TIME',
+      country: (m['country'] ?? m['countryCode'] ?? m['provider'] ?? 'EU').toString(),
+      operator: (m['operator'] ?? 'N/A').toString(),
+      stops: stopsList
+          .whereType<Map>()
+          .map((s) => TrainStop.fromJson(Map<String, dynamic>.from(s)))
+          .toList(),
+    );
+  }
+
+  /// Tap su una card: se è un treno presence senza tripId cerca i dati
+  /// completi prima di aprire il dettaglio (stesso flusso della ricerca
+  /// normale): 1) cache live, 2) live freschi, 3) tripId dal DB storico.
+  /// Con il tripId la sheet carica il trip completo (tutte le fermate).
+  Future<void> _openTrainCard(BuildContext context, TrainDeparture dep,
+      dynamic train, ThemeProvider theme) async {
+    var openDep = dep;
+    if (train is Map &&
+        train['viewers'] is int &&
+        (train['trip_id'] == null && train['tripId'] == null)) {
+      final tmap = Map<String, dynamic>.from(train);
+      final tnum = (tmap['trip_number'] ?? tmap['trainNumber'] ?? '').toString();
+      final tcat = (tmap['category'] ?? '').toString();
+      debugPrint('[MostViewed] tap num=$tnum: provo live freschi');
+      try {
+        final response = await http
+            .get(Uri.parse(
+                'https://betacloud-transporter.is-cool.dev/api/trains/live'))
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body)['data'];
+          if (data is List) {
+            final savedCache = _cachedLiveTrains;
+            _cachedLiveTrains = data;
+            final live = _findLiveTrainForPresence(tmap);
+            _cachedLiveTrains = savedCache;
+            if (live != null) {
+              final full = {...live, 'viewers': tmap['viewers']};
+              openDep = _buildDepartureFromMap(full);
+              debugPrint('[MostViewed] tap risolto: tripId=${full['trip_id']}, stops=${(full['stops'] as List?)?.length}');
+            } else {
+              debugPrint('[MostViewed] tap: treno non nei live freschi');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[MostViewed] tap errore live freschi: $e');
+      }
+      // Fallback come la ricerca normale: tripId dal DB storico così la
+      // sheet carica il trip completo invece di mostrare solo origine/dest.
+      if (identical(openDep, dep) && tnum.isNotEmpty) {
+        debugPrint('[MostViewed] tap num=$tnum: provo tripId dal DB');
+        try {
+          final tripData = await _fetchTripDataFromDb(tcat, tnum);
+          final dbTripId = tripData?['trip_id']?.toString();
+          if (dbTripId != null && dbTripId.isNotEmpty) {
+            final full = {...tmap, 'trip_id': dbTripId, 'stops': []};
+            openDep = _buildDepartureFromMap(full);
+            debugPrint('[MostViewed] tap risolto dal DB: tripId=$dbTripId');
+          } else {
+            debugPrint('[MostViewed] tap: nessun tripId nel DB per $tcat $tnum');
+          }
+        } catch (e) {
+          debugPrint('[MostViewed] tap errore DB: $e');
+        }
+      }
+    }
+    if (!context.mounted) return;
+    _showTrainDetails(context, openDep, -1, theme);
+  }
+
+  /// Card treno della lista (stesso stile per live e più visualizzati).
+  Widget _buildTrainListCard(dynamic train, ThemeProvider theme) {
+          if (train is Map &&
+              train['viewers'] is int &&
+              (train['trip_id'] == null && train['tripId'] == null)) {
+            final live = _findLiveTrainForPresence(
+                Map<String, dynamic>.from(train));
+            if (live != null) {
+              train = {...live, 'viewers': train['viewers']};
+              debugPrint('[MostViewed] card num=${train['trip_number']}: uso dati live completi');
+            } else {
+              debugPrint('[MostViewed] card num=${train['trip_number']}: solo dati presence parziali');
+            }
+          }
           final category = (train['category'] ?? '').toString().trim();
           final number = (train['trip_number'] ?? '').toString().trim();
           final tripId = train['trip_id']?.toString() ?? train['tripId']?.toString();
@@ -3128,12 +3436,19 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
           final isDelayed = delay > 0;
 
+          DateTime? cardScheduled;
+          if (stopsList.isNotEmpty && stopsList[0] is Map) {
+            final ts = ((stopsList[0] as Map)['scheduledDeparture'] ?? '')
+                .toString();
+            if (ts.isNotEmpty) cardScheduled = DateTime.tryParse(ts);
+          }
           final dep = TrainDeparture(
             tripId: tripId,
             trainNumber: number,
             category: category,
             origin: origin,
             destination: destination,
+            scheduledTime: cardScheduled,
             delayMinutes: delay,
             status: isDelayed ? 'DELAYED' : 'ON_TIME',
             country: country,
@@ -3152,7 +3467,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: () => _showTrainDetails(context, dep, -1, theme),
+                onTap: () => _openTrainCard(context, dep, train, theme),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -3174,6 +3489,32 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
                                   '🟢 Live',
                                   style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
                                 ),
+                          if (train['viewers'] is int &&
+                              (train['viewers'] as int) > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${train['viewers']}',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(width: 16),
@@ -3234,9 +3575,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
               ),
             ),
           );
-        },
-      ),
-    );
   }
 
   Widget _buildLiveTrainTypeBadge(String category, String number, String operator, ThemeProvider theme) {
