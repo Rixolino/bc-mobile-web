@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 import 'package:bc_transporter/features/train/presentation/widgets/train_stats_screen.dart';
 import 'package:flutter/material.dart';
@@ -681,6 +682,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   // Refresh manuale in corso (feedback sul chip Aggiorna)
   bool _isManualRefreshing = false;
 
+  // Logo e numero congelati all'apertura: i refresh per i ritardi
+  // non devono mai alterarli.
+  String? _frozenCategory;
+  String? _frozenNumber;
+
   // Presenza live: quanti utenti stanno guardando questo treno
   Timer? _presenceTimer;
   int? _viewersCount;
@@ -701,6 +707,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         : (widget.departure.country.isNotEmpty
             ? widget.departure.country
             : (_trainProvider.selectedStation?.country ?? 'IT'));
+    _frozenCategory = widget.departure.category;
+    _frozenNumber = widget.departure.trainNumber;
     _startAutoRefresh();
     _startConnectivityMonitor();
     _checkCacheStatus();
@@ -1460,6 +1468,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
               ),
               const SizedBox(height: 12),
               _buildRouteRow(context, theme, trainProvider),
+              _buildDelayTrendPlate(context, theme),
               const SizedBox(height: 12),
               _buildViewersRow(theme),
               const SizedBox(height: 8),
@@ -1537,7 +1546,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
         color: theme.surfaceColor.withValues(alpha: theme.isDark ? 0.5 : 0.7),
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
@@ -1562,7 +1571,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 ),
                 // Connecting line with progress
                 SizedBox(
-                  height: 60,
+                  height: 84,
                   width: 3,
                   child: Stack(
                     alignment: Alignment.topCenter,
@@ -1635,7 +1644,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                     ],
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 28),
                 // Destination label
                 Text(
                   RuntimeLocalizations.t(context, 'destination') ?? 'Arrivo',
@@ -1652,6 +1661,176 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                 // Percentage pill
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Storico ritardi ricevuti in sessione: la targhetta si aggiorna con
+  // tutti i dati arrivati (fermate + ritardo attuale), senza mai perdere
+  // i picchi già visti.
+  int? _trendMin;
+  int? _trendMax;
+  int? _trendFirst;
+
+  /// Targhetta andamento ritardo: min/max dalle fermate della corsa +
+  /// barra con la posizione del ritardo attuale e tendenza vs partenza
+  /// (recupero/peggioramento). Solo dati reali, niente backend.
+  Widget _buildDelayTrendPlate(BuildContext context, ThemeProvider theme) {
+    final dep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    // Solo fermate già passate (misure reali): quelle future sono previsioni
+    // e falserebbero min/max e tendenza.
+    final now = DateTime.now();
+    final delays = <int>[];
+    for (final s in dep.stops ?? []) {
+      if (s.cancelled) continue;
+      final sched = s.departure ?? s.arrival;
+      if (sched != null &&
+          sched.isAfter(now.add(const Duration(minutes: 1)))) {
+        continue;
+      }
+      // Come i badge in timeline: prima le differenze orari troncate ai
+      // minuti (niente arrotondamenti), poi i ritardi dichiarati.
+      int? d;
+      if (s.departure != null && s.estimatedDeparture != null) {
+        d = s.estimatedDeparture!.difference(s.departure!).inMinutes;
+      }
+      d ??= s.departureDelay ??
+          ((s.delay != null && s.delay != 0) ? s.delay : null);
+      if (d == null && s.arrival != null && s.estimatedArrival != null) {
+        d = s.estimatedArrival!.difference(s.arrival!).inMinutes;
+      }
+      d ??= s.arrivalDelay;
+      if (d != null) delays.add(d);
+    }
+    // Accumula tutto il ricevuto in sessione (senza setState: nessun loop).
+    if (delays.isNotEmpty) {
+      final sMin = delays.reduce(min);
+      final sMax = delays.reduce(max);
+      _trendMin = _trendMin == null ? sMin : min(_trendMin!, sMin);
+      _trendMax = _trendMax == null ? sMax : max(_trendMax!, sMax);
+      _trendFirst ??= delays.first;
+    }
+    final current = dep.delayMinutes ??
+        (delays.isNotEmpty ? delays.last : null);
+    if (current != null) {
+      _trendMin = _trendMin == null ? current : min(_trendMin!, current);
+      _trendMax = _trendMax == null ? current : max(_trendMax!, current);
+    }
+    if (_trendMin == null || _trendMax == null || _trendFirst == null) {
+      return const SizedBox.shrink();
+    }
+    final maxD = _trendMax!;
+    final minD = _trendMin!;
+    debugPrint('[DelayTrend] snapshot=${delays.length} voci current=$current stored=($minD..$maxD) first=$_trendFirst');
+    if (maxD == minD || current == null) return const SizedBox.shrink();
+    final diff = current - _trendFirst!;
+    final String label;
+    final Color trendColor;
+    final IconData trendIcon;
+    String deltaStr = '';
+    if (diff < 0) {
+      label =
+          RuntimeLocalizations.t(context, 'delay_trend_better') ?? 'In recupero';
+      trendColor = Colors.green;
+      trendIcon = Icons.trending_down_rounded;
+      deltaStr = ' ${-diff}\'';
+    } else if (diff > 0) {
+      label = RuntimeLocalizations.t(context, 'delay_trend_worse') ??
+          'In peggioramento';
+      trendColor = diff > 5 ? Colors.red : Colors.orange;
+      trendIcon = Icons.trending_up_rounded;
+      deltaStr = ' +$diff\'';
+    } else {
+      label =
+          RuntimeLocalizations.t(context, 'delay_trend_stable') ?? 'Stabile';
+      trendColor = theme.secondaryTextColor;
+      trendIcon = Icons.trending_flat_rounded;
+    }
+    String fmt(int d) => d < 0 ? "$d'" : (d == 0 ? "0'" : "+$d'");
+    final frac = (((current - minD) / (maxD - minD)).clamp(0.0, 1.0)).toDouble();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withValues(alpha: theme.isDark ? 0.5 : 0.7),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.borderColor.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(trendIcon, size: 14, color: trendColor),
+              const SizedBox(width: 4),
+              Text(
+                '$label$deltaStr',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: trendColor),
+              ),
+              const Spacer(),
+              Text(
+                '${RuntimeLocalizations.t(context, 'delay_trend_min') ?? 'Min'} ${fmt(minD)}',
+                style:
+                    TextStyle(fontSize: 10, color: theme.secondaryTextColor),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${RuntimeLocalizations.t(context, 'delay_trend_max') ?? 'Max'} ${fmt(maxD)}',
+                style:
+                    TextStyle(fontSize: 10, color: theme.secondaryTextColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          LayoutBuilder(
+            builder: (ctx, constraints) {
+              final w = constraints.maxWidth;
+              return SizedBox(
+                height: 12,
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Colors.green,
+                            Colors.yellow,
+                            Colors.orange,
+                            Colors.red
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: (frac * (w - 12)).clamp(0.0, w > 12 ? w - 12 : 0.0),
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          border: Border.all(color: trendColor, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 3)
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -2604,8 +2783,17 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   Widget _buildTrainIdentifier(BuildContext context, ThemeProvider theme, TrainDeparture departure) {
     final settings = Provider.of<SettingsProvider>(context);
     final trainProvider = Provider.of<TrainProvider>(context, listen: false);
-    final category = (departure.category ?? 'TRN').trim();
-    final number = (departure.trainNumber ?? '').trim();
+    // Logo e numero congelati all'apertura (i refresh ritardi non li toccano).
+    final category = ((_frozenCategory?.isNotEmpty == true
+                ? _frozenCategory
+                : departure.category) ??
+            'TRN')
+        .trim();
+    final number = ((_frozenNumber?.isNotEmpty == true
+                ? _frozenNumber
+                : departure.trainNumber) ??
+            '')
+        .trim();
     final screenWidth = MediaQuery.of(context).size.width;
     final scale = (screenWidth / 400).clamp(0.65, 1.0);
 
@@ -3198,16 +3386,15 @@ class _TimelineRow extends StatelessWidget {
         return (text: '', delay: 0);
       }
 
-      // delay null = ritardo per-fermata sconosciuto: se la fermata non e futura,
-      // usa il ritardo del treno (le fermate gia passate/attuale hanno subito
-      // lo stesso ritardo; quelle future usano gia totalDelay dal chiamante).
+      // Il badge deve corrispondere agli orari mostrati: prima la differenza
+      // troncata ai minuti (niente arrotondamenti tipo 7'40" -> +8'), poi il
+      // ritardo dichiarato solo se mancano gli orari.
       // Uno 0 esplicito (fermata puntuale misurata) viene rispettato.
-      // Se esiste lo stimato ma non il ritardo, lo si deriva da stimato-programmato.
       final int effectiveDelay;
-      if (delay != null) {
+      if (estimated != null && scheduled != null) {
+        effectiveDelay = estimated.difference(scheduled).inMinutes;
+      } else if (delay != null) {
         effectiveDelay = delay;
-      } else if (estimated != null && scheduled != null) {
-        effectiveDelay = (estimated.difference(scheduled).inSeconds / 60).round();
       } else if (estimated == null && !isFuture && totalDelay != 0) {
         effectiveDelay = totalDelay;
       } else {
@@ -3316,14 +3503,17 @@ class _TimelineRow extends StatelessWidget {
                     Builder(builder: (_) {
                       final arr = buildTime(RuntimeLocalizations.t(context, 'arrival'), stop.arrival, stop.estimatedArrival, isFuture ? totalDelay : stop.arrivalDelay);
                       if (arr.text.isEmpty) return const SizedBox.shrink();
-                      return Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 6,
-                        children: [
-                          Text(arr.text,
-                              style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
-                          if (arr.delay != 0 && !stop.cancelled) delayBadge(arr.delay),
-                        ],
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          children: [
+                            Text(arr.text,
+                                style: TextStyle(color: stop.cancelled ? theme.secondaryTextColor.withOpacity(0.5) : (isCompleted ? theme.secondaryTextColor.withOpacity(0.4) : theme.secondaryTextColor), fontSize: 12, decoration: stop.cancelled ? TextDecoration.lineThrough : TextDecoration.none)),
+                            if (arr.delay != 0 && !stop.cancelled) delayBadge(arr.delay),
+                          ],
+                        ),
                       );
                     }),
                   if (stop.departure != null)
