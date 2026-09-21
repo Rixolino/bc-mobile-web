@@ -863,11 +863,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
       tripId: base.tripId,
       trainNumber: tripData['trainNumber']?.toString() ?? base.trainNumber,
       category: tripData['category']?.toString() ?? base.category,
-      origin: tripData['origin']?.toString() ?? base.origin,
-      destination: tripData['destination']?.toString() ?? base.destination,
+      origin: _resolveStringField(tripData['origin']) ?? base.origin,
+      destination: _resolveStringField(tripData['destination']) ?? base.destination,
       country: tripData['country']?.toString() ?? country,
       status: tripData['status']?.toString() ?? base.status,
-      delayMinutes: base.delayMinutes ?? tripData['delay'] ?? 0,
+      delayMinutes: tripData['delay'] ?? tripData['delayMinutes'] ?? base.delayMinutes ?? 0,
       scheduledTime: tripData['scheduledTime'] != null
           ? DateTime.tryParse(tripData['scheduledTime'].toString())
           : base.scheduledTime,
@@ -881,6 +881,22 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           : null,
       metadata: tripData['metadata'] as Map<String, dynamic>?,
     );
+  }
+
+  /// Estrae una stringa da un valore che puo essere String, Map o null.
+  static String? _resolveStringField(dynamic value) {
+    if (value == null) return null;
+    if (value is String && value.isNotEmpty) return value;
+    if (value is Map) {
+      for (final key in ['name', 'text', 'stationName', 'stationname', 'station_name']) {
+        if (value[key] is String && (value[key] as String).isNotEmpty) return value[key] as String;
+      }
+      for (final key in ['id', 'stationId', 'stationid', 'station_id']) {
+        if (value[key] is String && (value[key] as String).isNotEmpty) return value[key] as String;
+      }
+      return value.toString();
+    }
+    return value.toString();
   }
 
   /// Refresh continuo del trip per treni esterni al tabellone (modalità link):

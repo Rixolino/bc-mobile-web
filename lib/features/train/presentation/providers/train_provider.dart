@@ -1007,8 +1007,13 @@ class TrainProvider with ChangeNotifier {
           }
         }
         if (match == null) {
+          // Log dettagliato per diagnosticare il matching
+          final bNum = dep.trainNumber ?? '';
+          final bDest = (dep.destination ?? '').trim().toLowerCase();
           debugPrint(
-              '[TrainProvider] Delay tabelloni: treno non trovato a $stationId (${isArrival ? 'arrivi' : 'partenze'}), provo altro modo/stazione');
+              '[TrainProvider] Delay tabelloni: treno non trovato a $stationId '
+              '(cerco: num="$bNum" dest="$bDest"), '
+              'tabellone: ${board.map((d) => '${d.trainNumber}→${d.destination}').join(', ')}');
           continue;
         }
         debugPrint(

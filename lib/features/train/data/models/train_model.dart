@@ -179,12 +179,16 @@ class TrainDeparture {
     if (value == null) return null;
     if (value is String) return value;
     if (value is Map) {
-      if (value['name'] is String) return value['name'];
-      if (value['text'] is String) return value['text'];
-      if (value['id'] is String) return value['id'];
-      if (value['stationName'] is String) return value['stationName'];
-      
-      // Fallback for nested maps or objects inside 'stop'
+      for (final key in ['name', 'text', 'stationName', 'stationname', 'station_name']) {
+        if (value[key] is String && (value[key] as String).isNotEmpty) {
+          return value[key] as String;
+        }
+      }
+      for (final key in ['id', 'stationId', 'stationid', 'station_id']) {
+        if (value[key] is String && (value[key] as String).isNotEmpty) {
+          return value[key] as String;
+        }
+      }
       return value.toString();
     }
     return value.toString();

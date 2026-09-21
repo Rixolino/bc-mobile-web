@@ -496,18 +496,22 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             });
           } else {
             setState(() {
-              // Il ritardo fresco dal trip endpoint vince su quello vecchio:
-              // altrimenti il refresh mostrerebbe sempre il dato stantio.
+              // Il ritardo viene gestito esclusivamente da
+              // _refreshDelayFromBoards (tabelloni = fonte autorevole in
+              // tempo reale). Il trip endpoint puo avere un dato stale che
+              // sovrascriverebbe ogni tick quello fresco dalle bacheche.
+              // Su primo load _current['delay'] viene da widget.tripData;
+              // ai tick successivi viene da _refreshDelayFromBoards.
               _tripData = {
                 ...tripMap,
-                'delay': tripMap['delay'] ??
-                    tripMap['delayMinutes'] ??
-                    _current['delay'] ??
-                    _current['delayMinutes'],
-                'delayMinutes': tripMap['delayMinutes'] ??
-                    tripMap['delay'] ??
+                'delay': _current['delay'] ??
                     _current['delayMinutes'] ??
-                    _current['delay']
+                    tripMap['delay'] ??
+                    tripMap['delayMinutes'],
+                'delayMinutes': _current['delayMinutes'] ??
+                    _current['delay'] ??
+                    tripMap['delayMinutes'] ??
+                    tripMap['delay']
               };
               _isLoading = false;
               _hasLoadedData = true;
@@ -659,7 +663,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         }
         if (match == null) {
           debugPrint(
-              '[RegionalDelay] Treno non trovato nel tabellone $stationId ($mode), provo altro modo/stazione');
+              '[RegionalDelay] Treno non trovato nel tabellone $stationId ($mode), '
+              'cerco: num="$tripNumber" dest="$dest", '
+              'tabellone: ${board.map((b) => '${_asStr(b['tripNumber'] ?? b['trainNumber'])}→${_asStr(b['destination'])}').join(', ')}');
           continue;
         }
         debugPrint(
