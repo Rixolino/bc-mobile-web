@@ -13,6 +13,7 @@ import '../../../../core/api_constants.dart';
 import '../../../../core/design_system.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import '../../../../core/services/tts_service.dart';
+import '../../../../core/services/train_presence_service.dart';
 import 'dart:convert';
 
 /// Parse i formati ora delle API regionali (Trenord/FAL):
@@ -130,6 +131,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   String? _error;
   bool _isSharing = false;
 
+  // Presenza live: quanti utenti stanno guardando questo treno
+  Timer? _presenceTimer;
+  int? _viewersCount;
+  String? _presenceKey;
+
   final ScrollController _scrollController = ScrollController();
 
   String get _tripId => widget.tripId;
@@ -146,6 +152,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     // Annuncio vocale all'apertura del dettaglio treno
     _speakTrainInfo();
     _fetchTripDetails();
+    // Presenza live: heartbeat mentre la sheet è aperta
+    _startPresence();
   }
 
   @override
@@ -153,8 +161,58 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _autoRefreshTimer?.cancel();
     _progressTimer?.cancel();
     _fetchTimeoutTimer?.cancel();
+    _presenceTimer?.cancel();
+    final presenceKey = _presenceKey;
+    if (presenceKey != null && presenceKey.isNotEmpty) {
+      TrainPresenceService().leave(presenceKey);
+    }
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Avvia l'heartbeat di presenza live (ogni 15s, TTL backend 45s).
+  void _startPresence() {
+    final trip = _current;
+    final scheduled = _parseTime(trip['scheduledTime'])?.toIso8601String() ?? '';
+    final num =
+        (trip['tripNumber'] ?? trip['trainNumber'] ?? widget.trainNumber ?? '')
+            .toString();
+    final cat = (trip['category'] ?? '').toString();
+    _presenceKey = widget.tripId.isNotEmpty
+        ? widget.tripId
+        : '$cat|$num|$scheduled';
+    _presenceTick();
+    _presenceTimer?.cancel();
+    _presenceTimer =
+        Timer.periodic(const Duration(seconds: 15), (_) => _presenceTick());
+  }
+
+  Future<void> _presenceTick() async {
+    final key = _presenceKey;
+    if (!mounted || key == null || key.isEmpty) return;
+    final trip = _current;
+    final count = await TrainPresenceService().heartbeat(
+      trainKey: key,
+      screen: 'regional',
+      train: {
+        'category': trip['category']?.toString(),
+        'trainNumber':
+            (trip['tripNumber'] ?? trip['trainNumber'] ?? '').toString(),
+        'origin': _getEffectiveOrigin(trip),
+        'destination': _getEffectiveDestination(trip),
+        'scheduledTime':
+            _parseTime(trip['scheduledTime'])?.toIso8601String(),
+        'estimatedTime':
+            _parseTime(trip['estimatedTime'])?.toIso8601String(),
+        'delayMinutes': _asInt(trip['delay'] ?? trip['delayMinutes']),
+        'platform': (trip['platform'] ?? '').toString(),
+        'operator': trip['operator']?.toString(),
+        'provider': widget.provider.name,
+        'isArrival': widget.isArrivalMode,
+      },
+    );
+    if (!mounted || count == null || count == _viewersCount) return;
+    setState(() => _viewersCount = count);
   }
 
   Future<void> _speakTrainInfo() async {
@@ -1042,6 +1100,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             theme,
             _refreshTrainDetails,
           ),
+          if (_viewersCount != null && _viewersCount! > 0)
+            _buildInfoChip(
+              Icons.visibility_rounded,
+              '$_viewersCount',
+              theme,
+              null,
+              isActive: true,
+            ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
             RuntimeLocalizations.t(context, 'share_trip',

@@ -23,6 +23,7 @@ import '../../../favorites/models/favorite_train.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../../core/services/android_background_service.dart';
 import '../../../../core/services/tts_service.dart';
+import '../../../../core/services/train_presence_service.dart';
 import '../../../../core/utils/country_time.dart';
 import '../../../../presentation/providers/notification_manager_provider.dart';
 import '../pages/train_map_page.dart';
@@ -681,6 +682,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   // Refresh manuale in corso (feedback sul chip Aggiorna)
   bool _isManualRefreshing = false;
 
+  // Presenza live: quanti utenti stanno guardando questo treno
+  Timer? _presenceTimer;
+  int? _viewersCount;
+  String? _presenceKey;
+
   @override
   void initState() {
     super.initState();
@@ -699,6 +705,9 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     });
     // Annuncio vocale all'apertura del dettaglio treno
     _speakTrainInfo();
+
+    // Presenza live: heartbeat mentre la sheet è aperta
+    _startPresence();
 
     // Carica i loghi se attivi ma non ancora in memoria
     // (es. sheet aperto da deep link senza passare dal pannello treni)
@@ -719,8 +728,49 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _progressTimer?.cancel();
     _connectivityTimer?.cancel();
     _fetchTimeoutTimer?.cancel();
+    _presenceTimer?.cancel();
+    final presenceKey = _presenceKey;
+    if (presenceKey != null && presenceKey.isNotEmpty) {
+      TrainPresenceService().leave(presenceKey);
+    }
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Avvia l'heartbeat di presenza live (ogni 15s, TTL backend 45s).
+  void _startPresence() {
+    final dep = widget.departure;
+    _presenceKey =
+        '${dep.category ?? ''}|${dep.trainNumber ?? ''}|${dep.scheduledTime?.toIso8601String() ?? ''}';
+    _presenceTick();
+    _presenceTimer?.cancel();
+    _presenceTimer =
+        Timer.periodic(const Duration(seconds: 15), (_) => _presenceTick());
+  }
+
+  Future<void> _presenceTick() async {
+    final key = _presenceKey;
+    if (!mounted || key == null || key.isEmpty) return;
+    final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    final count = await TrainPresenceService().heartbeat(
+      trainKey: key,
+      screen: 'national',
+      train: {
+        'category': current.category,
+        'trainNumber': current.trainNumber,
+        'origin': current.origin,
+        'destination': current.destination,
+        'scheduledTime': current.scheduledTime?.toIso8601String(),
+        'estimatedTime': current.estimatedTime?.toIso8601String(),
+        'delayMinutes': current.delayMinutes,
+        'platform': current.platform,
+        'operator': current.operator,
+        'country': _sheetCountry,
+        'isArrival': widget.isArrivalMode,
+      },
+    );
+    if (!mounted || count == null || count == _viewersCount) return;
+    setState(() => _viewersCount = count);
   }
 
   Future<void> _speakTrainInfo() async {
@@ -1514,6 +1564,14 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             theme,
             _isManualRefreshing ? null : () => _refreshTrainDetails(),
           ),
+          if (_viewersCount != null && _viewersCount! > 0)
+            _buildInfoChip(
+              Icons.visibility_rounded,
+              '$_viewersCount',
+              theme,
+              null,
+              isActive: true,
+            ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
             RuntimeLocalizations.t(context, 'share_trip', fallback: 'Condividi'),
@@ -2392,6 +2450,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   theme,
                   _isManualRefreshing ? null : () => _refreshTrainDetails(),
                 ),
+
+                if (_viewersCount != null && _viewersCount! > 0)
+                  _buildInfoChip(
+                    Icons.visibility_rounded,
+                    '$_viewersCount',
+                    theme,
+                    null,
+                    isActive: true,
+                  ),
 
                 Consumer<TrainProvider>(
                   builder: (context, trainProvider, child) {
