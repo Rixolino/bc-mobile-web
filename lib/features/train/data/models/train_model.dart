@@ -100,18 +100,15 @@ class TrainDeparture {
         ? json['data'] 
         : (json['trip'] is Map<String, dynamic> ? json['trip'] : json);
 
-    String? rawLine = _getStringValue(actualData['line'] ?? actualData['tripNumber'] ?? actualData['trainNumber']);
+    final String? lineStr = _getStringValue(actualData['line']);
+    final String? numStr = _getStringValue(actualData['tripNumber'] ?? actualData['trainNumber']);
     String? num;
-    
-    if (rawLine != null) {
-      String s = rawLine;
-      final zugMatch = RegExp(r'Zug-?Nr\.?\s*(\d+)', caseSensitive: false).firstMatch(s);
-      if (zugMatch != null) {
-        num = zugMatch.group(1);
-      } else {
-        final m = RegExp(r'\d+').firstMatch(s);
-        num = m != null ? m.group(0) : s;
-      }
+
+    // Il numero si ricava da 'tripNumber'/'trainNumber' tenendo solo le cifre
+    // (es. line "S4" + tripNumber "5171" -> numero "5171", non "4").
+    if (numStr != null) {
+      final digitsOnly = numStr.replaceAll(RegExp(r'\D'), '');
+      if (digitsOnly.isNotEmpty) num = digitsOnly;
     }
 
     String? dest = isDeparture 
@@ -141,13 +138,20 @@ class TrainDeparture {
       polylineData = actualData['polyline'];
     }
 
-    // La categoria si ricava da 'line' tenendo solo le lettere e scartando
-    // i numeri (es. "REG 4449" -> "REG", "IC 607" -> "IC"); se line non
-    // contiene lettere (es. "8807") si ripiega sul campo 'category'/'type'.
+    // La categoria si ricava dal primo token di 'line' tenendo solo le
+    // lettere (es. "REG 4449" -> "REG"), tranne per le linee S-Bahn in
+    // formato S{numero} dove il numero fa parte della linea e si tiene
+    // (es. "S4" -> "S4"). Se non ci sono lettere (es. "8807") si ripiega
+    // su 'category'/'type'.
     String? category;
-    if (rawLine != null) {
-      final lettersOnly = rawLine.replaceAll(RegExp(r'[^A-Za-z\-]'), '');
-      if (lettersOnly.isNotEmpty) category = lettersOnly;
+    if (lineStr != null) {
+      final firstToken = lineStr.trim().split(RegExp(r'\s+')).firstOrNull ?? '';
+      final cleaned = firstToken.replaceAll(RegExp(r'[^A-Za-z0-9\-]'), '');
+      final isSLine = RegExp(r'^S\d+$').hasMatch(cleaned);
+      final picked = isSLine ? cleaned : cleaned.replaceAll(RegExp(r'\d'), '');
+      if (picked.isNotEmpty && RegExp(r'[A-Za-z]').hasMatch(picked)) {
+        category = picked;
+      }
     }
     category ??= _getStringValue(actualData['category'] ?? actualData['type']);
 
