@@ -141,13 +141,15 @@ class TrainDeparture {
       polylineData = actualData['polyline'];
     }
 
-    String? category = _getStringValue(actualData['category'] ?? actualData['type']);
-    if (category == null || category.isEmpty) {
-      if (rawLine != null) {
-        final letters = RegExp(r'[a-zA-Z]+').firstMatch(rawLine);
-        category = letters?.group(0);
-      }
+    // La categoria si ricava da 'line' tenendo solo le lettere e scartando
+    // i numeri (es. "REG 4449" -> "REG", "IC 607" -> "IC"); se line non
+    // contiene lettere (es. "8807") si ripiega sul campo 'category'/'type'.
+    String? category;
+    if (rawLine != null) {
+      final lettersOnly = rawLine.replaceAll(RegExp(r'[^A-Za-z\-]'), '');
+      if (lettersOnly.isNotEmpty) category = lettersOnly;
     }
+    category ??= _getStringValue(actualData['category'] ?? actualData['type']);
 
     return TrainDeparture(
       trainNumber: num,
