@@ -737,7 +737,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     super.dispose();
   }
 
-  /// Avvia l'heartbeat di presenza live (ogni 15s, TTL backend 45s).
+  /// Avvia l'heartbeat di presenza live (ogni 5s, TTL backend 45s).
   void _startPresence() {
     final dep = widget.departure;
     _presenceKey =
@@ -745,7 +745,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _presenceTick();
     _presenceTimer?.cancel();
     _presenceTimer =
-        Timer.periodic(const Duration(seconds: 15), (_) => _presenceTick());
+        Timer.periodic(const Duration(seconds: 5), (_) => _presenceTick());
   }
 
   Future<void> _presenceTick() async {

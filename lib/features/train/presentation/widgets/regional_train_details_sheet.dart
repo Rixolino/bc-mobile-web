@@ -170,7 +170,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     super.dispose();
   }
 
-  /// Avvia l'heartbeat di presenza live (ogni 15s, TTL backend 45s).
+  /// Avvia l'heartbeat di presenza live (ogni 5s, TTL backend 45s).
   void _startPresence() {
     final trip = _current;
     final scheduled = _parseTime(trip['scheduledTime'])?.toIso8601String() ?? '';
@@ -184,7 +184,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _presenceTick();
     _presenceTimer?.cancel();
     _presenceTimer =
-        Timer.periodic(const Duration(seconds: 15), (_) => _presenceTick());
+        Timer.periodic(const Duration(seconds: 5), (_) => _presenceTick());
   }
 
   Future<void> _presenceTick() async {

@@ -8,7 +8,7 @@ import 'package:bc_transporter/core/api_constants.dart';
 /// Presenza live sui dettagli treno: conta quanti utenti stanno
 /// visualizzando lo stesso treno in questo momento.
 ///
-/// Il client invia un heartbeat mentre la sheet è aperta (ogni ~15s);
+/// Il client invia un heartbeat mentre la sheet è aperta (ogni ~5s);
 /// il backend scade le entry dopo 45s senza heartbeat (+ leave esplicito).
 class TrainPresenceService {
   static final TrainPresenceService _instance = TrainPresenceService._internal();
