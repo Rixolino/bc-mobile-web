@@ -189,7 +189,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
   Future<void> _presenceTick() async {
     final key = _presenceKey;
-    if (!mounted || key == null || key.isEmpty) return;
+    if (!mounted || key == null || key.isEmpty) {
+      print('[Presence] regional tick skip: mounted=$mounted key=$key');
+      return;
+    }
+    print('[Presence] regional tick key=$key');
     final trip = _current;
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
@@ -211,6 +215,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         'isArrival': widget.isArrivalMode,
       },
     );
+    print('[Presence] regional viewers=$count (was $_viewersCount)');
     if (!mounted || count == null || count == _viewersCount) return;
     setState(() => _viewersCount = count);
   }
@@ -923,7 +928,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                       theme: theme),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildTrainIdentifier(context, theme, current),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildTrainIdentifier(context, theme, current),
+                        _buildViewersRow(theme),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 8),
                   _buildProgressButton(context, theme),
@@ -1100,14 +1112,6 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             theme,
             _refreshTrainDetails,
           ),
-          if (_viewersCount != null && _viewersCount! > 0)
-            _buildInfoChip(
-              Icons.visibility_rounded,
-              '$_viewersCount',
-              theme,
-              null,
-              isActive: true,
-            ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
             RuntimeLocalizations.t(context, 'share_trip',
@@ -1181,6 +1185,46 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     return Text(
       label.isNotEmpty ? label : 'Treno',
       style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color),
+    );
+  }
+
+  /// Contatore spettatori live sotto nome/numero treno.
+  Widget _buildViewersRow(ThemeProvider theme) {
+    if (_viewersCount == null || _viewersCount! <= 0) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              _viewersCount == 1
+                  ? RuntimeLocalizations.t(context, 'viewers_watching_one')
+                  : RuntimeLocalizations.t(
+                      context,
+                      'viewers_watching_many',
+                      params: {'count': '$_viewersCount'},
+                    ),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: theme.secondaryTextColor,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

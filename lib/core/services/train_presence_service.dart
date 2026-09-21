@@ -23,16 +23,27 @@ class TrainPresenceService {
   /// ID anonimo persistente di questo dispositivo.
   Future<String> getClientId() async {
     if (_clientId != null && _clientId!.isNotEmpty) return _clientId!;
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString(_clientIdKey);
-    if (id == null || id.isEmpty) {
-      final rnd = Random.secure();
-      id = 'app-${DateTime.now().microsecondsSinceEpoch}-'
-          '${rnd.nextInt(1 << 32).toRadixString(16)}${rnd.nextInt(1 << 32).toRadixString(16)}';
-      await prefs.setString(_clientIdKey, id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var id = prefs.getString(_clientIdKey);
+      if (id == null || id.isEmpty) {
+        // Bound <= 2^31-1: valido su tutte le piattaforme (incluso web,
+        // dove 1 << 32 non è rappresentabile come bound di nextInt).
+        final rnd = Random.secure();
+        id = 'app-${DateTime.now().microsecondsSinceEpoch}-'
+            '${rnd.nextInt(0x7FFFFFFF).toRadixString(16)}'
+            '${rnd.nextInt(0x7FFFFFFF).toRadixString(16)}';
+        await prefs.setString(_clientIdKey, id);
+      }
+      _clientId = id;
+      return id;
+    } catch (e) {
+      // Fallback in memoria: la presenza non deve mai rompersi per l'ID.
+      print('[Presence] clientId fallback in memoria: $e');
+      _clientId ??=
+          'mem-${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(0x7FFFFFFF).toRadixString(16)}';
+      return _clientId!;
     }
-    _clientId = id;
-    return id;
   }
 
   /// Invia heartbeat per [trainKey]; ritorna il numero di viewer attuali
@@ -56,13 +67,18 @@ class TrainPresenceService {
             }),
           )
           .timeout(_timeout);
-      if (resp.statusCode != 200) return null;
+      if (resp.statusCode != 200) {
+        print('[Presence] heartbeat HTTP ${resp.statusCode}');
+        return null;
+      }
       final decoded = jsonDecode(resp.body);
       if (decoded is Map && decoded['viewers'] is int) {
         return decoded['viewers'] as int;
       }
+      print('[Presence] heartbeat risposta inattesa: ${resp.body}');
       return null;
-    } catch (_) {
+    } catch (e) {
+      print('[Presence] heartbeat errore: $e');
       return null;
     }
   }

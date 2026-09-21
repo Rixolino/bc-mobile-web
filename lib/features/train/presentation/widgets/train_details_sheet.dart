@@ -750,7 +750,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
 
   Future<void> _presenceTick() async {
     final key = _presenceKey;
-    if (!mounted || key == null || key.isEmpty) return;
+    if (!mounted || key == null || key.isEmpty) {
+      print('[Presence] tick skip: mounted=$mounted key=$key');
+      return;
+    }
+    print('[Presence] tick key=$key');
     final current = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
     final count = await TrainPresenceService().heartbeat(
       trainKey: key,
@@ -769,6 +773,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         'isArrival': widget.isArrivalMode,
       },
     );
+    print('[Presence] viewers=$count (was $_viewersCount)');
     if (!mounted || count == null || count == _viewersCount) return;
     setState(() => _viewersCount = count);
   }
@@ -1352,7 +1357,14 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                       _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _buildTrainIdentifier(context, theme, currentDep),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildTrainIdentifier(context, theme, currentDep),
+                            _buildViewersRow(theme),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 8),
                       _buildProgressButton(context, theme, trainProvider),
@@ -1564,14 +1576,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             theme,
             _isManualRefreshing ? null : () => _refreshTrainDetails(),
           ),
-          if (_viewersCount != null && _viewersCount! > 0)
-            _buildInfoChip(
-              Icons.visibility_rounded,
-              '$_viewersCount',
-              theme,
-              null,
-              isActive: true,
-            ),
           _buildInfoChip(
             _isSharing ? Icons.hourglass_empty_rounded : Icons.share_rounded,
             RuntimeLocalizations.t(context, 'share_trip', fallback: 'Condividi'),
@@ -2451,15 +2455,6 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
                   _isManualRefreshing ? null : () => _refreshTrainDetails(),
                 ),
 
-                if (_viewersCount != null && _viewersCount! > 0)
-                  _buildInfoChip(
-                    Icons.visibility_rounded,
-                    '$_viewersCount',
-                    theme,
-                    null,
-                    isActive: true,
-                  ),
-
                 Consumer<TrainProvider>(
                   builder: (context, trainProvider, child) {
                     final isOffline = _preventOnlineAutoRefresh || trainProvider.isUsingOfflineCache || _isNetworkOffline;
@@ -2567,6 +2562,46 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
 
     return _buildColorText(category, number, theme);
+  }
+
+  /// Contatore spettatori live sotto nome/numero treno.
+  Widget _buildViewersRow(ThemeProvider theme) {
+    if (_viewersCount == null || _viewersCount! <= 0) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              _viewersCount == 1
+                  ? RuntimeLocalizations.t(context, 'viewers_watching_one')
+                  : RuntimeLocalizations.t(
+                      context,
+                      'viewers_watching_many',
+                      params: {'count': '$_viewersCount'},
+                    ),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: theme.secondaryTextColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildColorText(String category, String number, ThemeProvider theme) {
