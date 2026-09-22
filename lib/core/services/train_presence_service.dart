@@ -9,7 +9,7 @@ import 'package:bc_transporter/core/api_constants.dart';
 /// visualizzando lo stesso treno in questo momento.
 ///
 /// Il client invia un heartbeat mentre la sheet è aperta (ogni ~5s);
-/// il backend scade le entry dopo 45s senza heartbeat (+ leave esplicito).
+/// il backend scade le entry dopo 30s senza heartbeat (+ leave esplicito).
 class TrainPresenceService {
   static final TrainPresenceService _instance = TrainPresenceService._internal();
   factory TrainPresenceService() => _instance;
@@ -106,10 +106,15 @@ class TrainPresenceService {
     return data?.trains;
   }
 
-  /// GET /live completo: treni + totale utenti collegati adesso.
+  /// GET /live completo: treni + totale utenti collegati adesso + istanza.
   /// Null in caso di errore (i chiamanti devono tenere i dati vecchi,
   /// altrimenti un timeout svuoterebbe le sezioni senza motivo).
-  Future<({List<Map<String, dynamic>> trains, int totalViewers})?>
+  Future<
+      ({
+        List<Map<String, dynamic>> trains,
+        int totalViewers,
+        String? instance
+      })?>
       fetchLiveData() async {
     try {
       final resp = await http
@@ -132,7 +137,8 @@ class TrainPresenceService {
                 0,
                 (s, t) =>
                     s + ((t['viewers'] is int) ? t['viewers'] as int : 0));
-        return (trains: trains, totalViewers: total);
+        final instance = decoded['instance']?.toString();
+        return (trains: trains, totalViewers: total, instance: instance);
       }
       return null;
     } catch (_) {

@@ -744,6 +744,14 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     final presenceKey = _presenceKey;
     if (presenceKey != null && presenceKey.isNotEmpty) {
       TrainPresenceService().leave(presenceKey);
+      // Doppio leave ritardato: un heartbeat già in volo potrebbe
+      // rientrare dopo il leave e resuscitare il fantasma.
+      Future.delayed(const Duration(seconds: 3), () {
+        TrainPresenceService().leave(presenceKey);
+      });
+      Future.delayed(const Duration(seconds: 10), () {
+        TrainPresenceService().leave(presenceKey);
+      });
     }
     _scrollController.dispose();
     super.dispose();

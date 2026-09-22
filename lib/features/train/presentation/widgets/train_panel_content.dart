@@ -119,11 +119,20 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   final Map<String, Map<String, dynamic>> _tripCache = {};
 
   // Firme per non ricostruire le liste se i dati non cambiano (anti-glitch).
-  String _presenceSig = '';
+  String _presenceSigLive = '';
+  String _presenceSigRecent = '';
   String _liveSig = '';
-  // Ultimo poll con treni live presenti: se /live torna vuoto entro 60s
-  // (restart server, blip) si tengono i vecchi invece di sparire di colpo.
-  DateTime? _lastNonEmptyLiveAt;
+  // Mutex + generazioni: niente poll sovrapposti e niente risposte
+  // vecchie che sovrascrivono quelle nuove.
+  bool _loadingLiveSection = false;
+  int _liveSectionGen = 0;
+  bool _loadingRecentSection = false;
+  int _recentSectionGen = 0;
+  bool _liveFetchActive = false;
+  // Timer separati: live velocissimo (2s), recenti lenti (20s, cambiano piano).
+  Timer? _recentRefreshTimer;
+  Timer? _trainsCacheTimer;
+
 
   // Cache provider regionali per aprire la sheet giusta dai più visualizzati
   final Map<String, RegionalProvider> _regionalProvidersCache = {};
@@ -851,6 +860,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     _connectivityTimer?.cancel();
     _debounceTrainSearch?.cancel();
     _liveTrainsRefreshTimer?.cancel();
+    _recentRefreshTimer?.cancel();
+    _trainsCacheTimer?.cancel();
     _refreshTimer?.cancel();
 
     // Sospendi TTS e svuota coda
@@ -1081,11 +1092,14 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   Future<List<dynamic>> _loadLiveTrains({bool silent = false}) async {
     if (_isOffline) return [];
     if (!mounted) return [];
-    
+    // Niente fetch sovrapposti (poll ogni 5s, timeout 10s).
+    if (_liveFetchActive) return _cachedLiveTrains;
+    _liveFetchActive = true;
+
     if (!silent && _isFirstLiveLoad) {
       _safeSetState(() => _isLoadingLiveTrains = true);
     }
-    
+
     try {
       final response = await http
           .get(Uri.parse('https://betacloud-transporter.is-cool.dev/api/trains/live'))
@@ -1119,6 +1133,8 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       debugPrint('Errore caricamento treni live: $e');
       _safeSetState(() => _isLoadingLiveTrains = false);
       return _cachedLiveTrains;
+    } finally {
+      _liveFetchActive = false;
     }
   }
 
@@ -1126,65 +1142,89 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     Future.microtask(() => _loadLiveTrains(silent: false));
     Future.microtask(() => _loadMostViewed());
     _liveTrainsRefreshTimer?.cancel();
-    _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _recentRefreshTimer?.cancel();
+    _trainsCacheTimer?.cancel();
+    // Live velocissimo (2s): è la sezione tempo reale.
+    _liveTrainsRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
+        _loadLiveSection();
+      }
+    });
+    // Recenti lenti (20s): cambiano piano (storico 1h).
+    _recentRefreshTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
+        _loadRecentSection();
+      }
+    });
+    // Cache treni per il tap: basta ogni 15s.
+    _trainsCacheTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       if (_selectedIndex == 1 && _trainSearchController.text.isEmpty) {
         _loadLiveTrains(silent: true);
-        _loadMostViewed();
       }
     });
   }
 
-  /// Treni più visualizzati adesso (GET /live, top 5 + totale utenti)
-  /// e treni visti nell'ultima ora (GET /recent).
+  /// Entrambe le sezioni (usato ad apertura tab, pull-to-refresh, retry).
   Future<void> _loadMostViewed() async {
-    if (_isOffline || !mounted) return;
+    await _loadLiveSection();
+    await _loadRecentSection();
+  }
+
+  /// Sezione live velocissima (GET /live, top 5 + totale utenti).
+  Future<void> _loadLiveSection() async {
+    if (_isOffline || !mounted || _loadingLiveSection) return;
+    _loadingLiveSection = true;
+    final gen = ++_liveSectionGen;
     try {
-      final results = await Future.wait([
-        TrainPresenceService().fetchLiveData(),
-        TrainPresenceService().fetchRecentTrains(limit: 10),
-      ]);
-      if (!mounted) return;
-      final live =
-          results[0] as ({List<Map<String, dynamic>> trains, int totalViewers})?;
-      final recent = results[1] as List<Map<String, dynamic>>?;
+      final live = await TrainPresenceService().fetchLiveData();
+      if (!mounted || gen != _liveSectionGen) return;
       // Solo risposte riuscite aggiornano lo stato: un timeout/errore
       // non deve mai svuotare le sezioni senza motivo.
-      if (live == null && recent == null) return;
-      var newMost =
-          live != null ? live.trains.take(5).toList() : _mostViewedTrains;
-      var newTotal = live?.totalViewers ?? _totalViewersLive;
-      if (live != null) {
-        if (live.trains.isNotEmpty) {
-          _lastNonEmptyLiveAt = DateTime.now();
-        } else if (_mostViewedTrains.isNotEmpty &&
-            _lastNonEmptyLiveAt != null &&
-            DateTime.now().difference(_lastNonEmptyLiveAt!) <
-                const Duration(seconds: 60)) {
-          // Vuoto improvviso ma c'erano treni fino a poco fa: blip,
-          // tengo i vecchi invece di far sparire la sezione di colpo.
-          debugPrint('[MostViewed] live vuoto, tengo i precedenti (<60s)');
-          newMost = _mostViewedTrains;
-          newTotal = _totalViewersLive;
-        }
-      }
-      // Merge per chiave: un treno recente non sparisce di colpo se un
-      // poll lo salta (multi-istanza, restart, bordo TTL). Scadenza 70'.
-      final newRecent = recent != null
-          ? _mergeRecent(_recentTrains, recent)
-          : _recentTrains;
-      String sigList(List<Map<String, dynamic>> l) =>
-          l.map((e) => '${e['trainKey']}:${e['viewers']}').join('|');
+      if (live == null) return;
+      // Niente grazia per la live: vuoto vero = si svuota subito e
+      // i treni passano ai recenti. Gli errori restano null e non toccano nulla.
+      final newMost = live.trains.take(5).toList();
+      final newTotal = live.totalViewers;
       final sig =
-          '$newTotal#${sigList(newMost)}#${sigList(newRecent)}';
+          '$newTotal#${newMost.map((e) => '${e['trainKey']}:${e['viewers']}').join('|')}';
       // Dati identici: nessun setState, nessun glitch.
-      if (sig == _presenceSig) return;
-      _presenceSig = sig;
+      if (sig == _presenceSigLive) return;
+      _presenceSigLive = sig;
       _safeSetState(() {
         _mostViewedTrains = newMost;
         _totalViewersLive = newTotal;
+      });
+    } catch (_) {
+    } finally {
+      _loadingLiveSection = false;
+    }
+  }
+
+  /// Sezione recenti (GET /recent, merge per chiave, scadenza 70').
+  Future<void> _loadRecentSection() async {
+    if (_isOffline || !mounted || _loadingRecentSection) return;
+    _loadingRecentSection = true;
+    final gen = ++_recentSectionGen;
+    try {
+      final recent =
+          await TrainPresenceService().fetchRecentTrains(limit: 10);
+      if (!mounted || gen != _recentSectionGen) return;
+      if (recent == null) return;
+      // Merge per chiave: un treno recente non sparisce di colpo se un
+      // poll lo salta (multi-istanza, restart, bordo TTL). Scadenza 70'.
+      final newRecent = _mergeRecent(_recentTrains, recent);
+      final sig = newRecent
+          .map((e) => '${e['trainKey']}:${e['viewers']}')
+          .join('|');
+      if (sig == _presenceSigRecent) return;
+      _presenceSigRecent = sig;
+      _safeSetState(() {
         _recentTrains = newRecent;
       });
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _loadingRecentSection = false;
+    }
   }
 
   /// Unisce i recenti vecchi e nuovi per trainKey (vince il lastSeen
