@@ -123,6 +123,8 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
           provider: widget.provider,
           trainNumber: tripNumber,
           tripId: tripId,
+          originStationId: widget.stationId,
+          originBoardEntry: Map<String, dynamic>.from(item),
         ),
       ),
     );

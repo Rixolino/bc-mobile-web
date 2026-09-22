@@ -265,6 +265,11 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
           provider: widget.provider,
           trainNumber: tripNumber.toString(),
           tripId: tripId.toString(),
+          originStationId:
+              _selectedStationId?.isNotEmpty == true ? _selectedStationId : null,
+          originBoardEntry: departure is Map<String, dynamic>
+              ? departure
+              : Map<String, dynamic>.from(departure as Map),
         ),
       ),
     );

@@ -104,6 +104,10 @@ class RegionalTrainDetailsSheet extends StatefulWidget {
   final String? trainNumber;
   final bool isArrivalMode;
   final ScrollController? scrollController;
+  // Tabellone da cui è stato aperto il treno: la sheet si affida a lui
+  // per il ritardo (match esatto, niente treni sbagliati).
+  final String? originStationId;
+  final Map<String, dynamic>? originBoardEntry;
 
   const RegionalTrainDetailsSheet({
     super.key,
@@ -112,6 +116,8 @@ class RegionalTrainDetailsSheet extends StatefulWidget {
     this.trainNumber,
     this.isArrivalMode = false,
     this.scrollController,
+    this.originStationId,
+    this.originBoardEntry,
   });
 
   @override
@@ -136,6 +142,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   // non devono mai alterarli.
   String? _frozenCategory;
   String? _frozenNumber;
+  // Ritardo dal tabellone di apertura (ricontrollato a ogni tick):
+  // è lui la fonte autorevole, con match anti-treno-sbagliato.
+  int? _originBoardDelay;
 
   // Presenza live: quanti utenti stanno guardando questo treno
   Timer? _presenceTimer;
@@ -156,6 +165,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     _frozenCategory = _category;
     _frozenNumber = _trainNumber;
+    _originBoardDelay = _asIntOrNull(
+        widget.originBoardEntry?['delay'] ??
+            widget.originBoardEntry?['delayMinutes']);
     _startAutoRefresh();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -163,6 +175,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     // Annuncio vocale all'apertura del dettaglio treno
     _speakTrainInfo();
     _fetchTripDetails();
+    _refreshOriginBoardDelay();
     // Presenza live: heartbeat mentre la sheet è aperta
     _startPresence();
   }
@@ -528,23 +541,22 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               _error = null;
             });
           } else {
+            debugPrint('[RegionalTrip] delay fonti: trip=${tripMap['delay']}/${tripMap['delayMinutes']} vs current=${_current['delay']}/${_current['delayMinutes']}');
             setState(() {
-              // Il ritardo viene gestito esclusivamente da
-              // _refreshDelayFromBoards (tabelloni = fonte autorevole in
-              // tempo reale). Il trip endpoint puo avere un dato stale che
-              // sovrascriverebbe ogni tick quello fresco dalle bacheche.
-              // Su primo load _current['delay'] viene da widget.tripData;
-              // ai tick successivi viene da _refreshDelayFromBoards.
+              // Il ritardo fresco dal trip endpoint vince su quello vecchio
+              // (altrimenti il refresh resterebbe fermo al dato stantio).
+              // _refreshDelayFromBoards gira subito dopo e ha l'ultima parola
+              // quando trova il treno nei tabelloni in tempo reale.
               _tripData = {
                 ...tripMap,
-                'delay': _current['delay'] ??
-                    _current['delayMinutes'] ??
-                    tripMap['delay'] ??
-                    tripMap['delayMinutes'],
-                'delayMinutes': _current['delayMinutes'] ??
-                    _current['delay'] ??
+                'delay': tripMap['delay'] ??
                     tripMap['delayMinutes'] ??
-                    tripMap['delay']
+                    _current['delay'] ??
+                    _current['delayMinutes'],
+                'delayMinutes': tripMap['delayMinutes'] ??
+                    tripMap['delay'] ??
+                    _current['delayMinutes'] ??
+                    _current['delay']
               };
               _isLoading = false;
               _hasLoadedData = true;
@@ -591,12 +603,66 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   ///    (i tripId regionali cambiano da stazione a stazione:
   ///    FAL `fal-<num>-<stationId>`, Trenord `<codice>-<mir>-<epoch>`).
   /// 4. Aggiorna il delay del dettaglio.
+  bool _isRefreshingBoards = false;
+
+  /// Normalizza un nome stazione: minuscolo, spazi singoli.
+  String _normStation(String s) {
+    return s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Stessa destinazione? Maiuscole/minuscole, spazi e abbreviazioni
+  /// ("MILANO C.LE" vs "Milano Centrale") non devono bloccare il match.
+  /// Se una delle due manca, non si scarta.
+  bool _sameDestination(String a, String b) {
+    final na = _normStation(a);
+    final nb = _normStation(b);
+    if (na.isEmpty || nb.isEmpty) return true;
+    if (na == nb) return true;
+    final fa = na.split(' ').first;
+    final fb = nb.split(' ').first;
+    if (fa.isNotEmpty && fa == fb) return true;
+    if (na.contains(nb) || nb.contains(na)) return true;
+    return false;
+  }
+
+  /// Stesso treno con formato numero diverso (Trenord: 2624 vs 102624)?
+  /// Confronto esatto + suffisso con max 2 cifre di prefisso in più.
+  bool _sameTrainNumber(String a, String b) {
+    final na = a.trim();
+    final nb = b.trim();
+    if (na.isEmpty || nb.isEmpty) return false;
+    if (na == nb) return true;
+    final da = na.replaceAll(RegExp(r'\D'), '');
+    final db = nb.replaceAll(RegExp(r'\D'), '');
+    if (da.isEmpty || db.isEmpty) return false;
+    if (da == db) return true;
+    if (da.length > db.length &&
+        da.endsWith(db) &&
+        da.length - db.length <= 2) {
+      return true;
+    }
+    if (db.length > da.length &&
+        db.endsWith(da) &&
+        db.length - da.length <= 2) {
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _refreshDelayFromBoards({int maxStations = 3}) async {
+    // Mutex: niente ricerche sovrapposte (il timer puo scattare prima
+    // che la precedente abbia finito).
+    if (_isRefreshingBoards) {
+      debugPrint('[RegionalDelay] Skip: ricerca gia in corso');
+      return;
+    }
     final stops = _stops;
     if (stops.isEmpty) {
       debugPrint('[RegionalDelay] Skip: nessuna fermata');
       return;
     }
+    _isRefreshingBoards = true;
+    try {
 
     final nowUtc = DateTime.now().toUtc();
 
@@ -644,8 +710,13 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     for (final i in indices) {
       final stop = stops[i];
       final stationId = _asStr(stop['stationId'] ?? stop['id']);
-      final modes =
-          i == stops.length - 1 ? ['arrivals'] : ['departures', 'arrivals'];
+      // Mai la bacheca arrivi della destinazione finale: è una previsione
+      // che oscilla (4 -> 1 -> 0 -> 4) e sporca il ritardo generale del trip.
+      if (i == stops.length - 1) {
+        debugPrint('[RegionalDelay] Salto arrivi destinazione ${_asStr(stop['stationName'])} (solo previsioni)');
+        continue;
+      }
+      final modes = ['departures', 'arrivals'];
       bool matchFound = false;
 
       for (final mode in modes) {
@@ -690,10 +761,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         }
         if (match == null && tripNumber.isNotEmpty) {
           for (final b in board) {
-            if (_asStr(b['tripNumber'] ?? b['trainNumber']) != tripNumber)
+            if (!_sameTrainNumber(
+                _asStr(b['tripNumber'] ?? b['trainNumber']), tripNumber)) {
               continue;
-            final bDest = _asStr(b['destination']).trim().toLowerCase();
-            if (dest.isNotEmpty && bDest.isNotEmpty && bDest != dest) continue;
+            }
+            final bDest = _asStr(b['destination'] ??
+                b['arrivalStation'] ??
+                b['stazione']);
+            if (!_sameDestination(dest, bDest)) continue;
             match = b;
             matchBy = 'numero+destinazione';
             break;
@@ -743,6 +818,9 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     debugPrint(
         '[RegionalDelay] Nessun tabellone utile, ritardo invariato ($_delay min)');
+    } finally {
+      _isRefreshingBoards = false;
+    }
   }
 
   void _retry() {
@@ -868,8 +946,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   // Auto-refresh + delay continuo da tabelloni finche la sheet e aperta
   // ---------------------------------------------------------------------------
 
-  /// Tick continuo: prima il trip live, poi il ritardo fresco dalle bacheche.
+  /// Tick continuo: prima il tabellone di apertura (fonte autorevole),
+  /// poi il trip live, poi il ritardo fresco dalle bacheche.
   Future<void> _autoRefreshTick() async {
+    if (!mounted) return;
+    await _refreshOriginBoardDelay();
     if (!mounted) return;
     await _fetchTripDetails();
     if (!mounted) return;
@@ -976,7 +1057,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
                   const SizedBox(width: 8),
                   _buildProgressButton(context, theme),
                   const SizedBox(width: 12),
-                  _buildModernDelayBadge(_delay, theme),
+                  _buildModernDelayBadge(_headerDelay, theme),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1190,6 +1271,85 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   int? _diffMinutes(DateTime? sched, DateTime? est) {
     if (sched == null || est == null) return null;
     return est.difference(sched).inMinutes;
+  }
+
+  /// Ritardo header: prima il tabellone di apertura (ricontrollato vivo
+  /// a ogni tick), poi il generale del trip. Mai quello di una singola
+  /// fermata: il badge deve coincidere con il tabellone selezionato.
+  int get _headerDelay => _originBoardDelay ?? _delay;
+
+  /// Match anti-treno-sbagliato sul tabellone di apertura (stesso formato
+  /// dati): tripId esatto, oppure numero + destinazione + orario
+  /// programmato vicino (±10 min, solo se noto da ambo le parti).
+  bool _matchOriginEntry(Map<String, dynamic> entry) {
+    final myTrip = _tripId;
+    final eTrip = _asStr(entry['tripId']);
+    if (myTrip.isNotEmpty && eTrip.isNotEmpty) return eTrip == myTrip;
+    final num = _trainNumber;
+    if (num.isEmpty) return false;
+    if (!_sameTrainNumber(
+        _asStr(entry['tripNumber'] ?? entry['trainNumber']), num)) {
+      return false;
+    }
+    if (!_sameDestination(
+        _getEffectiveDestination(_current),
+        _asStr(entry['destination'] ??
+            entry['arrivalStation'] ??
+            entry['stazione']))) {
+      return false;
+    }
+    final eSched = _parseTime(entry['scheduledDeparture'] ??
+        entry['departure'] ??
+        entry['scheduledTime']);
+    final mySched = _parseTime(_current['scheduledTime']);
+    if (eSched != null && mySched != null) {
+      if ((eSched.difference(mySched).inMinutes).abs() > 10) return false;
+    }
+    return true;
+  }
+
+  /// Ricontrolla il tabellone di apertura: finché il treno è listato lì,
+  /// il suo ritardo è quello ufficiale per il badge.
+  Future<void> _refreshOriginBoardDelay() async {
+    final stationId = widget.originStationId ?? '';
+    if (stationId.isEmpty || !mounted) return;
+    int? found;
+    for (final mode in ['departures', 'arrivals']) {
+      try {
+        final url =
+            '$_baseUrl/$mode?stationId=${Uri.encodeComponent(stationId)}';
+        final resp = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode != 200) continue;
+        final decoded = json.decode(resp.body);
+        final list =
+            (decoded is Map ? decoded['data'] as List<dynamic>? : null) ??
+                [];
+        for (final b in list.whereType<Map>()) {
+          final entry = Map<String, dynamic>.from(b);
+          if (!_matchOriginEntry(entry)) continue;
+          final d = _asIntOrNull(
+              entry['delay'] ?? entry['delayMinutes']);
+          if (d == null) continue;
+          found = d;
+          debugPrint(
+              '[RegionalDelay] Origine $stationId ($mode): match, delay $d min');
+          break;
+        }
+        if (found != null) break;
+      } catch (e) {
+        debugPrint('[RegionalDelay] Origine $stationId ($mode): errore $e');
+        continue;
+      }
+    }
+    if (!mounted) return;
+    if (found != _originBoardDelay) {
+      setState(() => _originBoardDelay = found);
+      debugPrint(found == null
+          ? '[RegionalDelay] Origine $stationId: treno uscito, uso trip'
+          : '[RegionalDelay] Origine $stationId: badge $found min');
+    }
   }
 
   // Storico ritardi ricevuti in sessione: la targhetta si aggiorna con
@@ -1833,7 +1993,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           progress: segmentProgress,
           timeFormatter: _formatStationTime,
           isFuture: isFuture,
-          totalDelay: _delay,
+          totalDelay: _headerDelay,
           theme: theme,
           onStationTap: stopStationId.isNotEmpty
               ? () {
@@ -2475,6 +2635,14 @@ class _TimelineRow extends StatelessWidget {
     final estDep = _parseRegionalTime(stop['estimatedDeparture']);
     final int? arrDelay = _asIntOrNull(stop['arrivalDelay']);
     final int? depDelay = _asIntOrNull(stop['departureDelay']);
+    // Fermate future: lo stimato è programmato + ritardo attuale
+    // (il ritardo si somma alle fermate future).
+    final projArr = isFuture && schedArr != null
+        ? schedArr.add(Duration(minutes: totalDelay))
+        : estArr;
+    final projDep = isFuture && schedDep != null
+        ? schedDep.add(Duration(minutes: totalDelay))
+        : estDep;
 
     return IntrinsicHeight(
       child: Row(
@@ -2567,7 +2735,7 @@ class _TimelineRow extends StatelessWidget {
                           RuntimeLocalizations.t(context, 'arrival') ??
                               'Arrivo',
                           schedArr,
-                          estArr,
+                          projArr,
                           isFuture ? totalDelay : arrDelay);
                       if (arr.text.isEmpty) return const SizedBox.shrink();
                       return Padding(
@@ -2598,7 +2766,7 @@ class _TimelineRow extends StatelessWidget {
                           RuntimeLocalizations.t(context, 'departure') ??
                               'Partenza',
                           schedDep,
-                          estDep,
+                          projDep,
                           isFuture ? totalDelay : depDelay);
                       if (dep.text.isEmpty) return const SizedBox.shrink();
                       return Wrap(

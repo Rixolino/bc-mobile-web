@@ -28,6 +28,7 @@ import '../../features/plane/presentation/screens/plane_search_screen.dart';
 import '../widgets/map_background.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../core/services/runtime_localizations.dart';
+import '../../core/services/tv_cursor_service.dart';
 
 import 'settings_screen.dart';
 import 'notifications_manager_screen.dart';
@@ -83,7 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
       authProvider.addListener(_onAuthChange);
       _onAuthChange();
       _initDeepLinks();
+      // Se è una TV attiva subito la modalità TV (orologio + cursore).
+      _activateTvModeIfTelevision();
     });
+  }
+
+  /// Rileva la TV e attiva subito la modalità TV senza aspettare altro.
+  Future<void> _activateTvModeIfTelevision() async {
+    try {
+      final isTv = await TvCursorService.detectTelevision().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
+      if (!mounted || !isTv) return;
+      await Provider.of<TvCursorService>(context, listen: false)
+          .setEnabled(true);
+    } catch (_) {}
   }
 
   Future<void> _initDeepLinks() async {
@@ -531,8 +547,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTopActionIcons(ThemeProvider theme) {
+    final tv = Provider.of<TvCursorService>(context);
+    final tvMode = tv.enabled || tv.tvDetected;
     return Row(
       children: [
+        // In modalità TV: orario attuale prima della stella.
+        if (tvMode) ...[
+          StreamBuilder<DateTime>(
+            stream: Stream.periodic(
+                const Duration(seconds: 30), (_) => DateTime.now()),
+            initialData: DateTime.now(),
+            builder: (_, snap) {
+              final now = snap.data ?? DateTime.now();
+              final hh = now.hour.toString().padLeft(2, '0');
+              final mm = now.minute.toString().padLeft(2, '0');
+              return Text(
+                '$hh:$mm',
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: AppTokens.space8),
+        ],
         _buildCircleAction(
             Icons.star_rounded,
             () => Navigator.of(context)
