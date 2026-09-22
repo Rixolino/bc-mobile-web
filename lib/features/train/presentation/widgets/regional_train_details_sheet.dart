@@ -142,9 +142,10 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   // non devono mai alterarli.
   String? _frozenCategory;
   String? _frozenNumber;
-  // Ritardo dal tabellone di apertura (ricontrollato a ogni tick):
-  // è lui la fonte autorevole, con match anti-treno-sbagliato.
-  int? _originBoardDelay;
+  // Ritardo da bacheca memorizzato: una volta trovato (tabellone di
+  // apertura o successive), resta per tutta la sessione. Niente più
+  // oscillazioni tra trip e bacheche a ogni tick.
+  int? _memorizedDelay;
 
   // Presenza live: quanti utenti stanno guardando questo treno
   Timer? _presenceTimer;
@@ -165,9 +166,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     _frozenCategory = _category;
     _frozenNumber = _trainNumber;
-    _originBoardDelay = _asIntOrNull(
-        widget.originBoardEntry?['delay'] ??
-            widget.originBoardEntry?['delayMinutes']);
+    _memorizedDelay = _asIntOrNull(widget.originBoardEntry?['delay'] ??
+        widget.originBoardEntry?['delayMinutes']);
     _startAutoRefresh();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -409,10 +409,30 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
   String get _category {
     final t = _current;
-    return _asStr(t['category'] ?? t['operator'] ?? widget.provider.provider)
-            .isNotEmpty
-        ? _asStr(t['category'] ?? t['operator'] ?? widget.provider.provider)
-        : 'TRN';
+    // 1. Campo category diretto.
+    var cat = _asStr(t['category']);
+    // 2. Primo token di 'line' (es. "RE 2626" -> "RE"), come il nazionale.
+    //    Mai il nome provider/operator lungo ("Trenord").
+    if (cat.isEmpty) {
+      final line = _asStr(t['line']);
+      if (line.isNotEmpty) {
+        final token = line.trim().split(RegExp(r'\s+')).first;
+        final cleaned = token.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+        if (cleaned.isNotEmpty && RegExp(r'[A-Za-z]').hasMatch(cleaned)) {
+          cat = RegExp(r'^S\d+$').hasMatch(cleaned)
+              ? cleaned
+              : cleaned.replaceAll(RegExp(r'\d'), '');
+        }
+      }
+    }
+    // 3. Operator solo se sembra una sigla di categoria (es. "FAL", "R").
+    if (cat.isEmpty) {
+      final op = _asStr(t['operator']).trim();
+      if (op.isNotEmpty && op.length <= 4 && op == op.toUpperCase()) {
+        cat = op;
+      }
+    }
+    return cat;
   }
 
   String _cleanStationName(dynamic v) => _asStr(v);
@@ -697,6 +717,16 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
     final tripNumber = _trainNumber;
     final dest = _getEffectiveDestination(_current).trim().toLowerCase();
+    // ID stazione della destinazione (i tabelloni a volte riportano l'ID,
+    // es. "S09999", invece del nome: anche quello deve matchare).
+    String destStationId = '';
+    for (int k = stops.length - 1; k >= 0; k--) {
+      final s = stops[k];
+      if (s is! Map) continue;
+      if (s['cancelled'] == true) continue;
+      destStationId = _asStr(s['stationId'] ?? s['id']);
+      if (destStationId.isNotEmpty) break;
+    }
     // Stazioni restanti in base all'indice del treno (dalla prima futura a fine tratta)
     final startIdx = indices.reduce((a, b) => a < b ? a : b);
     final remaining = stops
@@ -768,7 +798,15 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
             final bDest = _asStr(b['destination'] ??
                 b['arrivalStation'] ??
                 b['stazione']);
-            if (!_sameDestination(dest, bDest)) continue;
+            bool destOk = _sameDestination(dest, bDest);
+            if (!destOk && destStationId.isNotEmpty) {
+              final bLow = bDest.toLowerCase();
+              destOk = bLow == destStationId.toLowerCase() ||
+                  _asStr(b['destinationId'] ?? b['destination_id'])
+                          .toLowerCase() ==
+                      destStationId.toLowerCase();
+            }
+            if (!destOk) continue;
             match = b;
             matchBy = 'numero+destinazione';
             break;
@@ -788,26 +826,20 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
               '[RegionalDelay] Match senza delay, provo altro modo/stazione');
           continue;
         }
+        // Niente scarto per bacheca non live: se il treno è listato con
+        // un ritardo, lo si usa (le piccole stazioni non hanno mai il
+        // flag live e altrimenti la ricerca non servirebbe a nulla).
         if (match['realtime'] == false) {
           debugPrint(
-              '[RegionalDelay] Bacheca non live ($stationId, $mode), salto');
-          continue;
+              '[RegionalDelay] Match non live ma con delay, lo uso comunque ($stationId, $mode)');
         }
 
         final delay = _asInt(match['delay']);
         matchFound = true;
         if (!mounted) return;
-        final oldDelay = _delay;
-        if (delay != oldDelay && _tripData != null) {
-          setState(() {
-            _tripData = {..._current, 'delay': delay};
-          });
-          debugPrint(
-              '[RegionalDelay] Aggiornato: $oldDelay -> $delay min (da ${_asStr(stop['stationName'])})');
-        } else {
-          debugPrint(
-              '[RegionalDelay] Invariato: $delay min (da ${_asStr(stop['stationName'])})');
-        }
+        // Trovato in bacheca: si memorizza e resta (niente oscillazioni
+        // col trip ai tick successivi).
+        _memorizeBoardDelay(delay, _asStr(stop['stationName']));
         return; // Trovato, esce da entrambe le liste
       }
 
@@ -1273,10 +1305,19 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     return est.difference(sched).inMinutes;
   }
 
-  /// Ritardo header: prima il tabellone di apertura (ricontrollato vivo
-  /// a ogni tick), poi il generale del trip. Mai quello di una singola
-  /// fermata: il badge deve coincidere con il tabellone selezionato.
-  int get _headerDelay => _originBoardDelay ?? _delay;
+  /// Ritardo header: prima quello memorizzato dalle bacheche (apertura
+  /// o successive), poi il generale del trip. Mai quello di una singola
+  /// fermata: il badge deve coincidere con i tabelloni, senza oscillare.
+  int get _headerDelay => _memorizedDelay ?? _delay;
+
+  /// Memorizza un ritardo trovato in bacheca (solo se diverso).
+  void _memorizeBoardDelay(int delay, String where) {
+    if (_memorizedDelay != delay) {
+      setState(() => _memorizedDelay = delay);
+      debugPrint(
+          '[RegionalDelay] Memorizzato: $delay min (da $where)');
+    }
+  }
 
   /// Match anti-treno-sbagliato sul tabellone di apertura (stesso formato
   /// dati): tripId esatto, oppure numero + destinazione + orario
@@ -1291,13 +1332,31 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         _asStr(entry['tripNumber'] ?? entry['trainNumber']), num)) {
       return false;
     }
-    if (!_sameDestination(
-        _getEffectiveDestination(_current),
-        _asStr(entry['destination'] ??
-            entry['arrivalStation'] ??
-            entry['stazione']))) {
-      return false;
+    final bDest = _asStr(entry['destination'] ??
+        entry['arrivalStation'] ??
+        entry['stazione']);
+    bool destOk = _sameDestination(
+        _getEffectiveDestination(_current), bDest);
+    if (!destOk) {
+      // Come nella ricerca bacheche: vale anche l'ID stazione.
+      String destId = '';
+      final myStops = _stops;
+      for (int k = myStops.length - 1; k >= 0; k--) {
+        final s = myStops[k];
+        if (s is! Map) continue;
+        if (s['cancelled'] == true) continue;
+        destId = _asStr(s['stationId'] ?? s['id']);
+        if (destId.isNotEmpty) break;
+      }
+      if (destId.isNotEmpty) {
+        final bLow = bDest.toLowerCase();
+        destOk = bLow == destId.toLowerCase() ||
+            _asStr(entry['destinationId'] ?? entry['destination_id'])
+                    .toLowerCase() ==
+                destId.toLowerCase();
+      }
     }
+    if (!destOk) return false;
     final eSched = _parseTime(entry['scheduledDeparture'] ??
         entry['departure'] ??
         entry['scheduledTime']);
@@ -1344,11 +1403,12 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       }
     }
     if (!mounted) return;
-    if (found != _originBoardDelay) {
-      setState(() => _originBoardDelay = found);
-      debugPrint(found == null
-          ? '[RegionalDelay] Origine $stationId: treno uscito, uso trip'
-          : '[RegionalDelay] Origine $stationId: badge $found min');
+    if (found != null) {
+      // Trovato: si memorizza e resta (anche se poi esce dal tabellone).
+      _memorizeBoardDelay(found, 'origine $stationId');
+    } else {
+      debugPrint(
+          '[RegionalDelay] Origine $stationId: treno uscito, tengo il memorizzato');
     }
   }
 
@@ -1401,7 +1461,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       _trendMax = _trendMax == null ? sMax : max(_trendMax!, sMax);
       _trendFirst ??= delays.first;
     }
-    final current = _delay;
+    final current = _headerDelay;
     _trendMin = _trendMin == null ? current : min(_trendMin!, current);
     _trendMax = _trendMax == null ? current : max(_trendMax!, current);
     if (_trendMin == null || _trendMax == null || _trendFirst == null) {
