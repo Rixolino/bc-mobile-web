@@ -118,6 +118,13 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
 
+  // Firme per non ricostruire le liste se i dati non cambiano (anti-glitch).
+  String _presenceSig = '';
+  String _liveSig = '';
+  // Ultimo poll con treni live presenti: se /live torna vuoto entro 60s
+  // (restart server, blip) si tengono i vecchi invece di sparire di colpo.
+  DateTime? _lastNonEmptyLiveAt;
+
   // Cache provider regionali per aprire la sheet giusta dai più visualizzati
   final Map<String, RegionalProvider> _regionalProvidersCache = {};
   final RegionalProvidersRepository _regionalProvidersRepo =
@@ -1068,6 +1075,9 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
     }
   }
 
+  // La lista /api/trains/live non è più mostrata (sostituita dalle sezioni
+  // presence), ma resta caricata in sottofondo per risolvere i dati
+  // completi al tap sulle card.
   Future<List<dynamic>> _loadLiveTrains({bool silent = false}) async {
     if (_isOffline) return [];
     if (!mounted) return [];
@@ -1083,6 +1093,18 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       if (!mounted) return [];
       if (response.statusCode == 200) {
         final data = json.decode(response.body)['data'] ?? [];
+        // Stessi dati: nessun setState, nessun glitch.
+        final sig = data is List
+            ? data
+                .map((e) => e is Map
+                    ? "${e['trip_number']}:${e['delay']}:${e['trip_id']}"
+                    : '')
+                .join('|')
+            : '';
+        if (sig == _liveSig && !_isFirstLiveLoad) {
+          return _cachedLiveTrains;
+        }
+        _liveSig = sig;
         _safeSetState(() {
           _cachedLiveTrains = data;
           _isLoadingLiveTrains = false;
@@ -1122,22 +1144,89 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         TrainPresenceService().fetchRecentTrains(limit: 10),
       ]);
       if (!mounted) return;
-      final live = results[0]
-          as ({List<Map<String, dynamic>> trains, int totalViewers})?;
+      final live =
+          results[0] as ({List<Map<String, dynamic>> trains, int totalViewers})?;
       final recent = results[1] as List<Map<String, dynamic>>?;
       // Solo risposte riuscite aggiornano lo stato: un timeout/errore
       // non deve mai svuotare le sezioni senza motivo.
       if (live == null && recent == null) return;
+      var newMost =
+          live != null ? live.trains.take(5).toList() : _mostViewedTrains;
+      var newTotal = live?.totalViewers ?? _totalViewersLive;
+      if (live != null) {
+        if (live.trains.isNotEmpty) {
+          _lastNonEmptyLiveAt = DateTime.now();
+        } else if (_mostViewedTrains.isNotEmpty &&
+            _lastNonEmptyLiveAt != null &&
+            DateTime.now().difference(_lastNonEmptyLiveAt!) <
+                const Duration(seconds: 60)) {
+          // Vuoto improvviso ma c'erano treni fino a poco fa: blip,
+          // tengo i vecchi invece di far sparire la sezione di colpo.
+          debugPrint('[MostViewed] live vuoto, tengo i precedenti (<60s)');
+          newMost = _mostViewedTrains;
+          newTotal = _totalViewersLive;
+        }
+      }
+      // Merge per chiave: un treno recente non sparisce di colpo se un
+      // poll lo salta (multi-istanza, restart, bordo TTL). Scadenza 70'.
+      final newRecent = recent != null
+          ? _mergeRecent(_recentTrains, recent)
+          : _recentTrains;
+      String sigList(List<Map<String, dynamic>> l) =>
+          l.map((e) => '${e['trainKey']}:${e['viewers']}').join('|');
+      final sig =
+          '$newTotal#${sigList(newMost)}#${sigList(newRecent)}';
+      // Dati identici: nessun setState, nessun glitch.
+      if (sig == _presenceSig) return;
+      _presenceSig = sig;
       _safeSetState(() {
-        if (live != null) {
-          _mostViewedTrains = live.trains.take(5).toList();
-          _totalViewersLive = live.totalViewers;
-        }
-        if (recent != null) {
-          _recentTrains = recent;
-        }
+        _mostViewedTrains = newMost;
+        _totalViewersLive = newTotal;
+        _recentTrains = newRecent;
       });
     } catch (_) {}
+  }
+
+  /// Unisce i recenti vecchi e nuovi per trainKey (vince il lastSeen
+  /// maggiore), scarta oltre 70 minuti. Così non spariscono di colpo.
+  List<Map<String, dynamic>> _mergeRecent(
+      List<Map<String, dynamic>> oldList,
+      List<Map<String, dynamic>> fresh) {
+    final map = <String, Map<String, dynamic>>{};
+    for (final e in oldList) {
+      final k = (e['trainKey'] ?? '').toString();
+      if (k.isNotEmpty) map[k] = e;
+    }
+    for (final e in fresh) {
+      final k = (e['trainKey'] ?? '').toString();
+      if (k.isEmpty) continue;
+      final prev = map[k];
+      if (prev == null) {
+        map[k] = e;
+      } else {
+        final pSeen =
+            DateTime.tryParse((prev['lastSeen'] ?? '').toString());
+        final nSeen = DateTime.tryParse((e['lastSeen'] ?? '').toString());
+        if (nSeen != null && (pSeen == null || nSeen.isAfter(pSeen))) {
+          map[k] = e;
+        }
+      }
+    }
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 70));
+    final out = map.values.where((e) {
+      final seen = DateTime.tryParse((e['lastSeen'] ?? '').toString());
+      if (seen == null) return true;
+      return !seen.isBefore(cutoff);
+    }).toList();
+    out.sort((a, b) {
+      final sa = DateTime.tryParse((a['lastSeen'] ?? '').toString());
+      final sb = DateTime.tryParse((b['lastSeen'] ?? '').toString());
+      if (sa == null && sb == null) return 0;
+      if (sa == null) return 1;
+      if (sb == null) return -1;
+      return sb.compareTo(sa);
+    });
+    return out.take(10).toList();
   }
 
   /// Normalizza una entry presence /live nello stesso formato dei treni live,
@@ -3234,9 +3323,9 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         .map(_normalizePresenceTrain)
         .toList();
 
-    if (_cachedLiveTrains.isEmpty &&
-        mostViewed.isEmpty &&
-        recent.isEmpty) {
+    // Le sezioni presence sostituiscono la vecchia lista /api/trains/live
+    // (niente più conflitti/duplicati tra le due fonti).
+    if (mostViewed.isEmpty && recent.isEmpty) {
       if (_isLoadingLiveTrains) {
         return ShimmerLoading(baseColor: theme.secondaryTextColor);
       }
@@ -3247,7 +3336,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             Icon(Icons.train_rounded, size: 64, color: theme.secondaryTextColor.withValues(alpha: 0.3)),
             const SizedBox(height: 16),
             Text(
-              'Nessun treno live in transito',
+              'Nessun treno seguito al momento',
               style: TextStyle(color: theme.secondaryTextColor, fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
@@ -3265,7 +3354,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       children.add(_buildSectionHeader(
         theme,
         titleKey: 'most_viewed_trains',
-        fallback: 'Treni più visualizzati',
+        fallback: 'Treni con spettatori',
         total: _totalViewersLive,
         expanded: _mostViewedExpanded,
         onToggle: () =>
@@ -3276,9 +3365,6 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
           children.add(_buildTrainListCard(t, theme));
         }
       }
-    }
-    for (final t in _cachedLiveTrains) {
-      children.add(_buildTrainListCard(t, theme));
     }
     if (recent.isNotEmpty) {
       children.add(_buildSectionHeader(
