@@ -25,6 +25,9 @@ import 'package:flutter/foundation.dart';
 import 'package:bc_transporter/l10n/app_localizations.dart';
 import '../../../../core/services/runtime_localizations.dart';
 import '../../../../core/services/train_presence_service.dart';
+import 'regional_train_details_sheet.dart';
+import '../../data/models/regional_provider_model.dart';
+import '../../data/repositories/regional_providers_repository.dart';
 import 'railway_station_stats_screen.dart' as station_stats;
 import 'train_stats_screen.dart' as train_stats;
 import 'package:intl/intl.dart';
@@ -114,6 +117,11 @@ class _TrainPanelContentState extends State<TrainPanelContent> {
 
   // Cache per i trip_id già cercati
   final Map<String, Map<String, dynamic>> _tripCache = {};
+
+  // Cache provider regionali per aprire la sheet giusta dai più visualizzati
+  final Map<String, RegionalProvider> _regionalProvidersCache = {};
+  final RegionalProvidersRepository _regionalProvidersRepo =
+      RegionalProvidersRepository();
 
 // TTS auto-annuncio: set di chiavi già annunciate (separato per arrivals/departures)
   final Set<String> _spokenDepartureKeys = {};
@@ -1185,9 +1193,44 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       'scheduledTime': scheduled,
       'estimatedTime': estimated,
       'platform': (t['platform'] ?? '').toString(),
+      'screen': entry['screen']?.toString(),
+      'provider': (t['provider'] ?? '').toString(),
+      'isArrival': t['isArrival'] == true,
       'stops': stops,
       'viewers': entry['viewers'] ?? 0,
     };
+  }
+
+  /// Risolve il RegionalProvider dalla chiave (es. 'trenord') nel paese
+  /// indicato (non solo IT), con cache per paese+chiave.
+  Future<RegionalProvider?> _resolveRegionalProvider(String key,
+      {String country = 'it'}) async {
+    final k = key.trim().toLowerCase();
+    if (k.isEmpty) return null;
+    var cc = country.trim().toLowerCase();
+    if (cc.isEmpty) cc = 'it';
+    final cacheKey = '$cc|$k';
+    if (_regionalProvidersCache.containsKey(cacheKey)) {
+      return _regionalProvidersCache[cacheKey];
+    }
+    try {
+      final providers = await _regionalProvidersRepo.fetchProviders(cc);
+      for (final p in providers) {
+        for (final cand in [p.share.key, p.name, p.provider]) {
+          if (cand.trim().toLowerCase() == k) {
+            _regionalProvidersCache[cacheKey] = p;
+            return p;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// True solo se screen è regional: apre la sheet regionale,
+  /// altrimenti sempre quella nazionale normale.
+  bool _isRegionalTrain(Map<String, dynamic> m) {
+    return (m['screen'] ?? '').toString().toLowerCase() == 'regional';
   }
 
   /// Porta una fermata presence (formato board oppure TrainStop.toJson)
@@ -3442,6 +3485,36 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   /// Con il tripId la sheet carica il trip completo (tutte le fermate).
   Future<void> _openTrainCard(BuildContext context, TrainDeparture dep,
       dynamic train, ThemeProvider theme) async {
+    // Treni regionali: sheet regionale, mai quella nazionale.
+    if (train is Map) {
+      final tmap = Map<String, dynamic>.from(train);
+      final tripId = (tmap['trip_id'] ?? tmap['tripId'] ?? '').toString();
+      if (_isRegionalTrain(tmap) && tripId.isNotEmpty) {
+        final provider = await _resolveRegionalProvider(
+          (tmap['provider'] ?? '').toString(),
+          country: (tmap['country'] ?? 'IT').toString(),
+        );
+        if (provider != null && context.mounted) {
+          debugPrint(
+              '[MostViewed] apro sheet regionale ${provider.name} $tripId');
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => RegionalTrainDetailsSheet(
+                provider: provider,
+                tripId: tripId,
+                trainNumber:
+                    (tmap['trip_number'] ?? tmap['trainNumber'] ?? '')
+                        .toString(),
+                isArrivalMode: tmap['isArrival'] == true,
+              ),
+            ),
+          );
+          return;
+        }
+        debugPrint(
+            '[MostViewed] provider regionale non risolto, fallback nazionale');
+      }
+    }
     var openDep = dep;
     if (train is Map &&
         train['viewers'] is int &&
@@ -3505,7 +3578,13 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             final live = _findLiveTrainForPresence(
                 Map<String, dynamic>.from(train));
             if (live != null) {
-              train = {...live, 'viewers': train['viewers']};
+              // screen/provider originali restano: decidono la sheet giusta.
+              train = {
+                ...live,
+                'viewers': train['viewers'],
+                'screen': train['screen'],
+                'provider': train['provider'],
+              };
               debugPrint('[MostViewed] card num=${train['trip_number']}: uso dati live completi');
             } else {
               debugPrint('[MostViewed] card num=${train['trip_number']}: solo dati presence parziali');
