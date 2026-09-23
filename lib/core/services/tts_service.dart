@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:http/http.dart' as http;
 
 /// Voci italiane Oddcast (engine 2 = Loquendo/DiVoX)
@@ -29,7 +33,22 @@ class TtsService {
   factory TtsService() => _instance;
   TtsService._internal();
 
-  final AudioPlayer _player = AudioPlayer();
+  final _TrainAudioPlayer _player = _TrainAudioPlayer();
+  double _speechRate = 1.0;
+
+  /// Velocità lettura 0.5–1.5 (default 1.0). Si applica al player audio.
+  double get speechRate => _speechRate;
+
+  Future<void> setSpeechRate(double value) async {
+    _speechRate = value.clamp(0.5, 1.5);
+    print('[TTS] setSpeechRate: $_speechRate');
+    try {
+      await _player.setSpeed(_speechRate);
+      print('[TTS] setSpeed ok, player.speed=${_player.speed}');
+    } catch (e) {
+      print('[TTS] setSpeed ERRORE: $e');
+    }
+  }
   bool _initialized = false;
   bool _enabled = false;
 
@@ -591,12 +610,13 @@ class TtsService {
 
       print('[TTS] _processQueue() riproduco audio...');
       await _player.setUrl(url);
+      try {
+        await _player.setSpeed(_speechRate);
+      } catch (_) {}
       await _player.play();
 
       // Aspetta che finisca di parlare
-      await _player.playerStateStream.firstWhere(
-        (state) => state.processingState == ProcessingState.completed || state.processingState == ProcessingState.idle,
-      );
+      await _player.waitCompleted();
       print('[TTS] _processQueue() audio finito');
     } catch (e) {
       print('[TTS] _processQueue() errore: $e');
@@ -670,6 +690,12 @@ class TtsService {
       }
 
       await _player.setUrl(url);
+      try {
+        await _player.setSpeed(_speechRate);
+        print('[TTS] testSpeak speed=${_player.speed} (wanted $_speechRate)');
+      } catch (e) {
+        print('[TTS] testSpeak setSpeed ERRORE: $e');
+      }
       await _player.play();
     } catch (e) {
       print('Oddcast TTS test error: $e');
@@ -691,5 +717,84 @@ class TtsService {
     // Per altre lingue, restituisci solo la voce predefinita
     final voice = _defaultVoiceMap[langCode];
     return voice != null ? [voice] : [];
+  }
+}
+
+/// Player audio con stessa interfaccia su tutte le piattaforme:
+/// just_audio dove supportato (Android/iOS/macOS/web),
+/// audioplayers su Windows/Linux (just_audio non esiste lì).
+class _TrainAudioPlayer {
+  static bool get _useAp =>
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  final AudioPlayer? _ja;
+  final ap.AudioPlayer? _ap;
+  double _speed = 1.0;
+
+  _TrainAudioPlayer()
+      : _ja = _useAp ? null : AudioPlayer(),
+        _ap = _useAp ? ap.AudioPlayer() : null {
+    print('[TTS] player backend: ${_useAp ? 'audioplayers' : 'just_audio'}');
+  }
+
+  double get speed => _speed;
+
+  Future<void> setSpeed(double v) async {
+    _speed = v;
+    if (_useAp) {
+      await _ap!.setPlaybackRate(v);
+    } else {
+      await _ja!.setSpeed(v);
+    }
+  }
+
+  Future<void> setUrl(String url) async {
+    if (_useAp) {
+      await _ap!.setSourceUrl(url);
+    } else {
+      await _ja!.setUrl(url);
+    }
+  }
+
+  Future<void> play() async {
+    if (_useAp) {
+      await _ap!.resume();
+    } else {
+      await _ja!.play();
+    }
+  }
+
+  Future<void> stop() async {
+    if (_useAp) {
+      await _ap!.stop();
+    } else {
+      await _ja!.stop();
+    }
+  }
+
+  Future<void> pause() async {
+    if (_useAp) {
+      await _ap!.pause();
+    } else {
+      await _ja!.pause();
+    }
+  }
+
+  /// Attende la fine della riproduzione (con timeout di sicurezza,
+  /// così uno stop() concorrente non lascia future appesi).
+  Future<void> waitCompleted() async {
+    if (_useAp) {
+      try {
+        await _ap!.onPlayerComplete.first
+            .timeout(const Duration(minutes: 10));
+      } catch (_) {}
+      return;
+    }
+    await _ja!.playerStateStream.firstWhere(
+      (state) =>
+          state.processingState == ProcessingState.completed ||
+          state.processingState == ProcessingState.idle,
+    );
   }
 }

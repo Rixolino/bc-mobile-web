@@ -1182,6 +1182,38 @@ class SettingsScreen extends StatelessWidget {
             voices: uniqueVoices,
           ),
           const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.speed_rounded,
+                  size: 18, color: theme.secondaryTextColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  RuntimeLocalizations.t(context, 'settings_tts_speed',
+                      fallback: 'Velocità voce'),
+                  style:
+                      TextStyle(color: theme.textColor, fontSize: 13),
+                ),
+              ),
+              Text(
+                '${settings.ttsSpeechRate.toStringAsFixed(2)}x',
+                style: TextStyle(
+                    color: theme.primaryColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          Slider(
+            value: settings.ttsSpeechRate,
+            min: 0.5,
+            max: 1.5,
+            divisions: 20,
+            label: '${settings.ttsSpeechRate.toStringAsFixed(2)}x',
+            activeColor: theme.primaryColor,
+            onChanged: (v) => settings.setTtsSpeechRate(v),
+          ),
+          const SizedBox(height: 10),
           _buildApiStatusIndicator(context, settings, theme),
           const SizedBox(height: 8),
           SizedBox(

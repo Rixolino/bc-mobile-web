@@ -78,6 +78,7 @@ class SettingsProvider with ChangeNotifier {
   // Text-to-speech for train announcements
   bool _ttsEnabled = false;
   Map<String, String> _ttsVoices = {}; // langCode -> voiceName
+  double _ttsSpeechRate = 1.0;
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
@@ -137,6 +138,7 @@ class SettingsProvider with ChangeNotifier {
   // Text-to-speech for train announcements
   bool get ttsEnabled => _ttsEnabled;
   String ttsVoiceForLang(String langCode) => _ttsVoices[langCode] ?? _defaultVoiceName(langCode);
+  double get ttsSpeechRate => _ttsSpeechRate;
 
   String _defaultVoiceName(String langCode) {
     const defaults = {'it': 'Roberto', 'en': 'Daniel', 'de': 'Anna', 'fr': 'Thomas'};
@@ -218,6 +220,9 @@ class SettingsProvider with ChangeNotifier {
 
     // Sincronizza il TTS service con le impostazioni caricate
     TtsService().setEnabled(_ttsEnabled);
+    _ttsSpeechRate =
+        (prefs.getDouble('accessibility_tts_rate') ?? 1.0).clamp(0.5, 1.5);
+    TtsService().setSpeechRate(_ttsSpeechRate);
 
     // Start fetching server rates for Auto mode
     _startServerPolling();
@@ -390,6 +395,14 @@ class SettingsProvider with ChangeNotifier {
     TtsService().setEnabled(enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyTtsEnabled, _ttsEnabled);
+  }
+
+  Future<void> setTtsSpeechRate(double value) async {
+    _ttsSpeechRate = value.clamp(0.5, 1.5);
+    notifyListeners();
+    TtsService().setSpeechRate(_ttsSpeechRate);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('accessibility_tts_rate', _ttsSpeechRate);
   }
 
   Future<void> setTtsVoice(String voiceName, {String? langCode}) async {
