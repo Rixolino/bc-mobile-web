@@ -1415,17 +1415,109 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
         bottom: false,
         child: Stack(
           children: [
-            Column(
-              children: [
-                _buildHeroHeader(context, theme, trainProvider),
-                Expanded(
-                  child: _buildContentArea(context, theme, trainProvider),
-                ),
-              ],
+            OrientationBuilder(
+              builder: (context, orientation) {
+                // Layout orizzontale: NON altera la logica, solo la disposizione.
+                if (orientation == Orientation.landscape) {
+                  return _buildLandscapeLayout(context, theme, trainProvider);
+                }
+                // Layout verticale originale, invariato.
+                return Column(
+                  children: [
+                    _buildHeroHeader(context, theme, trainProvider),
+                    Expanded(
+                      child: _buildContentArea(context, theme, trainProvider),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Layout per orientamento orizzontale (landscape):
+  /// colonna sinistra con controlli/origine-destinazione/stato,
+  /// colonna destra con la timeline del percorso scorrevole.
+  /// Riusa esclusivamente i widget/metodi già esistenti: nessuna logica nuova.
+  Widget _buildLandscapeLayout(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
+    final currentDep = _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 340,
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: theme.isDark ? 0.4 : 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(4, 0),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: SafeArea(
+              right: false,
+              bottom: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        _BackButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.of(context).pop(), theme: theme),
+                        const Spacer(),
+                        _buildProgressButton(context, theme, trainProvider),
+                        const SizedBox(width: 12),
+                        _buildModernDelayBadge(currentDep.delayMinutes ?? 0, theme),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Riga dedicata: categoria e numero treno su tutta la larghezza
+                    // della colonna, per evitare che vengano tagliati (solo
+                    // adattamento di layout tramite FittedBox, nessuna modifica
+                    // alla logica del widget originale).
+                    SizedBox(
+                      width: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: _buildTrainIdentifier(context, theme, currentDep),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Indicatore utente in ascolto, subito sotto categoria e numero treno.
+                    _buildViewersRow(theme),
+                    const SizedBox(height: 16),
+                    // Pulsanti di controllo in alto nella colonna sinistra: tutti visibili.
+                    _buildActionChips(context, theme, trainProvider, wrap: true),
+                    const SizedBox(height: 16),
+                    // Origine e destinazione, subito sotto ai pulsanti.
+                    _buildRouteRow(context, theme, trainProvider),
+                    const SizedBox(height: 12),
+                    // Barra di stato / peggioramento, sotto origine e destinazione.
+                    _buildDelayTrendPlate(context, theme),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Colonna destra: timeline del percorso, scorrevole, altezza piena.
+        Expanded(
+          child: SafeArea(
+            left: false,
+            bottom: false,
+            child: _buildContentArea(context, theme, trainProvider),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1845,12 +1937,8 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
   }
 
-  Widget _buildActionChips(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
+  Widget _buildActionChips(BuildContext context, ThemeProvider theme, TrainProvider trainProvider, {bool wrap = false}) {
+    final chips = [
           _buildInfoChip(
             Icons.analytics_rounded,
             RuntimeLocalizations.t(context, 'statistics') ?? RuntimeLocalizations.t(context, 'statistics') ?? 'Statistiche',
@@ -2028,7 +2116,22 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
             selectedCountry: widget.selectedCountry,
             isPrimary: true,
           ),
-        ],
+    ];
+
+    if (wrap) {
+      // Modalità orizzontale: tutti i pulsanti visibili, su più righe se serve.
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: chips,
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: chips,
       ),
     );
   }

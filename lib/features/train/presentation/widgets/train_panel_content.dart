@@ -1228,7 +1228,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   }
 
   /// Unisce i recenti vecchi e nuovi per trainKey (vince il lastSeen
-  /// maggiore), scarta oltre 70 minuti. Così non spariscono di colpo.
+  /// maggiore), scarta oltre 24 ore. Così non spariscono di colpo.
   List<Map<String, dynamic>> _mergeRecent(
       List<Map<String, dynamic>> oldList,
       List<Map<String, dynamic>> fresh) {
@@ -1252,7 +1252,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
         }
       }
     }
-    final cutoff = DateTime.now().subtract(const Duration(minutes: 70));
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
     final out = map.values.where((e) {
       final seen = DateTime.tryParse((e['lastSeen'] ?? '').toString());
       if (seen == null) return true;
