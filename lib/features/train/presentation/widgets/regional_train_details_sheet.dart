@@ -73,6 +73,55 @@ Map<String, DateTime?> _estimateRegionalStopTimes(
   return {'arr': arr, 'dep': dep};
 }
 
+/// Progresso 0..1 lungo la tratta (stessa patch del nazionale):
+/// senza fermate o senza alcun orario resta 0 (mai "completato" per
+/// mancanza dati); con 1 sola fermata scatta 0/1 (niente divisione per zero).
+double _calcRegionalRouteProgress(
+    List<Map<String, dynamic>> stops, DateTime nowUtc, int trainDelay) {
+  if (stops.isEmpty) return 0.0;
+  DateTime? stopArr(int i) =>
+      _estimateRegionalStopTimes(stops[i], trainDelay)['arr'];
+  DateTime? stopDep(int i) =>
+      _estimateRegionalStopTimes(stops[i], trainDelay)['dep'];
+  if (stops.length == 1) {
+    final arr = stopArr(0) ?? stopDep(0);
+    if (arr == null) return 0.0;
+    return nowUtc.isBefore(arr) ? 0.0 : 1.0;
+  }
+  int currentIdx = -1;
+  var hasAnyTime = false;
+  for (int i = 0; i < stops.length; i++) {
+    final arrUtc = stopArr(i);
+    if (arrUtc == null) continue;
+    hasAnyTime = true;
+    if (nowUtc.isBefore(arrUtc)) {
+      currentIdx = i;
+      break;
+    }
+  }
+  if (!hasAnyTime) return 0.0;
+  double progress;
+  if (currentIdx == -1) {
+    progress = 1.0;
+  } else if (currentIdx == 0) {
+    progress = 0.0;
+  } else {
+    final prevDep = stopDep(currentIdx - 1);
+    final nextArr = stopArr(currentIdx);
+    if (prevDep != null && nextArr != null) {
+      final totalDuration = nextArr.difference(prevDep).inSeconds;
+      final elapsed = nowUtc.difference(prevDep).inSeconds;
+      final segmentProgress = totalDuration > 0
+          ? (elapsed / totalDuration).clamp(0.0, 1.0)
+          : 0.0;
+      progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
+    } else {
+      progress = currentIdx / (stops.length - 1);
+    }
+  }
+  return progress.clamp(0.0, 1.0);
+}
+
 int _asInt(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
@@ -142,10 +191,17 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
   // non devono mai alterarli.
   String? _frozenCategory;
   String? _frozenNumber;
+  // Fermate per cui è già stato emesso l'avviso "siamo in arrivo"
+  // (una sola volta per fermata, per apertura sheet).
+  final Set<String> _announcedArrivals = {};
   // Ritardo da bacheca memorizzato: una volta trovato (tabellone di
   // apertura o successive), resta per tutta la sessione. Niente più
   // oscillazioni tra trip e bacheche a ogni tick.
   int? _memorizedDelay;
+  // Isteresi adozione ritardo (come il nazionale): un valore diverso da
+  // quello mostrato viene memorizzato solo dopo 2 conferme consecutive.
+  int? _boardDelayCandidate;
+  int _boardDelayHits = 0;
 
   // Presenza live: quanti utenti stanno guardando questo treno
   Timer? _presenceTimer;
@@ -171,6 +227,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     _startAutoRefresh();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
+      _checkArrivalAlert();
     });
     // Annuncio vocale all'apertura del dettaglio treno
     _speakTrainInfo();
@@ -274,18 +331,20 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     setState(() => _viewersCount = count);
   }
 
-  Future<void> _speakTrainInfo() async {
-    if (!_settingsProvider.ttsEnabled) return;
+  Future<void> _speakTrainInfo({bool force = false}) async {
+    if (!_settingsProvider.ttsAnnouncementsOn) return;
     
     final tts = TtsService();
     final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
     tts.setLanguage(langCode);
     
-    // Imposta voce per lingua
+    // Imposta voce per lingua (voce apertura treno se scelta, altrimenti normale)
     final voices = TtsService.getVoicesForLanguage(langCode);
+    final openingName = _settingsProvider.ttsOpeningVoiceForLang(langCode);
+    final wantedName = openingName ?? _settingsProvider.ttsVoiceForLang(langCode);
     final selected = voices.firstWhere(
-      (v) => v.name == _settingsProvider.ttsVoiceForLang(langCode),
-      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+      (v) => v.name == wantedName,
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 2, engine: 3, gender: 'M'),
     );
     tts.setSelectedVoice(selected);
     
@@ -311,7 +370,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     final platform = (trip['platform'] ?? '').toString();
     final delayMin = _asInt(trip['delay'] ?? trip['delayMinutes']);
 
-    final announcement = TtsService.buildAnnouncement(
+    final announcement = TtsService.buildOnboardAnnouncement(
       category: categoryStr,
       trainNumber: trainNumberStr,
       isArrival: isArrivals,
@@ -325,12 +384,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
       operator: operatorStr,
     );
 
-    final ttsStrings = TtsService.getTtsStrings(langCode);
     String text = announcement;
     if (stops.isNotEmpty) {
       final now = DateTime.now();
       Map<String, dynamic>? nextStop;
-      
+
       for (var stop in stops) {
         final depTime = _parseTime(stop['departure'] ?? stop['scheduledDeparture']);
         if (depTime != null && depTime.isAfter(now)) {
@@ -343,24 +401,124 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           break;
         }
       }
-      
+
       if (nextStop != null) {
-        final stopName = nextStop['stationName'] ?? nextStop['name'] ?? '';
+        final stopName = (nextStop['stationName'] ?? nextStop['name'] ?? '').toString();
         final depTime = _parseTime(nextStop['departure'] ?? nextStop['scheduledDeparture']);
         final arrTime = _parseTime(nextStop['arrival'] ?? nextStop['scheduledArrival']);
         final time = depTime ?? arrTime;
-        
-        if (stopName.toString().isNotEmpty && time != null) {
-          final timeStr = TtsService.formatTtsTime(time, langCode);
-          text += '. ${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr';
+
+        if (stopName.isNotEmpty && time != null) {
+          text = TtsService.appendNextStop(
+            baseText: text,
+            stopName: stopName,
+            time: time,
+            langCode: langCode,
+          );
+        }
+
+        // Elenco delle fermate successive (esclusa la prossima, già detta).
+        final following = <String>[];
+        var seenNext = false;
+        for (var stop in stops) {
+          if (identical(stop, nextStop)) {
+            seenNext = true;
+            continue;
+          }
+          if (!seenNext) continue;
+          if (stop is! Map) continue;
+          final t = _parseTime(stop['estimatedDeparture'] ??
+              stop['departure'] ??
+              stop['scheduledDeparture'] ??
+              stop['estimatedArrival'] ??
+              stop['arrival'] ??
+              stop['scheduledArrival']);
+          if (t == null || !t.isAfter(now)) continue;
+          if (stop['cancelled'] == true || stop['canceled'] == true) continue;
+          final name = (stop['stationName'] ?? stop['name'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+          if (following.contains(name)) continue;
+          following.add(name);
+          if (following.length >= 12) break;
+        }
+        if (following.isNotEmpty) {
+          text = TtsService.appendCallingAt(
+            baseText: text,
+            stopNames: following,
+            langCode: langCode,
+          );
         }
       }
     }
     
     if (text.isNotEmpty) {
       final trainKey = '$categoryStr|$trainNumberStr|${_parseTime(trip['scheduledTime'])?.toIso8601String() ?? ''}';
-      await tts.speak(text, trainKey: trainKey);
+      await tts.speak(text,
+          trainKey: trainKey,
+          force: force || _settingsProvider.ttsAlwaysAnnounce,
+          rate: _settingsProvider.ttsOpeningSpeechRate,
+          bullhorn: true);
     }
+  }
+
+  /// Avviso "siamo in arrivo a {fermata}" quando mancano <= 5 minuti
+  /// all'arrivo effettivo alla prossima fermata. Una volta per fermata.
+  Future<void> _checkArrivalAlert() async {
+    if (!mounted) return;
+    if (!_settingsProvider.ttsAnnouncementsOn) return;
+
+    final trip = _current;
+    final stops = trip['stops'] as List? ?? [];
+    if (stops.isEmpty) return;
+    final now = DateTime.now();
+    Map<String, dynamic>? nextStop;
+    for (var stop in stops) {
+      if (stop is! Map) continue;
+      final t = _parseTime(stop['estimatedArrival'] ??
+          stop['arrival'] ??
+          stop['scheduledArrival']);
+      if (t != null && !t.isBefore(now)) {
+        nextStop = Map<String, dynamic>.from(stop);
+        break;
+      }
+    }
+    if (nextStop == null) return;
+    final arrival = _parseTime(nextStop['estimatedArrival'] ??
+        nextStop['arrival'] ??
+        nextStop['scheduledArrival']);
+    if (arrival == null) return;
+    final name =
+        (nextStop['stationName'] ?? nextStop['name'] ?? '').toString().trim();
+    if (name.isEmpty) return;
+    final diff = arrival.difference(now);
+    if (diff.isNegative || diff.inMinutes > 5) return;
+    final key = '$name|${arrival.toIso8601String()}';
+    if (_announcedArrivals.contains(key)) return;
+    _announcedArrivals.add(key);
+
+    final tts = TtsService();
+    final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
+    tts.setLanguage(langCode);
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    final openingName = _settingsProvider.ttsOpeningVoiceForLang(langCode);
+    final wantedName = openingName ?? _settingsProvider.ttsVoiceForLang(langCode);
+    final selected = voices.firstWhere(
+      (v) => v.name == wantedName,
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 2, engine: 3, gender: 'M'),
+    );
+    tts.setSelectedVoice(selected);
+    final trainNumberStr =
+        (trip['tripNumber'] ?? trip['trainNumber'] ?? '').toString();
+    final categoryStr = trip['category']?.toString() ?? '';
+    final trainKey =
+        '$categoryStr|$trainNumberStr|${_parseTime(trip['scheduledTime'])?.toIso8601String() ?? ''}|arr|$key';
+    await tts.speak(
+      TtsService.buildArrivingNow(stopName: name, langCode: langCode),
+      trainKey: trainKey,
+      force: true,
+      rate: _settingsProvider.ttsOpeningSpeechRate,
+      bullhorn: true,
+    );
   }
 
   DateTime? _parseTime(dynamic value) {
@@ -845,10 +1003,14 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
         final delay = _asInt(match['delay']);
         matchFound = true;
         if (!mounted) return;
-        // Trovato in bacheca: si memorizza e resta (niente oscillazioni
+        // Isteresi a doppia conferma (come il nazionale): adotta solo
+        // valori confermati, poi si memorizza e resta (niente oscillazioni
         // col trip ai tick successivi).
-        _memorizeBoardDelay(delay, _asStr(stop['stationName']));
-        return; // Trovato, esce da entrambe le liste
+        final before = _headerDelay;
+        _adoptBoardDelay(delay, _asStr(stop['stationName']));
+        if (_headerDelay != before) return; // Adottato, esce da entrambe le liste
+        // Non confermato: continua con altro modo/stazione.
+        continue;
       }
 
       if (!matchFound) {
@@ -1214,43 +1376,11 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     final origin = _getEffectiveOrigin(current);
     final dest = _getEffectiveDestination(current);
 
-    // Calcola la posizione del treno (0.0 to 1.0) - stessa logica dell'originale
-    double progress = 0.0;
+    // Posizione del treno (0.0..1.0) — calcolo robusto condiviso, con il
+    // ritardo di header (bacheca memorizzata o trip) dentro gli orari.
     final stops = _stops;
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      int currentIdx = -1;
-      for (int i = 0; i < stops.length; i++) {
-        final times = _estimateRegionalStopTimes(stops[i], _delay);
-        final arrUtc = times['arr'];
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx == 0) {
-        progress = 0.0;
-      } else {
-        final prevTimes =
-            _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
-        final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], _delay);
-        final prevDep = prevTimes['dep'];
-        final nextArr = nextTimes['arr'];
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0
-              ? (elapsed / totalDuration).clamp(0.0, 1.0)
-              : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
+    final progress =
+        _calcRegionalRouteProgress(stops, DateTime.now().toUtc(), _headerDelay);
 
     // Indice fermata corrente per il pulsante "vai alla posizione"
     int scrollIdx = -1;
@@ -1422,6 +1552,30 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
   }
 
+  /// Isteresi come nel nazionale: un ritardo diverso da quello mostrato
+  /// viene memorizzato solo dopo 2 conferme consecutive (stesso valore).
+  /// Evita oscillazioni da jitter ±1-2 min tra bacheche diverse.
+  void _adoptBoardDelay(int delay, String where) {
+    if (delay == _headerDelay) {
+      _boardDelayCandidate = null;
+      _boardDelayHits = 0;
+      return;
+    }
+    if (_boardDelayCandidate == delay) {
+      _boardDelayHits++;
+    } else {
+      _boardDelayCandidate = delay;
+      _boardDelayHits = 1;
+    }
+    if (_boardDelayHits < 2) {
+      debugPrint('[RegionalDelay] $delay min da $where non confermato (1/2)');
+      return;
+    }
+    _boardDelayCandidate = null;
+    _boardDelayHits = 0;
+    _memorizeBoardDelay(delay, where);
+  }
+
   /// Match anti-treno-sbagliato sul tabellone di apertura (stesso formato
   /// dati): tripId esatto, oppure numero + destinazione + orario
   /// programmato vicino (±10 min, solo se noto da ambo le parti).
@@ -1507,8 +1661,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
     }
     if (!mounted) return;
     if (found != null) {
-      // Trovato: si memorizza e resta (anche se poi esce dal tabellone).
-      _memorizeBoardDelay(found, 'origine $stationId');
+      // Trovato: si adotta con isteresi e resta (anche se poi esce dal tabellone).
+      _adoptBoardDelay(found, 'origine $stationId');
     } else {
       debugPrint(
           '[RegionalDelay] Origine $stationId: treno uscito, tengo il memorizzato');
@@ -1946,39 +2100,8 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
 
   Widget _buildProgressButton(BuildContext context, ThemeProvider theme) {
     final stops = _stops;
-    double progress = 0.0;
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      int currentIdx = -1;
-      for (int i = 0; i < stops.length; i++) {
-        final times = _estimateRegionalStopTimes(stops[i], _delay);
-        final arrUtc = times['arr'];
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx > 0) {
-        final prevTimes =
-            _estimateRegionalStopTimes(stops[currentIdx - 1], _delay);
-        final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], _delay);
-        final prevDep = prevTimes['dep'];
-        final nextArr = nextTimes['arr'];
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0
-              ? (elapsed / totalDuration).clamp(0.0, 1.0)
-              : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
+    final progress =
+        _calcRegionalRouteProgress(stops, DateTime.now().toUtc(), _headerDelay);
 
     return GestureDetector(
       onTap: () => _showProgressDialog(context, theme),
@@ -2023,6 +2146,7 @@ class _RegionalTrainDetailsSheetState extends State<RegionalTrainDetailsSheet> {
           resolveCurrent: () => _current,
           originOf: _getEffectiveOrigin,
           destOf: _getEffectiveDestination,
+          headerDelay: _headerDelay,
         ),
       ),
     );
@@ -2482,11 +2606,13 @@ class _ProgressDialogBody extends StatefulWidget {
   final Map<String, dynamic> Function() resolveCurrent;
   final String Function(Map<String, dynamic>) originOf;
   final String Function(Map<String, dynamic>) destOf;
+  final int headerDelay;
 
   const _ProgressDialogBody(
       {required this.resolveCurrent,
       required this.originOf,
-      required this.destOf});
+      required this.destOf,
+      required this.headerDelay});
 
   @override
   State<_ProgressDialogBody> createState() => _ProgressDialogBodyState();
@@ -2523,44 +2649,10 @@ class _ProgressDialogBodyState extends State<_ProgressDialogBody> {
         : const [];
     final origin = widget.originOf(dep);
     final dest = widget.destOf(dep);
-    final delay = _asInt(dep['delay'] ?? dep['delayMinutes']);
 
-    // Calcola progresso (stessa logica del bottone header)
-    double progress = 0.0;
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      int currentIdx = -1;
-      for (int i = 0; i < stops.length; i++) {
-        final times = _estimateRegionalStopTimes(stops[i], delay);
-        final arrUtc = times['arr'];
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx == 0) {
-        progress = 0.0;
-      } else {
-        final prevTimes =
-            _estimateRegionalStopTimes(stops[currentIdx - 1], delay);
-        final nextTimes = _estimateRegionalStopTimes(stops[currentIdx], delay);
-        final prevDep = prevTimes['dep'];
-        final nextArr = nextTimes['arr'];
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0
-              ? (elapsed / totalDuration).clamp(0.0, 1.0)
-              : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
+    // Progresso (stessa logica robusta del bottone header, con ritardo header)
+    final progress = _calcRegionalRouteProgress(
+        stops, DateTime.now().toUtc(), widget.headerDelay);
 
     final trainLabel = _asStr(
         dep['tripNumber'] ?? dep['trainNumber'] ?? dep['category'] ?? 'Treno');

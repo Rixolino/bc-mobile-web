@@ -553,6 +553,13 @@ class TrainProvider with ChangeNotifier {
   List<TrainDeparture> _departures = [];
   bool _isLoadingDepartures = false;
   bool _isUsingOfflineCache = false;
+
+  // Isteresi fallback ritardo: un valore dai tabelloni diverso da quello
+  // corrente viene adottato solo se confermato 2 volte di fila (stesso
+  // treno, stesso valore). Evita oscillazioni da jitter ±1-2 min tra
+  // fonti diverse (trip vs bacheche di altre stazioni).
+  final Map<String, int> _delayCandidates = {};
+  final Map<String, int> _delayCandidateHits = {};
   TrainStation? _selectedStation;
 
   List<TrainStation> get stationSuggestions => _stationSuggestions;
@@ -905,6 +912,11 @@ class TrainProvider with ChangeNotifier {
   /// Non tocca loading flag, cache offline né la stazione selezionata:
   /// le query sono silenziose e con timeout breve.
   /// Restituisce il delay trovato oppure null.
+  ///
+  /// Isteresi: se il trip fornisce già un delay, un valore diverso dai
+  /// tabelloni viene restituito solo dopo 2 conferme consecutive (stesso
+  /// treno, stesso valore); se il trip non fornisce alcun delay (null),
+  /// il primo valore trovato viene adottato subito.
   Future<int?> refreshDelayFromUpcomingStations(TrainDeparture dep,
       {int maxStations = 3}) async {
     final stops = dep.stops;
@@ -1025,6 +1037,38 @@ class TrainProvider with ChangeNotifier {
               '[TrainProvider] Delay tabelloni: match senza delay, provo altro modo/stazione');
           continue;
         }
+
+        // Il valore coincide con quello corrente: nessun cambiamento,
+        // eventuali candidati precedenti decadono.
+        final tripIdKey = tripId.isNotEmpty
+            ? 'id:$tripId'
+            : 'n:${dep.trainNumber}|${dep.destination}';
+        if (dep.delayMinutes != null && delay == dep.delayMinutes) {
+          _delayCandidates.remove(tripIdKey);
+          _delayCandidateHits.remove(tripIdKey);
+          return delay;
+        }
+
+        // Adozione immediata solo se il trip non fornisce alcun delay.
+        final confirmed;
+        if (dep.delayMinutes == null) {
+          confirmed = true;
+        } else if (_delayCandidates[tripIdKey] == delay) {
+          final hits = (_delayCandidateHits[tripIdKey] ?? 1) + 1;
+          _delayCandidateHits[tripIdKey] = hits;
+          confirmed = hits >= 2;
+        } else {
+          _delayCandidates[tripIdKey] = delay;
+          _delayCandidateHits[tripIdKey] = 1;
+          confirmed = false;
+        }
+        if (!confirmed) {
+          debugPrint(
+              '[TrainProvider] Delay tabelloni: $delay min da ${stop.stationName} non confermato (1/2), provo altro modo/stazione');
+          continue;
+        }
+        _delayCandidates.remove(tripIdKey);
+        _delayCandidateHits.remove(tripIdKey);
 
         // Aggiorna la departure nel tabellone corrente
         matchFound = true;

@@ -81,6 +81,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
     final mapState = context.watch<MapStateProvider>();
     final busProvider = context.watch<BusProvider>();
     final planeProvider = context.watch<PlaneProvider>();
+    // Lo stile viene dal SettingsProvider (URL completo) convertito in
+    // style-id corto per i tile raster; il watch lo riapplica dal vivo.
 
     // Gestione posizione iniziale dopo il caricamento delle preferenze
     if (mapState.isLoaded && !_initialPositionSet) {
@@ -106,6 +108,7 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
     }
 
     final theme = Provider.of<ThemeProvider>(context, listen: false);
+    final mapStyleId = context.watch<SettingsProvider>().shortMapStyleId;
     // Solo layout/responsive: in landscape marker più compatti per evitare clutter.
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final busMarkerSize = isLandscape ? 28.0 : 32.0;
@@ -136,7 +139,7 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
       ),
       children: [
         TileLayer(
-          urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/${mapState.mapStyle}/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g',
+          urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/$mapStyleId/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g',
           userAgentPackageName: 'dev.iscool.bctransporter',
         ),
         // Bus Route Path - show when a bus is selected and route path is available

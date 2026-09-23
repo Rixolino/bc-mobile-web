@@ -1136,6 +1136,45 @@ class SettingsScreen extends StatelessWidget {
         _buildSimpleToggle(
           context,
           theme,
+          title: RuntimeLocalizations.t(context, 'settings_tts_realistic',
+              fallback: 'Abilita Annunci Realistici'),
+          description: RuntimeLocalizations.t(context, 'settings_tts_realistic_desc',
+              fallback:
+                  'Interruttore unico: se spento, nessun annuncio vocale viene emesso.'),
+          value: settings.ttsRealistic,
+          onChanged: (value) {
+            settings.setTtsRealistic(value);
+            if (value && settings.ttsEnabled) {
+              final tts = TtsService();
+              final langCode = settings.appLocale?.languageCode ?? 'it';
+              tts.setLanguage(langCode);
+              final voices = TtsService.getVoicesForLanguage(langCode);
+              final selected = voices.firstWhere(
+                (v) => v.name == settings.ttsVoiceForLang(langCode),
+                orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+              );
+              tts.setSelectedVoice(selected);
+            }
+          },
+        ),
+        if (settings.ttsRealistic)
+        _buildSimpleToggle(
+          context,
+          theme,
+          title: RuntimeLocalizations.t(context, 'settings_tts_board',
+              fallback: 'Annunci tabellone'),
+          description: RuntimeLocalizations.t(context, 'settings_tts_board_desc',
+              fallback:
+                  'Legge ad alta voce i treni del tabellone partenze e arrivi (voce Oddcast).'),
+          value: settings.ttsBoardEnabled,
+          onChanged: (value) {
+            settings.setTtsBoardEnabled(value);
+          },
+        ),
+        if (settings.ttsRealistic)
+        _buildSimpleToggle(
+          context,
+          theme,
           title: RuntimeLocalizations.t(context, 'settings_tts_trains', fallback: 'Annunci vocali treni'),
           description: RuntimeLocalizations.t(context, 'settings_tts_trains_desc',
               fallback: 'Legge ad alta voce gli orari dei treni nelle partenze e arrivi (voce Oddcast).'),
@@ -1143,7 +1182,8 @@ class SettingsScreen extends StatelessWidget {
           onChanged: (value) {
             settings.setTtsEnabled(value);
             final tts = TtsService();
-            tts.setEnabled(value);
+            tts.setEnabled(settings.ttsRealistic &&
+                (value || settings.ttsBoardEnabled));
             if (value) {
               final langCode = settings.appLocale?.languageCode ?? 'it';
               tts.setLanguage(langCode);
@@ -1157,7 +1197,33 @@ class SettingsScreen extends StatelessWidget {
             }
           },
         ),
-        if (settings.ttsEnabled) _buildTtsVoiceSelector(context, settings, theme),
+        if (settings.ttsRealistic)
+          _buildSimpleToggle(
+            context,
+            theme,
+            title: RuntimeLocalizations.t(context, 'settings_tts_always',
+                fallback: 'Annuncia sempre nel dettaglio'),
+            description: RuntimeLocalizations.t(
+                context, 'settings_tts_always_desc',
+                fallback:
+                    'Legge il treno ogni volta che apri il dettaglio (nazionale e regionale), anche fuori orario annunci.'),
+            value: settings.ttsAlwaysAnnounce,
+            onChanged: (value) => settings.setTtsAlwaysAnnounce(value),
+          ),
+        if (settings.ttsRealistic)
+          _buildSimpleToggle(
+            context,
+            theme,
+            title: RuntimeLocalizations.t(context, 'settings_tts_bullhorn',
+                fallback: 'Effetto megafono (bullhorn)'),
+            description: RuntimeLocalizations.t(
+                context, 'settings_tts_bullhorn_desc',
+                fallback:
+                    'Applica l’effetto megafono solo quando apri il dettaglio del treno (non sul tabellone).'),
+            value: settings.ttsBullhorn,
+            onChanged: (value) => settings.setTtsBullhorn(value),
+          ),
+        if (settings.ttsRealistic) _buildTtsVoiceSelector(context, settings, theme),
       ],
     );
   }
@@ -1180,6 +1246,61 @@ class SettingsScreen extends StatelessWidget {
             settings: settings,
             theme: theme,
             voices: uniqueVoices,
+            selectedName: (lang) => settings.ttsVoiceForLang(lang),
+            onSelect: (name, lang) {
+              settings.setTtsVoice(name, langCode: lang);
+              final match = uniqueVoices.where((v) => v.name == name);
+              if (match.isNotEmpty) {
+                TtsService().setSelectedVoice(match.first);
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          _TtsVoiceSheet(
+            settings: settings,
+            theme: theme,
+            voices: uniqueVoices,
+            titleKey: 'settings_tts_opening_voice',
+            titleFallback: 'Voce apertura treno',
+            selectedName: (lang) =>
+                settings.ttsOpeningVoiceForLang(lang) ??
+                settings.ttsVoiceForLang(lang),
+            onSelect: (name, lang) =>
+                settings.setTtsOpeningVoice(name, langCode: lang),
+            testRate: () => settings.ttsOpeningSpeechRate,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.speed_rounded,
+                  size: 18, color: theme.secondaryTextColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  RuntimeLocalizations.t(context,
+                      'settings_tts_opening_speed',
+                      fallback: 'Velocità voce apertura'),
+                  style:
+                      TextStyle(color: theme.textColor, fontSize: 13),
+                ),
+              ),
+              Text(
+                '${settings.ttsOpeningSpeechRate.toStringAsFixed(2)}x',
+                style: TextStyle(
+                    color: theme.primaryColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          Slider(
+            value: settings.ttsOpeningSpeechRate,
+            min: 0.5,
+            max: 1.5,
+            divisions: 20,
+            label: '${settings.ttsOpeningSpeechRate.toStringAsFixed(2)}x',
+            activeColor: theme.primaryColor,
+            onChanged: (v) => settings.setTtsOpeningSpeechRate(v),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1796,11 +1917,21 @@ class _TtsVoiceSheet extends StatefulWidget {
   final SettingsProvider settings;
   final ThemeProvider theme;
   final List<OddcastVoice> voices;
+  final String titleKey;
+  final String titleFallback;
+  final String Function(String langCode) selectedName;
+  final void Function(String name, String langCode) onSelect;
+  final double Function()? testRate;
 
   const _TtsVoiceSheet({
     required this.settings,
     required this.theme,
     required this.voices,
+    this.titleKey = 'settings_tts_voice',
+    this.titleFallback = 'Voce',
+    required this.selectedName,
+    required this.onSelect,
+    this.testRate,
   });
 
   @override
@@ -1810,6 +1941,24 @@ class _TtsVoiceSheet extends StatefulWidget {
 class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
   bool _expanded = false;
 
+  String _sampleText(String langCode) {
+    const samples = {
+      'it': 'Il treno regionale quattro due tre uno, diretto Bari Centrale, partenza dal binario cinque.',
+      'en': 'The regional train four two three one, bound for London Paddington, departing from platform five.',
+      'de': 'Der Regionalzug vier zwei drei eins, Richtung Berlin Hauptbahnhof, Abfahrt von Gleis fünf.',
+      'fr': 'Le train régional quatre deux trois un, à destination de Paris Gare de Lyon, départ du quai cinq.',
+    };
+    return samples[langCode] ?? samples['it']!;
+  }
+
+  Future<void> _testVoice(OddcastVoice voice, String langCode) async {
+    final tts = TtsService();
+    tts.setLanguage(langCode);
+    tts.setSelectedVoice(voice);
+    await tts.testSpeak(_sampleText(langCode),
+        rate: widget.testRate?.call());
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = widget.theme;
@@ -1817,8 +1966,9 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
     final voices = widget.voices;
     final langCode = settings.appLocale?.languageCode ?? 'it';
 
+    final selectedName = widget.selectedName(langCode);
     final selectedVoice = voices.firstWhere(
-      (v) => v.name == settings.ttsVoiceForLang(langCode),
+      (v) => v.name == selectedName,
       orElse: () => voices.first,
     );
 
@@ -1832,21 +1982,22 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // Header - always visible
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                children: [
-                  Icon(Icons.record_voice_over, size: 20, color: theme.secondaryTextColor),
-                  const SizedBox(width: 12),
-                  Expanded(
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 4, top: 6, bottom: 6),
+            child: Row(
+              children: [
+                Icon(Icons.record_voice_over, size: 20, color: theme.secondaryTextColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    behavior: HitTestBehavior.opaque,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          RuntimeLocalizations.t(context, 'settings_tts_voice', fallback: 'Voce'),
+                          RuntimeLocalizations.t(context, widget.titleKey,
+                              fallback: widget.titleFallback),
                           style: TextStyle(color: theme.textColor, fontSize: 14, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 2),
@@ -1857,13 +2008,27 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
                       ],
                     ),
                   ),
-                  AnimatedRotation(
+                ),
+                IconButton(
+                  tooltip: RuntimeLocalizations.t(context, 'settings_tts_test',
+                      fallback: 'Prova voce'),
+                  onPressed: () => _testVoice(selectedVoice, langCode),
+                  icon: Icon(Icons.play_circle_outline_rounded,
+                      size: 22, color: theme.primaryColor),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
                     child: Icon(Icons.keyboard_arrow_down, color: theme.secondaryTextColor),
                   ),
-                ],
-              ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                ),
+              ],
             ),
           ),
 
@@ -1886,20 +2051,19 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
                 separatorBuilder: (_, __) => Divider(height: 1, color: theme.primaryColor.withOpacity(0.1)),
                 itemBuilder: (context, index) {
                   final voice = voices[index];
-                  final isSelected = voice.name == settings.ttsVoiceForLang(langCode);
+                  final isSelected = voice.name == selectedName;
 
                   return Material(
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
-                        settings.setTtsVoice(voice.name, langCode: langCode);
-                        final tts = TtsService();
-                        tts.setSelectedVoice(voice);
+                        widget.onSelect(voice.name, langCode);
                         setState(() => _expanded = false);
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.only(left: 16, right: 4),
                         color: isSelected ? theme.primaryColor.withOpacity(0.1) : null,
+                        constraints: const BoxConstraints(minHeight: 44),
                         child: Row(
                           children: [
                             Icon(
@@ -1920,6 +2084,16 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
                             ),
                             if (isSelected)
                               Icon(Icons.check_circle, size: 18, color: theme.primaryColor),
+                            IconButton(
+                              tooltip: RuntimeLocalizations.t(context, 'settings_tts_test',
+                                  fallback: 'Prova voce'),
+                              onPressed: () => _testVoice(voice, langCode),
+                              icon: Icon(Icons.play_arrow_rounded,
+                                  size: 20, color: theme.primaryColor),
+                              padding: EdgeInsets.zero,
+                              constraints:
+                                  const BoxConstraints(minWidth: 36, minHeight: 36),
+                            ),
                           ],
                         ),
                       ),
@@ -1928,7 +2102,8 @@ class _TtsVoiceSheetState extends State<_TtsVoiceSheet> {
                 },
               ),
             ),
-            crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState:
+                _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 200),
           ),
         ],

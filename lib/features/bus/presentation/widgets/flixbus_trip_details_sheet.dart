@@ -303,6 +303,9 @@ class _FlixbusTripDetailsSheetState extends State<FlixbusTripDetailsSheet> {
 
   Widget _buildMapCard(ThemeProvider theme, FlixbusTrip trip) {
     final mapState = Provider.of<MapStateProvider>(context);
+    // Style-id corto per i tile raster (l'URL completo non è valido qui).
+    final mapStyleId = SettingsProvider.shortStyleId(
+        Provider.of<SettingsProvider>(context).mapStyle);
     final points = _tripPoints(trip);
     final hasBusPos = _hasBusPos(trip);
 
@@ -332,7 +335,7 @@ class _FlixbusTripDetailsSheetState extends State<FlixbusTripDetailsSheet> {
                 children: [
                   TileLayer(
                     urlTemplate:
-                        'https://api.mapbox.com/styles/v1/mapbox/${mapState.mapStyle}/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g',
+                        'https://api.mapbox.com/styles/v1/mapbox/$mapStyleId/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoiY3V6aW1tYXJ0aW4iLCJhIjoiY204dGRyb3AxMDgxcDJrc2VjeXVwNXN3NyJ9.VR8xzsuQJ_-0h95CN_UD8g',
                     userAgentPackageName: 'dev.iscool.bctransporter',
                   ),
                   if (_routePoints(trip).length > 1)

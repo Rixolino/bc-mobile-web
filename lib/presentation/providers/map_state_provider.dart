@@ -24,7 +24,10 @@ class MapStateProvider with ChangeNotifier {
   // 0: Treni, 1: Bus, 2: Aerei
   int _activeCategory = 0;
 
-  // Map Styles: 'streets-v12', 'dark-v11', 'satellite-streets-v12'
+  // Map Style (solo default locale): lo stile vero vive nel SettingsProvider
+  // (URL completo 'mapbox://...') e viene convertito in style-id corto dai
+  // widget mappa. NON persistere qui 'map_style': la chiave è condivisa con
+  // i Settings e i due formati sono incompatibili (URL vs id corto).
   String _mapStyle = 'streets-v12';
 
   bool _isLoaded = false;
@@ -48,7 +51,6 @@ class MapStateProvider with ChangeNotifier {
     _lat = prefs.getDouble('map_lat') ?? _lat;
     _lng = prefs.getDouble('map_lng') ?? _lng;
     _zoom = prefs.getDouble('map_zoom') ?? _zoom;
-    _mapStyle = prefs.getString('map_style') ?? _mapStyle;
     _activeCategory = prefs.getInt('map_category') ?? _activeCategory;
     _isLoaded = true;
     notifyListeners();
@@ -59,7 +61,6 @@ class MapStateProvider with ChangeNotifier {
     await prefs.setDouble('map_lat', _lat);
     await prefs.setDouble('map_lng', _lng);
     await prefs.setDouble('map_zoom', _zoom);
-    await prefs.setString('map_style', _mapStyle);
     await prefs.setInt('map_category', _activeCategory);
   }
 

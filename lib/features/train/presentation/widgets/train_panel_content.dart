@@ -882,7 +882,7 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
   void _onDeparturesChanged() {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    if (!settings.ttsEnabled) return;
+    if (!settings.ttsBoardOn) return;
 
     final provider = Provider.of<TrainProvider>(context, listen: false);
     final current = provider.departures;

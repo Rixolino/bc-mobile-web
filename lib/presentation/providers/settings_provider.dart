@@ -78,7 +78,22 @@ class SettingsProvider with ChangeNotifier {
   // Text-to-speech for train announcements
   bool _ttsEnabled = false;
   Map<String, String> _ttsVoices = {}; // langCode -> voiceName
+  // Voce usata all'apertura del dettaglio treno (scelta utente, per lingua).
+  // Se assente si usa la voce normale.
+  Map<String, String> _ttsOpeningVoices = {};
+  // Velocità separata per la voce di apertura treno.
+  double _ttsOpeningSpeechRate = 1.0;
   double _ttsSpeechRate = 1.0;
+  // Annuncia sempre all'apertura del dettaglio treno (solo details sheet),
+  // anche fuori dalla finestra temporale degli annunci di tabellone.
+  bool _ttsAlwaysAnnounce = false;
+  // Effetto megafono (bullhorn) sulla voce degli annunci treno.
+  bool _ttsBullhorn = true;
+  // Interruttore unico degli annunci realistici: se spento, nessun annuncio
+  // vocale viene emesso e gli altri interruttori TTS dipendono da questo.
+  bool _ttsRealistic = true;
+  // Annunci del tabellone (partenze/arrivi), indipendente dagli annunci in treno.
+  bool _ttsBoardEnabled = true;
 
   // Arrival pre-notice for trains (minutes before effective arrival)
   int _trainArrivalPreNoticeMinutes = 10; // default 10 minutes (5-20 allowed)
@@ -138,7 +153,22 @@ class SettingsProvider with ChangeNotifier {
   // Text-to-speech for train announcements
   bool get ttsEnabled => _ttsEnabled;
   String ttsVoiceForLang(String langCode) => _ttsVoices[langCode] ?? _defaultVoiceName(langCode);
+  String? ttsOpeningVoiceForLang(String langCode) => _ttsOpeningVoices[langCode];
   double get ttsSpeechRate => _ttsSpeechRate;
+  double get ttsOpeningSpeechRate => _ttsOpeningSpeechRate;
+  bool get ttsAlwaysAnnounce => _ttsAlwaysAnnounce;
+  bool get ttsBullhorn => _ttsBullhorn;
+  bool get ttsRealistic => _ttsRealistic;
+  bool get ttsBoardEnabled => _ttsBoardEnabled;
+  // Master switch: gli annunci in treno funzionano solo se è attivo
+  // E anche gli annunci in treno sono abilitati.
+  bool get ttsAnnouncementsOn => _ttsRealistic && _ttsEnabled;
+  // Master switch + interruttore tabellone (indipendente dall'in-treno).
+  bool get ttsBoardOn => _ttsRealistic && _ttsBoardEnabled;
+  // Motore TTS attivo se almeno una delle due uscite è accesa.
+  void syncTtsEngine() {
+    TtsService().setEnabled(_ttsRealistic && (_ttsEnabled || _ttsBoardEnabled));
+  }
 
   String _defaultVoiceName(String langCode) {
     const defaults = {'it': 'Roberto', 'en': 'Daniel', 'de': 'Anna', 'fr': 'Thomas'};
@@ -190,6 +220,10 @@ class SettingsProvider with ChangeNotifier {
     _startScreenMode = prefs.getInt(keyStartScreen) ?? 0;
     _textScale = (prefs.getDouble(keyTextScale) ?? 1.0).clamp(0.8, 1.4);
     _ttsEnabled = prefs.getBool(keyTtsEnabled) ?? false;
+    _ttsAlwaysAnnounce = prefs.getBool('accessibility_tts_always') ?? false;
+    _ttsBullhorn = prefs.getBool('accessibility_tts_bullhorn') ?? true;
+    _ttsRealistic = prefs.getBool('accessibility_tts_realistic') ?? true;
+    _ttsBoardEnabled = prefs.getBool('accessibility_tts_board') ?? true;
     // Load TTS voice per language
     final savedVoice = prefs.getString(keyTtsVoice);
     if (savedVoice != null && savedVoice.isNotEmpty) {
@@ -201,6 +235,15 @@ class SettingsProvider with ChangeNotifier {
       try {
         final Map<String, dynamic> decoded = jsonDecode(voicesJson);
         _ttsVoices = decoded.map((k, v) => MapEntry(k, v.toString()));
+      } catch (_) {}
+    }
+    // Load opening voices (dettaglio treno)
+    final openingJson = prefs.getString('accessibility_tts_opening_voices');
+    if (openingJson != null) {
+      try {
+        final Map<String, dynamic> decoded = jsonDecode(openingJson);
+        _ttsOpeningVoices =
+            decoded.map((k, v) => MapEntry(k, v.toString()));
       } catch (_) {}
     }
 
@@ -219,10 +262,14 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     // Sincronizza il TTS service con le impostazioni caricate
-    TtsService().setEnabled(_ttsEnabled);
+    syncTtsEngine();
     _ttsSpeechRate =
         (prefs.getDouble('accessibility_tts_rate') ?? 1.0).clamp(0.5, 1.5);
+    _ttsOpeningSpeechRate =
+        (prefs.getDouble('accessibility_tts_opening_rate') ?? 1.0)
+            .clamp(0.5, 1.5);
     TtsService().setSpeechRate(_ttsSpeechRate);
+    TtsService().setBullhorn(_ttsBullhorn);
 
     // Start fetching server rates for Auto mode
     _startServerPolling();
@@ -392,9 +439,37 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setTtsEnabled(bool enabled) async {
     _ttsEnabled = enabled;
     notifyListeners();
-    TtsService().setEnabled(enabled);
+    syncTtsEngine();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyTtsEnabled, _ttsEnabled);
+  }
+
+  /// Interruttore "Annunci tabellone", indipendente dagli annunci in treno.
+  Future<void> setTtsBoardEnabled(bool enabled) async {
+    _ttsBoardEnabled = enabled;
+    notifyListeners();
+    syncTtsEngine();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('accessibility_tts_board', _ttsBoardEnabled);
+  }
+
+  /// Interruttore unico "Abilita Annunci Realistici": se spento disattiva
+  /// tutti gli annunci vocali; gli altri interruttori TTS dipendono da questo.
+  Future<void> setTtsRealistic(bool enabled) async {
+    _ttsRealistic = enabled;
+    notifyListeners();
+    syncTtsEngine();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('accessibility_tts_realistic', _ttsRealistic);
+  }
+
+  Future<void> setTtsOpeningVoice(String voiceName, {String? langCode}) async {
+    final lang = langCode ?? _appLocale?.languageCode ?? 'it';
+    _ttsOpeningVoices[lang] = voiceName;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'accessibility_tts_opening_voices', jsonEncode(_ttsOpeningVoices));
   }
 
   Future<void> setTtsSpeechRate(double value) async {
@@ -403,6 +478,29 @@ class SettingsProvider with ChangeNotifier {
     TtsService().setSpeechRate(_ttsSpeechRate);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('accessibility_tts_rate', _ttsSpeechRate);
+  }
+
+  Future<void> setTtsOpeningSpeechRate(double value) async {
+    _ttsOpeningSpeechRate = value.clamp(0.5, 1.5);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(
+        'accessibility_tts_opening_rate', _ttsOpeningSpeechRate);
+  }
+
+  Future<void> setTtsAlwaysAnnounce(bool value) async {
+    _ttsAlwaysAnnounce = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('accessibility_tts_always', value);
+  }
+
+  Future<void> setTtsBullhorn(bool value) async {
+    _ttsBullhorn = value;
+    TtsService().setBullhorn(value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('accessibility_tts_bullhorn', value);
   }
 
   Future<void> setTtsVoice(String voiceName, {String? langCode}) async {
@@ -472,6 +570,40 @@ class SettingsProvider with ChangeNotifier {
 
   // private wrapper kept for backward compatibility
   String _normalizeStyleUrl(String s) => SettingsProvider.normalizeStyleUrl(s);
+
+  /// Stili raster Mapbox validi per i TileLayer di flutter_map.
+  static const _rasterStyleIds = {
+    'streets-v11',
+    'streets-v12',
+    'outdoors-v11',
+    'outdoors-v12',
+    'light-v11',
+    'light-v10',
+    'dark-v11',
+    'dark-v10',
+    'satellite-v9',
+    'satellite-streets-v11',
+    'satellite-streets-v12',
+  };
+
+  /// Estrae lo style-id corto (es. 'dark-v11') da uno style URL completo
+  /// ('mapbox://styles/mapbox/dark-v11') o da un id già corto.
+  /// La mappa flutter_map usa i tile raster e richiede l'id corto:
+  /// l'URL completo produrrebbe un urlTemplate non valido (tiles 404).
+  static String shortStyleId(String styleUrl) {
+    var id = styleUrl.trim();
+    const prefix = 'mapbox://styles/mapbox/';
+    final idx = id.toLowerCase().lastIndexOf(prefix);
+    if (idx >= 0) id = id.substring(idx + prefix.length);
+    final q = id.indexOf('?');
+    if (q >= 0) id = id.substring(0, q);
+    id = id.split('/').first.trim();
+    if (_rasterStyleIds.contains(id)) return id;
+    return 'streets-v12';
+  }
+
+  /// Style-id corto dello stile corrente, per i TileLayer raster.
+  String get shortMapStyleId => SettingsProvider.shortStyleId(_mapStyle);
 
   // Train worker config
   Future<void> setTrainStationId(String id) async {

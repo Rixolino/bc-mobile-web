@@ -682,10 +682,14 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   // Refresh manuale in corso (feedback sul chip Aggiorna)
   bool _isManualRefreshing = false;
 
-  // Logo e numero congelati all'apertura: i refresh per i ritardi
-  // non devono mai alterarli.
-  String? _frozenCategory;
-  String? _frozenNumber;
+    // Logo e numero congelati all'apertura: i refresh per i ritardi
+    // non devono mai alterarli.
+    String? _frozenCategory;
+    String? _frozenNumber;
+
+    // Fermate per cui è già stato emesso l'avviso "siamo in arrivo"
+    // (una sola volta per fermata, per apertura sheet).
+    final Set<String> _announcedArrivals = {};
 
   // Presenza live: quanti utenti stanno guardando questo treno
   Timer? _presenceTimer;
@@ -714,6 +718,7 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     _checkCacheStatus();
     _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
+      _checkArrivalAlert();
     });
     // Annuncio vocale all'apertura del dettaglio treno
     _speakTrainInfo();
@@ -836,25 +841,27 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     setState(() => _viewersCount = count);
   }
 
-  Future<void> _speakTrainInfo() async {
-    if (!_settingsProvider.ttsEnabled) return;
+  Future<void> _speakTrainInfo({bool force = false}) async {
+    if (!_settingsProvider.ttsAnnouncementsOn) return;
     
     final tts = TtsService();
     final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
     tts.setLanguage(langCode);
     
-    // Imposta voce per lingua
+    // Imposta voce per lingua (voce apertura treno se scelta, altrimenti normale)
     final voices = TtsService.getVoicesForLanguage(langCode);
+    final openingName = _settingsProvider.ttsOpeningVoiceForLang(langCode);
+    final wantedName = openingName ?? _settingsProvider.ttsVoiceForLang(langCode);
     final selected = voices.firstWhere(
-      (v) => v.name == _settingsProvider.ttsVoiceForLang(langCode),
-      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 7, engine: 2, gender: 'M'),
+      (v) => v.name == wantedName,
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 2, engine: 3, gender: 'M'),
     );
     tts.setSelectedVoice(selected);
     
     final departure = widget.departure;
     final isArrivals = widget.isArrivalMode;
 
-    final announcement = TtsService.buildAnnouncement(
+    final announcement = TtsService.buildOnboardAnnouncement(
       category: departure.category,
       trainNumber: departure.trainNumber,
       isArrival: isArrivals,
@@ -869,12 +876,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     );
 
     final stops = departure.stops ?? [];
-    final ttsStrings = TtsService.getTtsStrings(langCode);
     String text = announcement;
     if (stops.isNotEmpty) {
       final now = DateTime.now();
       TrainStop? nextStop;
-      
+
       for (var stop in stops) {
         if (stop.departure != null && stop.departure!.isAfter(now)) {
           nextStop = stop;
@@ -885,22 +891,110 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
           break;
         }
       }
-      
+
       if (nextStop != null) {
         final stopName = nextStop.stationName ?? '';
         final time = nextStop.departure ?? nextStop.arrival;
-        
+
         if (stopName.isNotEmpty && time != null) {
-          final timeStr = TtsService.formatTtsTime(time, langCode);
-          text += '. ${ttsStrings['next_stop'] ?? "Prossima fermata:"} $stopName alle $timeStr';
+          text = TtsService.appendNextStop(
+            baseText: text,
+            stopName: stopName,
+            time: time,
+            langCode: langCode,
+          );
+        }
+
+        // Elenco delle fermate successive (esclusa la prossima, già detta).
+        final following = <String>[];
+        var seenNext = false;
+        for (var stop in stops) {
+          if (identical(stop, nextStop)) {
+            seenNext = true;
+            continue;
+          }
+          if (!seenNext) continue;
+          final t = stop.estimatedDeparture ??
+              stop.departure ??
+              stop.estimatedArrival ??
+              stop.arrival;
+          if (t == null || !t.isAfter(now)) continue;
+          if (stop.cancelled) continue;
+          final name = (stop.stationName ?? '').trim();
+          if (name.isEmpty) continue;
+          if (following.contains(name)) continue;
+          following.add(name);
+          if (following.length >= 12) break;
+        }
+        if (following.isNotEmpty) {
+          text = TtsService.appendCallingAt(
+            baseText: text,
+            stopNames: following,
+            langCode: langCode,
+          );
         }
       }
     }
     
     if (text.isNotEmpty) {
       final trainKey = '${departure.category ?? ''}|${departure.trainNumber ?? ''}|${departure.scheduledTime?.toIso8601String() ?? ''}';
-      await tts.speak(text, trainKey: trainKey);
+      await tts.speak(text,
+          trainKey: trainKey,
+          force: force || _settingsProvider.ttsAlwaysAnnounce,
+          rate: _settingsProvider.ttsOpeningSpeechRate,
+          bullhorn: true);
     }
+  }
+
+  /// Avviso "siamo in arrivo a {fermata}" quando mancano <= 5 minuti
+  /// all'arrivo effettivo alla prossima fermata. Una volta per fermata.
+  Future<void> _checkArrivalAlert() async {
+    if (!mounted) return;
+    if (!_settingsProvider.ttsAnnouncementsOn) return;
+
+    final stops = widget.departure.stops ?? [];
+    if (stops.isEmpty) return;
+    final now = DateTime.now();
+    TrainStop? nextStop;
+    for (var stop in stops) {
+      final t = stop.estimatedArrival ?? stop.arrival;
+      if (t != null && !t.isBefore(now)) {
+        nextStop = stop;
+        break;
+      }
+    }
+    if (nextStop == null) return;
+    final arrival = nextStop.estimatedArrival ?? nextStop.arrival;
+    if (arrival == null) return;
+    final name = nextStop.stationName.trim();
+    if (name.isEmpty) return;
+    final diff = arrival.difference(now);
+    if (diff.isNegative || diff.inMinutes > 5) return;
+    final key = '$name|${arrival.toIso8601String()}';
+    if (_announcedArrivals.contains(key)) return;
+    _announcedArrivals.add(key);
+
+    final tts = TtsService();
+    final langCode = _settingsProvider.appLocale?.languageCode ?? 'it';
+    tts.setLanguage(langCode);
+    final voices = TtsService.getVoicesForLanguage(langCode);
+    final openingName = _settingsProvider.ttsOpeningVoiceForLang(langCode);
+    final wantedName = openingName ?? _settingsProvider.ttsVoiceForLang(langCode);
+    final selected = voices.firstWhere(
+      (v) => v.name == wantedName,
+      orElse: () => voices.isNotEmpty ? voices.first : const OddcastVoice(name: 'Roberto', id: 2, engine: 3, gender: 'M'),
+    );
+    tts.setSelectedVoice(selected);
+    final departure = widget.departure;
+    final trainKey =
+        '${departure.category ?? ''}|${departure.trainNumber ?? ''}|${departure.scheduledTime?.toIso8601String() ?? ''}|arr|$key';
+    await tts.speak(
+      TtsService.buildArrivingNow(stopName: name, langCode: langCode),
+      trainKey: trainKey,
+      force: true,
+      rate: _settingsProvider.ttsOpeningSpeechRate,
+      bullhorn: true,
+    );
   }
 
   bool get _needsExternalFetch {
@@ -1302,6 +1396,77 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
     }
   }
 
+  /// Departure per riga Origine→Destinazione e progresso: prima il tabellone
+  /// corrente, poi la copia arricchita dal trip. Mai lo snapshot congelato
+  /// da solo: dopo l'uscita dal tabellone avrebbe fermate vuote/vecchie e
+  /// il progresso si azzererebbe o scatterebbe a fondo scala.
+  TrainDeparture _resolveRouteDeparture() {
+    return _findDisplayedDeparture() ?? _externalDep ?? widget.departure;
+  }
+
+  /// Progresso 0..1 lungo Origine→Destinazione. Robusto all'uscita dal
+  /// tabellone e ai dati parziali: senza fermate o senza alcun orario resta
+  /// 0 (mai "completato" per mancanza dati); con 1 sola fermata scatta 0/1.
+  /// Il ritardo sposta gli orari programmati (stimati prima, poi
+  /// programmati + ritardo), così il progresso segue il treno reale.
+  static double _calcRouteProgress(
+      List<TrainStop> stops, DateTime nowUtc, int delayMinutes) {
+    DateTime? effArr(TrainStop s) {
+      final est = s.estimatedArrival?.toUtc();
+      if (est != null) return est;
+      final sched = s.arrival?.toUtc();
+      if (sched != null) return sched.add(Duration(minutes: delayMinutes));
+      return null;
+    }
+
+    DateTime? effDep(TrainStop s) {
+      final est = s.estimatedDeparture?.toUtc();
+      if (est != null) return est;
+      final sched = s.departure?.toUtc();
+      if (sched != null) return sched.add(Duration(minutes: delayMinutes));
+      return null;
+    }
+
+    if (stops.isEmpty) return 0.0;
+    if (stops.length == 1) {
+      final arr = effArr(stops[0]);
+      if (arr == null) return 0.0;
+      return nowUtc.isBefore(arr) ? 0.0 : 1.0;
+    }
+    int currentIdx = -1;
+    var hasAnyTime = false;
+    for (int i = 0; i < stops.length; i++) {
+      final arrUtc = effArr(stops[i]);
+      if (arrUtc == null) continue;
+      hasAnyTime = true;
+      if (nowUtc.isBefore(arrUtc)) {
+        currentIdx = i;
+        break;
+      }
+    }
+    if (!hasAnyTime) return 0.0;
+    double progress;
+    if (currentIdx == -1) {
+      progress = 1.0;
+    } else if (currentIdx == 0) {
+      progress = 0.0;
+    } else {
+      final prevDep = effDep(stops[currentIdx - 1]);
+      final nextArr = effArr(stops[currentIdx]);
+      if (prevDep != null && nextArr != null) {
+        final totalDuration = nextArr.difference(prevDep).inSeconds;
+        final elapsed = nowUtc.difference(prevDep).inSeconds;
+        final segmentProgress = totalDuration > 0
+            ? (elapsed / totalDuration).clamp(0.0, 1.0)
+            : 0.0;
+        progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
+      } else {
+        progress = currentIdx / (stops.length - 1);
+      }
+    }
+    return progress.clamp(0.0, 1.0);
+  }
+
   /// Se i minuti di ritardo non sono più ottenibili via trip endpoint
   /// (refresh fallito -> error impostato, oppure delay assente), li cerca
   /// nei tabelloni delle prossime stazioni della tratta.
@@ -1581,45 +1746,15 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 
   Widget _buildRouteRow(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
-    final dep = trainProvider.departures.firstWhere(
-      (d) => (d.tripId != null && d.tripId == widget.departure.tripId) ||
-             (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
-      orElse: () => widget.departure,
-    );
+    // Patch uscita-dal-tabellone: usa trip arricchito, mai snapshot congelato.
+    final dep = _resolveRouteDeparture();
     final origin = _getEffectiveOrigin(dep);
     final dest = _getEffectiveDestination(dep);
 
-    // Calcola la posizione del treno (0.0 to 1.0)
-    double progress = 0.0;
+    // Posizione del treno (0.0..1.0), robusta ai dati parziali e al ritardo.
     final stops = dep.stops ?? [];
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      int currentIdx = -1;
-      for (int i = 0; i < stops.length; i++) {
-        final arrUtc = stops[i].estimatedArrival?.toUtc() ?? stops[i].arrival?.toUtc();
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx == 0) {
-        progress = 0.0;
-      } else {
-        final prevDep = stops[currentIdx - 1].estimatedDeparture?.toUtc() ?? stops[currentIdx - 1].departure?.toUtc();
-        final nextArr = stops[currentIdx].estimatedArrival?.toUtc() ?? stops[currentIdx].arrival?.toUtc();
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
+    final progress = _calcRouteProgress(
+        stops, DateTime.now().toUtc(), dep.delayMinutes ?? 0);
 
     // Indice fermata corrente per il pulsante "vai alla posizione"
     int scrollIdx = -1;
@@ -2137,39 +2272,11 @@ class _TrainDetailsSheetState extends State<TrainDetailsSheet> {
   }
 
   Widget _buildProgressButton(BuildContext context, ThemeProvider theme, TrainProvider trainProvider) {
-    final dep = trainProvider.departures.firstWhere(
-      (d) => (d.tripId != null && d.tripId == widget.departure.tripId) ||
-             (d.trainNumber == widget.departure.trainNumber && d.destination == widget.departure.destination),
-      orElse: () => widget.departure,
-    );
+    // Patch uscita-dal-tabellone: usa trip arricchito, mai snapshot congelato.
+    final dep = _resolveRouteDeparture();
     final stops = dep.stops ?? [];
-    double progress = 0.0;
-    if (stops.isNotEmpty) {
-      final DateTime nowUtc = DateTime.now().toUtc();
-      int currentIdx = -1;
-      for (int i = 0; i < stops.length; i++) {
-        final arrUtc = stops[i].estimatedArrival?.toUtc() ?? stops[i].arrival?.toUtc();
-        if (arrUtc != null && nowUtc.isBefore(arrUtc)) {
-          currentIdx = i;
-          break;
-        }
-      }
-      if (currentIdx == -1) {
-        progress = 1.0;
-      } else if (currentIdx > 0) {
-        final prevDep = stops[currentIdx - 1].estimatedDeparture?.toUtc() ?? stops[currentIdx - 1].departure?.toUtc();
-        final nextArr = stops[currentIdx].estimatedArrival?.toUtc() ?? stops[currentIdx].arrival?.toUtc();
-        if (prevDep != null && nextArr != null) {
-          final totalDuration = nextArr.difference(prevDep).inSeconds;
-          final elapsed = nowUtc.difference(prevDep).inSeconds;
-          final segmentProgress = totalDuration > 0 ? (elapsed / totalDuration).clamp(0.0, 1.0) : 0.0;
-          progress = ((currentIdx - 1) + segmentProgress) / (stops.length - 1);
-        } else {
-          progress = currentIdx / (stops.length - 1);
-        }
-      }
-      progress = progress.clamp(0.0, 1.0);
-    }
+    final progress = _calcRouteProgress(
+        stops, DateTime.now().toUtc(), dep.delayMinutes ?? 0);
 
     return GestureDetector(
       onTap: () => _showProgressDialog(context, theme, trainProvider),
