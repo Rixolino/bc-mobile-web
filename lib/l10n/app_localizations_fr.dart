@@ -117,15 +117,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get busClustering => 'Regroupement bus';
 
   @override
-  String get busClusteringDesc =>
-      'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara';
+  String get busClusteringDesc => 'Raggruppa gli autobus vicini in cluster per una visualizzazione più chiara';
 
   @override
   String get stopClustering => 'Regroupement arrêts';
 
   @override
-  String get stopClusteringDesc =>
-      'Raggruppa le fermate vicine in cluster per una visualizzazione più chiara';
+  String get stopClusteringDesc => 'Raggruppa le fermate vicine in cluster per una visualizzazione più chiara';
 
   @override
   String get offlineSync => 'Synchro hors ligne';
@@ -265,8 +263,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get youAreOffline => 'Vous êtes hors ligne';
 
   @override
-  String get connectToSearchStations =>
-      'Connectez-vous pour chercher de nouvelles gares';
+  String get connectToSearchStations => 'Connectez-vous pour chercher de nouvelles gares';
 
   @override
   String get savedTrains => 'Trains enregistrés';
@@ -472,8 +469,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get passwordMin8 => '8 caractères minimum';
 
   @override
-  String get newPasswordMustDiffer =>
-      'Le nouveau mot de passe doit différer de l’actuel';
+  String get newPasswordMustDiffer => 'Le nouveau mot de passe doit différer de l’actuel';
 
   @override
   String get passwordChanged => 'Mot de passe modifié !';
@@ -491,8 +487,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get newFeaturesComing => 'De nouvelles fonctions arrivent !';
 
   @override
-  String get newFeaturesBody =>
-      'Nous travaillons pour vous offrir une expérience encore meilleure.';
+  String get newFeaturesBody => 'Nous travaillons pour vous offrir une expérience encore meilleure.';
 
   @override
   String get statistics => 'Statistiques';
@@ -637,35 +632,28 @@ class AppLocalizationsFr extends AppLocalizations {
   String get trainArrivalPreNotice => 'Préavis d’arrivée en gare';
 
   @override
-  String get trainArrivalPreNoticeDesc =>
-      'Recevez une notification N minutes avant l’arrivée estimée à votre arrêt (5–20 minutes)';
+  String get trainArrivalPreNoticeDesc => 'Recevez une notification N minutes avant l’arrivée estimée à votre arrêt (5–20 minutes)';
 
   @override
-  String get vectorTrainLogosDesc =>
-      'Télécharge et affiche les logos officiels des catégories de trains (ex. Frecciarossa, Intercity) au lieu du texte.';
+  String get vectorTrainLogosDesc => 'Télécharge et affiche les logos officiels des catégories de trains (ex. Frecciarossa, Intercity) au lieu du texte.';
 
   @override
   String get updateConfiguration => 'Mettre à jour la configuration';
 
   @override
-  String get configurationUpdateDesc =>
-      'Télécharge la dernière configuration du fournisseur de bus depuis le serveur';
+  String get configurationUpdateDesc => 'Télécharge la dernière configuration du fournisseur de bus depuis le serveur';
 
   @override
-  String get updateProviderConfiguration =>
-      'Mettre à jour la configuration du fournisseur';
+  String get updateProviderConfiguration => 'Mettre à jour la configuration du fournisseur';
 
   @override
-  String get offlineSyncDesc =>
-      'Télécharge automatiquement itinéraires et horaires lors de la synchro depuis une ville.';
+  String get offlineSyncDesc => 'Télécharge automatiquement itinéraires et horaires lors de la synchro depuis une ville.';
 
   @override
-  String get disclaimerTitle =>
-      'BC Transporter ne remplace pas les canaux officiels';
+  String get disclaimerTitle => 'BC Transporter ne remplace pas les canaux officiels';
 
   @override
-  String get disclaimerText =>
-      'Cette application ne remplace en rien les plateformes officielles des compagnies.';
+  String get disclaimerText => 'Cette application ne remplace en rien les plateformes officielles des compagnies.';
 
   @override
   String get user => 'Utilisateur';
