@@ -159,70 +159,109 @@ class _RegionalProvidersScreenState extends State<RegionalProvidersScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadProviders,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Row(
-              children: [
+      child: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: ricerca vincolata e card su 2 colonne.
+          final isLandscape = orientation == Orientation.landscape;
+          return Column(
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isLandscape ? 700 : double.infinity,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      isLandscape ? 32 : 16,
+                      16,
+                      isLandscape ? 32 : 16,
+                      4,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: t('regional_search_providers'),
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: _query.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear_rounded),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _query = '');
+                                      },
+                                    )
+                                  : null,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            onChanged: (value) => setState(() => _query = value),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.sort_rounded),
+                          tooltip: t('regional_reorder'),
+                          onPressed: _openReorderSheet,
+                          style: IconButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_filtered.isEmpty)
                 Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: t('regional_search_providers'),
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _query.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _query = '');
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  child: Center(
+                    child: Text(
+                      t('regional_no_providers'),
+                      style: theme.textTheme.bodyLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 1100 : double.infinity,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: isLandscape
+                          ? GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(32, 8, 32, 120),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 0,
+                                mainAxisExtent: 208,
+                              ),
+                              itemCount: _filtered.length,
+                              itemBuilder: (context, index) =>
+                                  _providerCard(theme, _filtered[index]),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                              itemCount: _filtered.length,
+                              itemBuilder: (context, index) =>
+                                  _providerCard(theme, _filtered[index]),
+                            ),
                     ),
-                    onChanged: (value) => setState(() => _query = value),
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.sort_rounded),
-                  tooltip: t('regional_reorder'),
-                  onPressed: _openReorderSheet,
-                  style: IconButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_filtered.isEmpty)
-            Expanded(
-              child: Center(
-                child: Text(
-                  t('regional_no_providers'),
-                  style: theme.textTheme.bodyLarge,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                itemCount: _filtered.length,
-                itemBuilder: (context, index) =>
-                    _providerCard(theme, _filtered[index]),
-              ),
-            ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -386,6 +425,8 @@ class _RegionalProvidersScreenState extends State<RegionalProvidersScreen> {
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.outline,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),

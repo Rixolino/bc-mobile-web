@@ -53,11 +53,11 @@ class _BusPanelContentState extends State<BusPanelContent> {
         if (!supportsSolutions && _selectedMode == 1) _selectedMode = 0;
         if (!supportsLines && _selectedMode == 2) _selectedMode = 0;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Operator Selection (Redesigned)
-            Padding(
+        final isLandscapePanel =
+            MediaQuery.of(context).orientation == Orientation.landscape;
+        // Sezioni controlli/risultati: in landscape compongono due pannelli affiancati.
+        // 1. Operator Selection (Redesigned)
+        final operatorSection = Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: GlassmorphicContainer(
                 width: double.infinity,
@@ -216,11 +216,11 @@ class _BusPanelContentState extends State<BusPanelContent> {
                   ],
                 ),
               ),
-            ),
+            );
 
             // 2. Mode Toggle Chips
-            if (supportsSolutions || supportsLines)
-              Padding(
+            final modeToggleSection = supportsSolutions || supportsLines
+                ? Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: GlassmorphicContainer(
@@ -271,22 +271,70 @@ class _BusPanelContentState extends State<BusPanelContent> {
                     ],
                   ),
                 ),
-              ),
+              ) : const SizedBox.shrink();
 
             // 3. Action Area
-            AnimatedSwitcher(
+            final actionSection = AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: _buildActionArea(busProvider, theme, supportsSolutions),
-            ),
+            );
 
             // 4. Results Area
-            Expanded(
-              child: busProvider.isLoading
-                  ? ShimmerLoading(baseColor: theme.textColor)
-                  : _buildResultsList(busProvider, mapState),
-            ),
-          ],
-        );
+            final resultsContent = busProvider.isLoading
+                ? ShimmerLoading(baseColor: theme.textColor)
+                : _buildResultsList(busProvider, mapState);
+
+            if (isLandscapePanel) {
+              // Landscape: controlli a sinistra (larghezza vincolata),
+              // risultati a destra.
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.34 < 380
+                          ? MediaQuery.of(context).size.width * 0.34
+                          : 380,
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            operatorSection,
+                            modeToggleSection,
+                            actionSection,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    color: theme.secondaryTextColor.withValues(alpha: 0.1),
+                  ),
+                  Expanded(child: resultsContent),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Operator Selection (Redesigned)
+                operatorSection,
+
+                // 2. Mode Toggle Chips
+                modeToggleSection,
+
+                // 3. Action Area
+                actionSection,
+
+                // 4. Results Area
+                Expanded(child: resultsContent),
+              ],
+            );
       },
     );
   }

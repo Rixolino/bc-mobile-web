@@ -149,50 +149,89 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildModeToggle(theme),
-          if (availablePlatforms.isNotEmpty && !_isLoading && _error == null)
-            SizedBox(
-              height: 50,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                children: [
-                  _buildFilterChip(
-                    AppLocalizations.of(context)?.allPlatforms ?? 'Tutti i Binari',
-                    _selectedPlatformFilter == null,
-                    theme,
-                    () => setState(() => _selectedPlatformFilter = null),
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: vincola la larghezza, padding ariosi e safe area laterali.
+          final isLandscape = orientation == Orientation.landscape;
+          final sidePadding = MediaQuery.of(context).padding;
+          return SafeArea(
+            top: false,
+            bottom: false,
+            left: isLandscape,
+            right: isLandscape,
+            minimum: isLandscape
+                ? EdgeInsets.only(
+                    left: sidePadding.left > 0 ? 0 : 24,
+                    right: sidePadding.right > 0 ? 0 : 24,
+                  )
+                : EdgeInsets.zero,
+            child: Column(
+              children: [
+                _buildModeToggle(theme),
+                if (availablePlatforms.isNotEmpty && !_isLoading && _error == null)
+                  SizedBox(
+                    height: 50,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isLandscape ? 32 : 16,
+                        vertical: 8,
+                      ),
+                      children: [
+                        _buildFilterChip(
+                          AppLocalizations.of(context)?.allPlatforms ?? 'Tutti i Binari',
+                          _selectedPlatformFilter == null,
+                          theme,
+                          () => setState(() => _selectedPlatformFilter = null),
+                        ),
+                        ...availablePlatforms.map((p) => _buildFilterChip(
+                              '${AppLocalizations.of(context)?.platform ?? 'Binario'} $p',
+                              _selectedPlatformFilter == p,
+                              theme,
+                              () => setState(() => _selectedPlatformFilter = p),
+                            )),
+                      ],
+                    ),
                   ),
-                  ...availablePlatforms.map((p) => _buildFilterChip(
-                        '${AppLocalizations.of(context)?.platform ?? 'Binario'} $p',
-                        _selectedPlatformFilter == p,
-                        theme,
-                        () => setState(() => _selectedPlatformFilter = p),
-                      )),
-                ],
-              ),
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 900 : double.infinity,
+                      ),
+                      child: _isLoading
+                          ? _buildLoading(theme)
+                          : _error != null
+                              ? _buildError(theme)
+                              : filtered.isEmpty
+                                  ? _buildEmpty(theme)
+                                  : _buildDepartureList(filtered, theme),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          Expanded(
-            child: _isLoading
-                ? _buildLoading(theme)
-                : _error != null
-                    ? _buildError(theme)
-                    : filtered.isEmpty
-                        ? _buildEmpty(theme)
-                        : _buildDepartureList(filtered, theme),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildModeToggle(ThemeProvider theme) {
-    return Container(
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final toggle = Container(
       color: theme.surfaceColor,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 32 : 16,
+        vertical: 8,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isLandscape ? 600 : double.infinity,
+          ),
+          child: Row(
         children: [
           Expanded(
             child: GestureDetector(
@@ -240,8 +279,11 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
+    return toggle;
   }
 
   Widget _buildLoading(ThemeProvider theme) {
@@ -345,7 +387,10 @@ class _StationDetailsScreenState extends State<StationDetailsScreen> {
         : null;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: MediaQuery.of(context).orientation == Orientation.landscape ? 24 : 16,
+        vertical: MediaQuery.of(context).orientation == Orientation.landscape ? 12 : 10,
+      ),
       child: Row(
         children: [
           if (logoUrl != null)

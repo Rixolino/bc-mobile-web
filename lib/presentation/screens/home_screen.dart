@@ -393,6 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final configProvider = Provider.of<ConfigProvider>(context);
     final busProvider = Provider.of<BusProvider>(context);
     final accentColor = _getAccentColor(_selectedModeIndex);
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -426,13 +428,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             MaterialPageRoute(
                                 builder: (_) =>
                                     const MapScreen(initialCategory: -1))))
-                    : _buildTransportPanel(_selectedModeIndex, theme),
+                    : _buildTransportPanel(_selectedModeIndex, theme,
+                        isLandscape: isLandscape),
               ),
             ),
 
             // 2. TOP HEADER (Logo + Actions)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
+              top: media.padding.top + (isLandscape ? 6 : 10),
               left: 16,
               right: 16,
               child: Column(
@@ -449,8 +452,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     curve: Curves.easeOutCirc,
                     child: (_selectedModeIndex > 0 && _searchExpanded)
                         ? Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: _buildSearchBar(theme, accentColor, busProvider),
+                            padding: EdgeInsets.only(
+                                top: isLandscape ? 8 : 12),
+                            // In landscape vincola la barra di ricerca per
+                            // evitare overflow orizzontali su schermi larghi.
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                    maxWidth: 700),
+                                child: _buildSearchBar(
+                                    theme, accentColor, busProvider),
+                              ),
+                            ),
                           )
                         : const SizedBox(width: double.infinity, height: 0),
                   ),
@@ -463,19 +476,27 @@ class _HomeScreenState extends State<HomeScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeOutBack,
-                top: MediaQuery.of(context).padding.top +
-                    140 +
-                    (_searchExpanded ? 60 : 0),
+                top: media.padding.top +
+                    (isLandscape ? 110 : 140) +
+                    (_searchExpanded ? (isLandscape ? 40 : 60) : 0),
                 left: 16,
                 right: 16,
-                child: _buildSelectedStopBanner(busProvider, theme),
+                // In landscape centra e vincola la larghezza del banner.
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: _buildSelectedStopBanner(busProvider, theme),
+                  ),
+                ),
               ),
 
             if (configProvider.isLoading)
               const Center(child: CircularProgressIndicator()),
 
             // 4. FLOATING BOTTOM DOCK
-            _buildBottomDock(theme, accentColor, MediaQuery.of(context).size.width),
+            _buildBottomDock(theme, accentColor, media.size.width,
+                isLandscape: isLandscape,
+                bottomPadding: media.padding.bottom),
           ],
         ),
       ),
@@ -739,8 +760,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBusDropdown(ThemeProvider theme, BusProvider busProvider) {
+    final maxH =
+        MediaQuery.of(context).orientation == Orientation.landscape
+            ? 180.0
+            : 320.0;
     return Container(
       margin: const EdgeInsets.only(top: 8),
+      constraints: BoxConstraints(maxHeight: maxH),
       decoration: BoxDecoration(
           color: theme.surfaceColor.withOpacity(0.95),
           borderRadius: BorderRadius.circular(16),
@@ -807,10 +833,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildBottomDock(ThemeProvider theme, Color accentColor, double screenWidth) {
+  Widget _buildBottomDock(ThemeProvider theme, Color accentColor, double screenWidth,
+      {bool isLandscape = false, double bottomPadding = 0}) {
     final dockWidth = screenWidth < 360 ? screenWidth - 48 : 300.0;
     return Positioned(
-      bottom: 24,
+      // In landscape alza la dock e rispetta la safe area inferiore.
+      bottom: (isLandscape ? 12 : 24) + bottomPadding,
       left: 0,
       right: 0,
       child: Center(
@@ -1020,11 +1048,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTransportPanel(int mode, ThemeProvider theme) {
+  Widget _buildTransportPanel(int mode, ThemeProvider theme,
+      {bool isLandscape = false}) {
     return Container(
       key: ValueKey('Panel_$mode'),
       color: theme.backgroundColor,
-      padding: EdgeInsets.only(top: _searchExpanded ? 140 : 80),
+      // In landscape riduce il padding superiore per l'altezza ridotta.
+      padding: EdgeInsets.only(
+          top: isLandscape
+              ? (_searchExpanded ? 112 : 64)
+              : (_searchExpanded ? 140 : 80)),
       child: mode == 1
           ? const TrainSearchScreen()
           : mode == 2

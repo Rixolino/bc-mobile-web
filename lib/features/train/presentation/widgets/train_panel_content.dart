@@ -32,6 +32,7 @@ import 'railway_station_stats_screen.dart' as station_stats;
 import 'train_stats_screen.dart' as train_stats;
 import 'package:intl/intl.dart';
 import 'routing_search_screen.dart';
+import 'train_board_row.dart';
 
 class TrainPanelContent extends StatefulWidget {
   final bool showModeToggle;
@@ -2014,6 +2015,9 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       _safeSetState(() {
         _selectedRoutingDate = picked;
       });
+      // Ricarica le soluzioni per la data scelta (se c'è già una ricerca,
+      // altrimenti _performRoutingSearch esce da solo).
+      _performRoutingSearch();
     }
   }
 
@@ -2277,11 +2281,34 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
       _lastCheckedStationId = null;
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: station != null
-          ? _buildTimetableResults(context, trainProvider, theme, station)
-          : _buildSearchHome(context, trainProvider, theme),
+    // Solo layout: in landscape vincola la larghezza e gestisce le safe area.
+    return OrientationBuilder(
+      builder: (context, orientation) {
+        final content = AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: station != null
+              ? _buildTimetableResults(context, trainProvider, theme, station)
+              : _buildSearchHome(context, trainProvider, theme),
+        );
+        if (orientation != Orientation.landscape) return content;
+        final sidePadding = MediaQuery.of(context).padding;
+        return SafeArea(
+          left: true,
+          right: true,
+          top: false,
+          bottom: false,
+          minimum: EdgeInsets.only(
+            left: sidePadding.left > 0 ? 0 : 24,
+            right: sidePadding.right > 0 ? 0 : 24,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: content,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2388,6 +2415,36 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
 
   // ==================== SEZIONE SOLUZIONI ====================
 
+  /// Campo origine (estratto invariato: solo riuso layout portrait/landscape).
+  Widget _buildOriginField(ThemeProvider theme) {
+    return TextField(
+      controller: _originController,
+      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+      decoration: InputDecoration(
+        hintText: RuntimeLocalizations.t(context, 'routing_origin_hint'),
+        hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+        prefixIcon: Icon(Icons.trip_origin_rounded, color: theme.primaryColor),
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  /// Campo destinazione (estratto invariato: solo riuso layout portrait/landscape).
+  Widget _buildDestinationField(ThemeProvider theme) {
+    return TextField(
+      controller: _destinationController,
+      style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
+      decoration: InputDecoration(
+        hintText: RuntimeLocalizations.t(context, 'routing_destination_hint'),
+        hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
+        prefixIcon: Icon(Icons.location_on_rounded, color: Colors.redAccent),
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   Widget _buildSolutionsContent(ThemeProvider theme) {
     return Column(
       children: [
@@ -2401,28 +2458,32 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
             ),
             child: Column(
               children: [
-                TextField(
-                  controller: _originController,
-                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    hintText: RuntimeLocalizations.t(context, 'routing_origin_hint'),
-                    hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
-                    prefixIcon: Icon(Icons.trip_origin_rounded, color: theme.primaryColor),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.all(16),
-                  ),
-                ),
-                Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
-                TextField(
-                  controller: _destinationController,
-                  style: TextStyle(color: theme.textColor, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    hintText: RuntimeLocalizations.t(context, 'routing_destination_hint'),
-                    hintStyle: TextStyle(color: theme.secondaryTextColor.withValues(alpha: 0.5)),
-                    prefixIcon: Icon(Icons.location_on_rounded, color: Colors.redAccent),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.all(16),
-                  ),
+                OrientationBuilder(
+                  builder: (context, orientation) {
+                    // Landscape: origine e destinazione affiancate (stessi campi).
+                    if (orientation == Orientation.landscape) {
+                      return IntrinsicHeight(
+                        child: Row(
+                          children: [
+                            Expanded(child: _buildOriginField(theme)),
+                            VerticalDivider(
+                              width: 1,
+                              color: theme.secondaryTextColor.withValues(alpha: 0.2),
+                            ),
+                            Expanded(child: _buildDestinationField(theme)),
+                          ],
+                        ),
+                      );
+                    }
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildOriginField(theme),
+                        Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
+                        _buildDestinationField(theme),
+                      ],
+                    );
+                  },
                 ),
                 Divider(height: 1, color: theme.secondaryTextColor.withValues(alpha: 0.2)),
                 
@@ -3273,17 +3334,37 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
   }
 
   Widget _buildStationSuggestionsList(TrainProvider provider, ThemeProvider theme) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
-      itemCount: provider.stationSuggestions.length,
-      itemBuilder: (ctx, i) {
-        final s = provider.stationSuggestions[i];
-        return _StationListTile(
-          station: s,
-          provider: provider,
-          theme: theme,
-          onLoadStats: _loadStatsAndNavigate,
-          onAddStation: _addStationToDb,
+    // Landscape: suggerimenti su 2 colonne (stesso tile, solo layout).
+    Widget tile(BuildContext ctx, int i) {
+      final s = provider.stationSuggestions[i];
+      return _StationListTile(
+        station: s,
+        provider: provider,
+        theme: theme,
+        onLoadStats: _loadStatsAndNavigate,
+        onAddStation: _addStationToDb,
+      );
+    }
+
+    return OrientationBuilder(
+      builder: (ctx, orientation) {
+        if (orientation != Orientation.landscape) {
+          return ListView.builder(
+            padding: const EdgeInsets.only(bottom: 100),
+            itemCount: provider.stationSuggestions.length,
+            itemBuilder: tile,
+          );
+        }
+        return GridView.builder(
+          padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 0,
+            mainAxisExtent: 84,
+          ),
+          itemCount: provider.stationSuggestions.length,
+          itemBuilder: tile,
         );
       },
     );
@@ -3767,193 +3848,23 @@ Map<String, dynamic> _normalizeEurailData(Map<String, dynamic> rawData) {
           final estStr =
               estimated != null ? formatCountryTime(estimated, country) : null;
 
-          return Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _openTrainCard(context, dep, m, theme),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    if (logoUrl != null)
-                      Container(
-                        height: 24,
-                        constraints: const BoxConstraints(maxWidth: 50),
-                        padding: theme.isDark
-                            ? const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2)
-                            : EdgeInsets.zero,
-                        decoration: theme.isDark
-                            ? BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(6),
-                              )
-                            : null,
-                        child: Image.network(
-                          logoUrl,
-                          fit: BoxFit.contain,
-                          alignment: Alignment.centerLeft,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 4,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        width: 4,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  '$cat $num',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.textColor,
-                                    fontSize: 14,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (delay > 0) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '+$delay\'',
-                                    style: const TextStyle(
-                                        color: Colors.orange,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ] else if (delay < 0) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '$delay\'',
-                                    style: const TextStyle(
-                                        color: Colors.green,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                              if (viewers > 0) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.green,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '$viewers',
-                                  style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            route,
-                            style: TextStyle(
-                                color: theme.secondaryTextColor, fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (platform != null && platform.isNotEmpty) ...[
-                          _buildPlatformBox(platform, theme),
-                          const SizedBox(width: 10),
-                        ],
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Builder(
-                              builder: (_) {
-                                Color timeColor;
-                                if (delay <= 0) {
-                                  timeColor = Colors.green;
-                                } else if (delay <= 5) {
-                                  timeColor = Colors.orange;
-                                } else if (delay <= 15) {
-                                  timeColor = Colors.deepOrange;
-                                } else {
-                                  timeColor = Colors.red;
-                                }
-                                return Text(
-                                  estStr != null && estStr != timeStr
-                                      ? estStr
-                                      : timeStr,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: estStr != null && estStr != timeStr
-                                        ? timeColor
-                                        : theme.textColor,
-                                    fontSize: 15,
-                                  ),
-                                );
-                              },
-                            ),
-                            if (estStr != null && estStr != timeStr)
-                              Text(
-                                timeStr,
-                                style: TextStyle(
-                                  color: theme.secondaryTextColor,
-                                  fontSize: 11,
-                                  decoration: TextDecoration.lineThrough,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // Stesso componente delle altre liste treni (tabelloni regionali).
+          return TrainBoardRow(
+            category: cat,
+            number: num,
+            delay: delay,
+            title: route,
+            platform: platform,
+            timeStr: timeStr,
+            estStr: estStr,
+            barColor: color,
+            logoUrl: logoUrl,
+            isDark: theme.isDark,
+            textColor: theme.textColor,
+            secondaryTextColor: theme.secondaryTextColor,
+            notchColor: theme.backgroundColor,
+            viewers: viewers,
+            onTap: () => _openTrainCard(context, dep, m, theme),
           );
   }
 
@@ -4915,10 +4826,14 @@ class _StationListTileState extends State<_StationListTile> {
       title: Text(
         widget.station.name,
         style: TextStyle(color: widget.theme.textColor, fontWeight: FontWeight.bold),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         widget.station.country,
         style: TextStyle(color: widget.theme.secondaryTextColor, fontSize: 12),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       trailing: _checkingStatus
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))

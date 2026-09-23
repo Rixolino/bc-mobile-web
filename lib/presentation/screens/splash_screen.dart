@@ -110,7 +110,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final isLandscape = media.orientation == Orientation.landscape;
+
+    // In landscape l'altezza è ridotta: logo/spaziature compatti + scroll
+    // per evitare bottom overflow; contenuti centrati con larghezza massima.
+    final logoSize = isLandscape ? 72.0 : 100.0;
+    final logoIconSize = isLandscape ? 36.0 : 50.0;
+    final gap1 = isLandscape ? 16.0 : 32.0;
+    final gap2 = isLandscape ? 16.0 : 48.0;
 
     return Scaffold(
       backgroundColor: theme.backgroundColor,
@@ -129,15 +138,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ],
               ),
             ),
-            child: Center(
+            child: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: isLandscape ? 12 : 24,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 600),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Transform.scale(
                     scale: _scaleAnim.value,
                     child: Container(
-                      width: 100,
-                      height: 100,
+                      width: logoSize,
+                      height: logoSize,
                       decoration: BoxDecoration(
                         gradient: AppGradients.brandGradient,
                         borderRadius: BorderRadius.circular(AppTokens.radius2Xl),
@@ -149,14 +168,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           ),
                         ],
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.directions_bus_rounded,
-                        size: 50,
+                        size: logoIconSize,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  SizedBox(height: gap1),
                   Opacity(
                     opacity: _fadeAnim.value,
                     child: Transform.translate(
@@ -167,6 +186,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
                             child: Text(
                               'BC.TRANSPORTER',
+                              textAlign: TextAlign.center,
                               style: TextStyle(fontFamily: 'Syne', 
                                 fontSize: screenWidth < 375 ? 15 : 20,
                                 fontWeight: FontWeight.w900,
@@ -179,6 +199,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           Text(
                             RuntimeLocalizations.t(context, 'splash_tagline',
                                 fallback: 'Tuo viaggio, in tempo reale'),
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: theme.secondaryTextColor,
                               fontSize: 14,
@@ -190,7 +211,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  SizedBox(height: gap2),
                   Opacity(
                     opacity: _fadeAnim.value,
                     child: SizedBox(
@@ -203,6 +224,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     ),
                   ),
                 ],
+              ),
+                    ),
+                  ),
+                ),
               ),
             ),
           );

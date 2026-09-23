@@ -97,12 +97,11 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
     final provider = Provider.of<BusProvider>(context);
     final theme = Provider.of<ThemeProvider>(context);
 
-    return Scaffold(
-      backgroundColor: theme.backgroundColor,
-      body: Column(
-        children: [
-          // ── HERO HEADER ──
-          Container(
+    // Landscape: header e azioni a sinistra, partenze a destra.
+    final isLandscapeStop =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    // ── HERO HEADER ──
+    final stopHero = Container(
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -157,16 +156,16 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                 ),
               ),
             ),
-          ),
+          );
 
           // ── ACTIONS ──
-          Padding(
+          final stopActions = Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: _buildMainActions(theme, provider),
-          ),
+          );
 
           // ── DEPARTURES TITLE ──
-          Padding(
+          final departuresTitle = Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -176,22 +175,78 @@ class _BusStopDetailsSheetState extends State<BusStopDetailsSheet> {
                   SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor)),
               ],
             ),
-          ),
+          );
 
           // ── DEPARTURES LIST ──
-          Expanded(
-            child: _departures.isEmpty && !_isLoadingDepartures
-                ? _buildEmptyState(theme)
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    itemCount: _departures.length,
-                    physics: const BouncingScrollPhysics(),
-                    itemBuilder: (context, index) => _buildDepartureCard(_departures[index], theme, provider),
+          final departuresList = _departures.isEmpty && !_isLoadingDepartures
+              ? _buildEmptyState(theme)
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  itemCount: _departures.length,
+                  physics: const BouncingScrollPhysics(),
+                  itemBuilder: (context, index) => _buildDepartureCard(_departures[index], theme, provider),
+                );
+
+          if (isLandscapeStop) {
+            // Landscape: info fermata a sinistra, partenze a destra.
+            return Scaffold(
+              backgroundColor: theme.backgroundColor,
+              body: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.34 < 360
+                          ? MediaQuery.of(context).size.width * 0.34
+                          : 360,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            stopHero,
+                            stopActions,
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-          ),
-        ],
-      ),
-    );
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    color: theme.secondaryTextColor.withValues(alpha: 0.1),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                          0, MediaQuery.of(context).padding.top + 8, 0, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          departuresTitle,
+                          Expanded(child: departuresList),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return Scaffold(
+            backgroundColor: theme.backgroundColor,
+            body: Column(
+              children: [
+                stopHero,
+                stopActions,
+                departuresTitle,
+                Expanded(child: departuresList),
+              ],
+            ),
+          );
   }
 
   // --- COMPONENTI UI ---

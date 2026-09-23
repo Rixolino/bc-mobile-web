@@ -171,11 +171,34 @@ class LegalDocumentScreen extends StatelessWidget {
           ],
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _buildSections(theme),
+      body: SafeArea(
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape =
+                orientation == Orientation.landscape;
+            final horizontalPad = isLandscape
+                ? 32.0 + MediaQuery.of(context).padding.left
+                : 20.0;
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 700 : 600,
+                ),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPad,
+                    16,
+                    isLandscape ? 32.0 + MediaQuery.of(context).padding.right : 20,
+                    32,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _buildSections(theme),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

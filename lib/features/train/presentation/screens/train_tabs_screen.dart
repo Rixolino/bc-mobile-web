@@ -46,40 +46,73 @@ class _TrainTabsScreenState extends State<TrainTabsScreen>
 
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: TabBar(
-                controller: _tabController,
-                labelColor: theme.colorScheme.primary,
-                unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-                indicatorColor: theme.colorScheme.primary,
-                indicatorSize: TabBarIndicatorSize.label,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            // Landscape: contenuti vincolati in larghezza e padding ariosi.
+            final isLandscape = orientation == Orientation.landscape;
+            final body = Column(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isLandscape ? 32 : 16,
+                    vertical: isLandscape ? 4 : 8,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 640 : double.infinity,
+                      ),
+                      child: TabBar(
+                        controller: _tabController,
+                        labelColor: theme.colorScheme.primary,
+                        unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                        indicatorColor: theme.colorScheme.primary,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontWeight: FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                        tabs: [
+                          Tab(text: t('tab_national')),
+                          Tab(text: t('tab_regionale')),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.normal,
-                  fontSize: 14,
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 1100 : double.infinity,
+                      ),
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          const TrainPanelContent(),
+                          RegionalProvidersScreen(country: _country),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                tabs: [
-                  Tab(text: t('tab_national')),
-                  Tab(text: t('tab_regionale')),
-                ],
+              ],
+            );
+            if (!isLandscape) return body;
+            // Safe area laterali (notch) in orizzontale.
+            final sidePadding = MediaQuery.of(context).padding;
+            return Padding(
+              padding: EdgeInsets.only(
+                left: sidePadding.left > 0 ? 0 : 12,
+                right: sidePadding.right > 0 ? 0 : 12,
               ),
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  const TrainPanelContent(),
-                  RegionalProvidersScreen(country: _country),
-                ],
-              ),
-            ),
-          ],
+              child: body,
+            );
+          },
         ),
       ),
     );

@@ -17,6 +17,9 @@ class RoadwayAreaServiceScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    // Solo layout: in landscape altezza ridotta e contenuti affiancati.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -28,7 +31,7 @@ class RoadwayAreaServiceScreen extends StatelessWidget {
             foregroundColor: theme.colorScheme.onPrimary,
             elevation: 0,
             pinned: true,
-            expandedHeight: 120,
+            expandedHeight: isLandscape ? 80 : 120,
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
                 area.name,
@@ -49,11 +52,53 @@ class RoadwayAreaServiceScreen extends StatelessWidget {
             ),
           ),
 
-          // Content
+          // Content (solo layout: in landscape due colonne vincolate)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 1000 : double.infinity,
+                ),
+                child: Padding(
+              padding: EdgeInsets.all(isLandscape ? 12 : 16),
+              child: isLandscape
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildInfoCard(context, theme, isDark),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (area.fuelPrices.values
+                                      .any((f) => f.price > 0))
+                                    _buildFuelPricesSection(theme),
+                                  if (area.events.isNotEmpty)
+                                    _buildEventsSection(theme),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Services
+                        if (area.services.isNotEmpty)
+                          _buildServicesSection(context, theme, isDark),
+
+                        // Brands (fuel + food logos)
+                        if (area.fuelBrand.isNotEmpty ||
+                            area.foodBrands.isNotEmpty)
+                          _buildBrandsSection(theme),
+                      ],
+                    )
+                  : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Info card
@@ -78,6 +123,8 @@ class RoadwayAreaServiceScreen extends StatelessWidget {
                 ],
               ),
             ),
+                ),
+              ),
           ),
         ],
       ),

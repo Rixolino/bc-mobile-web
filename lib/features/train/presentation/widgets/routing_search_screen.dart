@@ -920,6 +920,9 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
     setState(() {
       _selectedRoutingDate = date;
     });
+    // Ricarica le soluzioni per la data scelta (altrimenti restano
+    // quelle della data precedente).
+    _performRoutingSearch();
     final index = _availableDates.indexOf(date);
     if (index >= 0) {
       final double targetOffset = (index * 70) - (MediaQuery.of(context).size.width / 2) + 35;
@@ -1015,19 +1018,18 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
           ),
         ),
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 8),
-          
-          // NUOVO ANIMATED BUILDER CON ALTEZZA DINAMICA
-          AnimatedBuilder(
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: form a sinistra (larghezza vincolata), risultati a destra.
+          final isLandscape = orientation == Orientation.landscape;
+          final searchHeader = AnimatedBuilder(
             animation: _searchAnimationController,
             builder: (context, child) {
               final double scaleValue = _searchScaleAnimation.value;
               final double formOpacity = _formFadeAnimation.value;
               final double chipOpacity = _chipFadeAnimation.value;
               final double containerHeight = _containerHeightAnimation.value;
-              
+
               return Container(
                 height: containerHeight,
                 clipBehavior: Clip.none, // Permette alle ombre di non essere tagliate
@@ -1046,7 +1048,7 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
                         ),
                       ),
                     ),
-                    
+
                     // --- CHIP COMPATTO (RIASSUNTO) ---
                     IgnorePointer(
                       ignoring: !_isFormCompact, // Disabilita i tap quando è nascosto
@@ -1059,9 +1061,9 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
                 ),
               );
             },
-          ),
-          
-          AnimatedBuilder(
+          );
+
+          final datePicker = AnimatedBuilder(
             animation: _searchAnimationController,
             builder: (context, child) {
               return SlideTransition(
@@ -1073,21 +1075,69 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
               );
             },
             child: _buildDatePicker(theme),
-          ),
-          Expanded(
-            child: _isSearchingRouting
-                ? _buildLoadingState(theme)
-                : _routingData == null
-                    ? _buildEmptyState(theme)
-                    : FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: _buildRoutingResultsList(theme),
-                        ),
+          );
+
+          final resultsContent = _isSearchingRouting
+              ? _buildLoadingState(theme)
+              : _routingData == null
+                  ? _buildEmptyState(theme)
+                  : FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: _buildRoutingResultsList(theme),
                       ),
-          ),
-        ],
+                    );
+
+          if (!isLandscape) {
+            return Column(
+              children: [
+                const SizedBox(height: 8),
+
+                // NUOVO ANIMATED BUILDER CON ALTEZZA DINAMICA
+                searchHeader,
+
+                datePicker,
+                Expanded(child: resultsContent),
+              ],
+            );
+          }
+
+          return SafeArea(
+            top: false,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.36 < 400
+                        ? MediaQuery.of(context).size.width * 0.36
+                        : 400,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 8),
+                          searchHeader,
+                          datePicker,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  color: theme.secondaryTextColor.withValues(alpha: 0.1),
+                ),
+                Expanded(child: resultsContent),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1526,7 +1576,7 @@ class _RoutingSearchScreenState extends State<RoutingSearchScreen>
 
   Widget _buildEmptyState(ThemeProvider theme) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

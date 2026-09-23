@@ -543,6 +543,10 @@ class _TrainMapPageState extends State<TrainMapPage> {
     final theme = Provider.of<ThemeProvider>(context);
     final dep = widget.departure;
     final currentDelay = widget.currentDelay;
+    // Landscape: sfrutta la larghezza, evita overflow con pannelli laterali.
+    final media = MediaQuery.of(context);
+    final size = media.size;
+    final isLandscape = media.orientation == Orientation.landscape;
     
     return Scaffold(
       body: Stack(
@@ -553,8 +557,11 @@ class _TrainMapPageState extends State<TrainMapPage> {
             Container(
               color: theme.backgroundColor,
               child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
+                child: SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Padding(
+                      padding: EdgeInsets.all(isLandscape ? 16 : 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -573,15 +580,17 @@ class _TrainMapPageState extends State<TrainMapPage> {
                       ),
                     ],
                   ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          
+
           // Header Card
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
-            right: 16,
+            right: isLandscape ? size.width * 0.38 : 16,
             child: Card(
               color: theme.surfaceColor.withOpacity(0.95),
               elevation: 4,
@@ -624,15 +633,15 @@ class _TrainMapPageState extends State<TrainMapPage> {
           
           if (!_isLoading)
             Positioned(
-              bottom: 30,
-              left: 20,
+              bottom: isLandscape ? 16 : 30,
+              left: isLandscape ? size.width * 0.58 : 20,
               right: 20,
               child: Card(
                 color: theme.surfaceColor.withOpacity(0.95),
                 elevation: 6,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: EdgeInsets.all(isLandscape ? 12.0 : 16.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -655,8 +664,10 @@ class _TrainMapPageState extends State<TrainMapPage> {
                             children: [
                               Text(RuntimeLocalizations.t(context, 'origin'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                               const SizedBox(height: 4),
-                              Text(dep.origin ?? "?", 
+                              Text(dep.origin ?? "?",
                                   textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.textColor)),
                             ],
                           )
@@ -669,8 +680,10 @@ class _TrainMapPageState extends State<TrainMapPage> {
                             children: [
                               Text(RuntimeLocalizations.t(context, 'destination'), style: TextStyle(fontSize: 12, color: theme.secondaryTextColor)),
                               const SizedBox(height: 4),
-                              Text(dep.destination ?? "?", 
+                              Text(dep.destination ?? "?",
                                   textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.textColor)),
                             ],
                           )

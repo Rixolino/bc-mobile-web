@@ -46,13 +46,18 @@ class _TvCursor extends StatelessWidget {
         final color = dragging
             ? Colors.orange
             : Theme.of(context).colorScheme.primary;
+        // Solo layout: in landscape cursore leggermente più compatto.
+        final isLandscape =
+            MediaQuery.of(context).orientation == Orientation.landscape;
+        final double diameter = isLandscape ? 28.0 : 32.0;
+        final double dot = dragging ? (isLandscape ? 10.0 : 11.0) : (isLandscape ? 7.0 : 8.0);
         return Positioned(
-          left: cursor.position.dx - 16,
-          top: cursor.position.dy - 16,
+          left: cursor.position.dx - diameter / 2,
+          top: cursor.position.dy - diameter / 2,
           child: IgnorePointer(
             child: Container(
-              width: 32,
-              height: 32,
+              width: diameter,
+              height: diameter,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
@@ -68,8 +73,8 @@ class _TvCursor extends StatelessWidget {
               ),
               child: Center(
                 child: Container(
-                  width: dragging ? 11 : 8,
-                  height: dragging ? 11 : 8,
+                  width: dot,
+                  height: dot,
                   decoration: BoxDecoration(
                     color: color,
                     shape: BoxShape.circle,
@@ -134,20 +139,25 @@ class _TvScrollButtons extends StatelessWidget {
         if (vp == null) return const SizedBox.shrink();
         final scheme = Theme.of(context).colorScheme;
         final screen = MediaQuery.sizeOf(context);
-        const double w = 40;
-        return _viewportArrows(scheme, screen, vp, cursor, w, key: ValueKey('tv-vp-${vp.id}'));
+        final padding = MediaQuery.of(context).padding;
+        final isLandscape = screen.width > screen.height;
+        final double w = isLandscape ? 44 : 40;
+        return _viewportArrows(scheme, screen, padding, vp, cursor, w, key: ValueKey('tv-vp-${vp.id}'));
       },
     );
   }
 
-  Widget _viewportArrows(ColorScheme scheme, Size screen, ViewportInfo vp,
-      TvCursorService cursor, double w, {Key? key}) {
+  Widget _viewportArrows(ColorScheme scheme, Size screen, EdgeInsets padding,
+      ViewportInfo vp, TvCursorService cursor, double w, {Key? key}) {
     final r = vp.rect;
+    // Solo layout landscape: rispetta safe-area e usa target compatti.
+    final isLandscape = screen.width > screen.height;
+    final double btnWidth = isLandscape ? 44.0 : w;
     // Bordo destro del viewport, centrato verticalmente, dentro lo schermo
-    final double left =
-        (r.right - w - 6).clamp(4.0, screen.width - w - 4.0);
-    final double top =
-        (r.center.dy - 46).clamp(4.0, screen.height - 100.0);
+    final double left = (r.right - btnWidth - 6)
+        .clamp(4.0 + padding.left, screen.width - btnWidth - 4.0 - padding.right);
+    final double top = (r.center.dy - 46)
+        .clamp(4.0 + padding.top, (screen.height - 100.0 - padding.bottom).clamp(4.0, screen.height));
     Widget btn(IconData icon, double delta) {
       return Material(
         color: scheme.primaryContainer.withOpacity(0.92),
@@ -158,7 +168,7 @@ class _TvScrollButtons extends StatelessWidget {
           onTap: () => cursor.scrollViewport(vp, delta),
           child: Padding(
             padding: const EdgeInsets.all(7),
-            child: Icon(icon, size: 17, color: scheme.primary),
+            child: Icon(icon, size: isLandscape ? 18 : 17, color: scheme.primary),
           ),
         ),
       );
@@ -166,12 +176,22 @@ class _TvScrollButtons extends StatelessWidget {
 
     const gap = TvCursorService.scrollStep * 3;
     final bool horizontal = vp.axis == Axis.horizontal;
+    // In landscape con viewport orizzontale: frecce affiancate per non rubare altezza.
     return Positioned(
       key: key,
       left: left,
       top: top,
-      width: w,
-      child: Column(
+      width: horizontal && isLandscape ? btnWidth * 2 + 4 : btnWidth,
+      child: horizontal && isLandscape
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                btn(Icons.keyboard_arrow_left_rounded, -gap),
+                const SizedBox(width: 4),
+                btn(Icons.keyboard_arrow_right_rounded, gap),
+              ],
+            )
+          : Column(
         mainAxisSize: MainAxisSize.min,
         children: horizontal
             ? [

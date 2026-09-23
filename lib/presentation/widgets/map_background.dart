@@ -106,6 +106,12 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
     }
 
     final theme = Provider.of<ThemeProvider>(context, listen: false);
+    // Solo layout/responsive: in landscape marker più compatti per evitare clutter.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final busMarkerSize = isLandscape ? 28.0 : 32.0;
+    final stopMarkerSize = isLandscape ? 20.0 : 24.0;
+    final planeMarkerSize = isLandscape ? 32.0 : 36.0;
+    final planeIconSize = isLandscape ? 16.0 : 18.0;
     
     // Build the map widget
     final mapWidget = FlutterMap(
@@ -158,8 +164,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                 final color = _stringToColor(v.line);
                 return Marker(
                   point: LatLng(v.latitude, v.longitude),
-                  width: 32,
-                  height: 32,
+                  width: busMarkerSize,
+                  height: busMarkerSize,
                   child: GestureDetector(
                     onTap: () async {
                       // Solo gli autobus live position possono essere selezionati per aprire i dettagli
@@ -212,8 +218,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
               }).map((stop) {
                 return Marker(
                   point: LatLng(stop.latitude, stop.longitude),
-                  width: 24,
-                  height: 24,
+                  width: stopMarkerSize,
+                  height: stopMarkerSize,
                   child: GestureDetector(
                     onTap: () => _showStopInfo(context, stop),
                     child: Container(
@@ -321,8 +327,8 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
               final heading = f.heading ?? 0.0;
               return Marker(
                 point: LatLng(f.latitude!, f.longitude!),
-                width: 36,
-                height: 36,
+                width: planeMarkerSize,
+                height: planeMarkerSize,
                 child: Transform.rotate(
                   angle: (heading * 3.14159265359 / 180), // Convert degrees to radians
                   child: Container(
@@ -335,7 +341,7 @@ class _MapBackgroundState extends State<MapBackground> with TickerProviderStateM
                       ],
                     ),
                     child: Center(
-                      child: Icon(Icons.flight, color: theme.textColor, size: 18),
+                      child: Icon(Icons.flight, color: theme.textColor, size: planeIconSize),
                     ),
                   ),
                 ),

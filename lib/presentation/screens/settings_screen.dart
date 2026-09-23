@@ -27,155 +27,193 @@ class SettingsScreen extends StatelessWidget {
       backgroundColor: Provider.of<ThemeProvider>(context).backgroundColor,
       body: Consumer3<SettingsProvider, ThemeProvider, BusProvider>(
         builder: (context, settings, theme, busProvider, child) {
+          final isLandscape =
+              MediaQuery.of(context).orientation == Orientation.landscape;
+          // Contenuto vincolato per evitare righe troppo lunghe in landscape.
+          final maxWidth = isLandscape ? 900.0 : 700.0;
+          final horizontalPad = isLandscape ? 32.0 : 20.0;
+          final sections = <Widget>[
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_system', fallback: 'Sistema'),
+              icon: Icons.tune_rounded,
+              children: [
+                _buildLanguageTile(context, settings, theme),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildThemeSelector(context, settings, theme),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildStartScreenSelector(context, settings, theme),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildTvCursorToggle(context, theme),
+              ],
+            ),
+
+            // SEZIONE: SINCRONIZZAZIONE E DATI
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_sync', fallback: 'Sincronizzazione'),
+              icon: Icons.sync_rounded,
+              children: [
+                _buildRefreshSlider(
+                    context,
+                    AppLocalizations.of(context)?.trains ?? 'Treni',
+                    Icons.train_rounded,
+                    settings.isTrainAuto ? settings.currentAutoTrainRate : settings.trainRefreshSeconds,
+                    (val) => settings.setTrainRefreshSeconds(val.toInt()),
+                    theme,
+                    isAuto: settings.isTrainAuto,
+                    autoRate: settings.currentAutoTrainRate,
+                    onAutoChanged: (isOn) => settings.setTrainRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)),
+                const SizedBox(height: 24),
+                _buildRefreshSlider(
+                    context,
+                    AppLocalizations.of(context)?.buses ?? 'Autobus',
+                    Icons.directions_bus_rounded,
+                    settings.isBusAuto ? settings.currentAutoBusRate : settings.busRefreshSeconds,
+                    (val) => settings.setBusRefreshSeconds(val.toInt()),
+                    theme,
+                    isAuto: settings.isBusAuto,
+                    autoRate: settings.currentAutoBusRate,
+                    onAutoChanged: (isOn) => settings.setBusRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 10)),
+                const SizedBox(height: 24),
+                _buildRefreshSlider(
+                    context,
+                    AppLocalizations.of(context)?.planes ?? 'Aerei',
+                    Icons.flight_rounded,
+                    settings.isPlaneAuto ? settings.currentAutoPlaneRate : settings.planeRefreshSeconds,
+                    (val) => settings.setPlaneRefreshSeconds(val.toInt()),
+                    theme,
+                    isAuto: settings.isPlaneAuto,
+                    autoRate: settings.currentAutoPlaneRate,
+                    onAutoChanged: (isOn) => settings.setPlaneRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildConfigUpdateSection(context, busProvider, theme),
+                const SizedBox(height: 16),
+                _buildOfflineSyncToggle(context, settings, theme),
+              ],
+            ),
+
+            // SEZIONE: NOTIFICHE
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_notifications'),
+              icon: Icons.notifications_active_rounded,
+              children: [
+                _buildBackgroundNotificationControls(context, settings, theme),
+                const SizedBox(height: 16),
+                _buildTrainProximityNotice(context, settings, theme),
+              ],
+            ),
+
+            // SEZIONE: MAPPA E INTERFACCIA
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_map_ui', fallback: 'Mappa e UI'),
+              icon: Icons.map_rounded,
+              children: [
+                _buildVectorLogosToggle(context, settings, theme),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildClusteringToggle(context, settings, theme),
+                const SizedBox(height: 16),
+                _buildStopsClusteringToggle(context, settings, theme),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1, thickness: 1),
+                ),
+                _buildMapStyleSelector(context, settings, theme),
+              ],
+            ),
+
+            // SEZIONE: ACCESSIBILITÀ
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_accessibility', fallback: 'Accessibilità'),
+              icon: Icons.accessibility_rounded,
+              children: [
+                _buildTextScaleSlider(context, settings, theme),
+                _buildTtsToggle(context, settings, theme),
+              ],
+            ),
+
+            // SEZIONE: GUIDA INTRODUTTIVA E NOTE LEGALI
+            _buildSectionCard(
+              context,
+              theme,
+              title: RuntimeLocalizations.t(context, 'settings_onboarding', fallback: 'Guida introduttiva'),
+              icon: Icons.school_rounded,
+              children: [
+                _buildOnboardingTile(context, theme),
+              ],
+            ),
+          ];
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
               _buildSliverAppBar(context, theme),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    _buildSettingsHeader(context, settings, theme),
-                    const SizedBox(height: 32),
-                    
-                    // SEZIONE: PREFERENZE DI SISTEMA
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_system', fallback: 'Sistema'),
-                      icon: Icons.tune_rounded,
-                      children: [
-                        _buildLanguageTile(context, settings, theme),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Divider(height: 1, thickness: 1),
+              SliverToBoxAdapter(
+                child: SafeArea(
+                  top: false,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxWidth),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPad, vertical: 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildSettingsHeader(context, settings, theme),
+                            SizedBox(height: isLandscape ? 20 : 32),
+                            if (isLandscape)
+                              // In landscape: 2 colonne per sfruttare la larghezza.
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  const spacing = 16.0;
+                                  final itemWidth =
+                                      (constraints.maxWidth - spacing) / 2;
+                                  return Wrap(
+                                    spacing: spacing,
+                                    runSpacing: spacing,
+                                    children: [
+                                      for (final s in sections)
+                                        SizedBox(
+                                          width: itemWidth,
+                                          child: s,
+                                        ),
+                                    ],
+                                  );
+                                },
+                              )
+                            else
+                              ...sections,
+                            // SEZIONE: INFORMAZIONI
+                            _buildDisclaimerSection(context, theme),
+                            const SizedBox(height: 48),
+                          ],
                         ),
-                        _buildThemeSelector(context, settings, theme),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        _buildStartScreenSelector(context, settings, theme),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        _buildTvCursorToggle(context, theme),
-                      ],
+                      ),
                     ),
-
-                    // SEZIONE: SINCRONIZZAZIONE E DATI
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_sync', fallback: 'Sincronizzazione'),
-                      icon: Icons.sync_rounded,
-                      children: [
-                        _buildRefreshSlider(
-                            context,
-                            AppLocalizations.of(context)?.trains ?? 'Treni',
-                            Icons.train_rounded,
-                            settings.isTrainAuto ? settings.currentAutoTrainRate : settings.trainRefreshSeconds,
-                            (val) => settings.setTrainRefreshSeconds(val.toInt()),
-                            theme,
-                            isAuto: settings.isTrainAuto,
-                            autoRate: settings.currentAutoTrainRate,
-                            onAutoChanged: (isOn) => settings.setTrainRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)),
-                        const SizedBox(height: 24),
-                        _buildRefreshSlider(
-                            context,
-                            AppLocalizations.of(context)?.buses ?? 'Autobus',
-                            Icons.directions_bus_rounded,
-                            settings.isBusAuto ? settings.currentAutoBusRate : settings.busRefreshSeconds,
-                            (val) => settings.setBusRefreshSeconds(val.toInt()),
-                            theme,
-                            isAuto: settings.isBusAuto,
-                            autoRate: settings.currentAutoBusRate,
-                            onAutoChanged: (isOn) => settings.setBusRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 10)),
-                        const SizedBox(height: 24),
-                        _buildRefreshSlider(
-                            context,
-                            AppLocalizations.of(context)?.planes ?? 'Aerei',
-                            Icons.flight_rounded,
-                            settings.isPlaneAuto ? settings.currentAutoPlaneRate : settings.planeRefreshSeconds,
-                            (val) => settings.setPlaneRefreshSeconds(val.toInt()),
-                            theme,
-                            isAuto: settings.isPlaneAuto,
-                            autoRate: settings.currentAutoPlaneRate,
-                            onAutoChanged: (isOn) => settings.setPlaneRefreshSeconds(isOn ? SettingsProvider.AUTO_REFRESH : 15)),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        _buildConfigUpdateSection(context, busProvider, theme),
-                        const SizedBox(height: 16),
-                        _buildOfflineSyncToggle(context, settings, theme),
-                      ],
-                    ),
-
-                    // SEZIONE: NOTIFICHE
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_notifications'),
-                      icon: Icons.notifications_active_rounded,
-                      children: [
-                        _buildBackgroundNotificationControls(context, settings, theme),
-                        const SizedBox(height: 16),
-                        _buildTrainProximityNotice(context, settings, theme),
-                      ],
-                    ),
-
-                    // SEZIONE: MAPPA E INTERFACCIA
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_map_ui', fallback: 'Mappa e UI'),
-                      icon: Icons.map_rounded,
-                      children: [
-                        _buildVectorLogosToggle(context, settings, theme),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        _buildClusteringToggle(context, settings, theme),
-                        const SizedBox(height: 16),
-                        _buildStopsClusteringToggle(context, settings, theme),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        _buildMapStyleSelector(context, settings, theme),
-                      ],
-                    ),
-
-                    // SEZIONE: ACCESSIBILITÀ
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_accessibility', fallback: 'Accessibilità'),
-                      icon: Icons.accessibility_rounded,
-                      children: [
-                        _buildTextScaleSlider(context, settings, theme),
-                        _buildTtsToggle(context, settings, theme),
-                      ],
-                    ),
-
-                    // SEZIONE: GUIDA INTRODUTTIVA E NOTE LEGALI
-                    _buildSectionCard(
-                      context,
-                      theme,
-                      title: RuntimeLocalizations.t(context, 'settings_onboarding', fallback: 'Guida introduttiva'),
-                      icon: Icons.school_rounded,
-                      children: [
-                        _buildOnboardingTile(context, theme),
-                      ],
-                    ),
-
-                    // SEZIONE: INFORMAZIONI
-                    _buildDisclaimerSection(context, theme),
-                    const SizedBox(height: 48),
-                  ]),
+                  ),
                 ),
               ),
             ],
@@ -214,8 +252,10 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildSectionCard(BuildContext context, ThemeProvider theme, {required String title, required IconData icon, required List<Widget> children}) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      margin: EdgeInsets.only(bottom: isLandscape ? 0 : AppSpacing.lg),
       decoration: BoxDecoration(
         color: theme.surfaceColor.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(AppTokens.radius3Xl),
@@ -258,9 +298,11 @@ class SettingsScreen extends StatelessWidget {
   Widget _buildSettingsHeader(BuildContext context, SettingsProvider settings, ThemeProvider theme) {
     final languageLabel = settings.isLocaleAutomatic ? RuntimeLocalizations.t(context, 'automatic') : _languageName(context, settings.appLocale?.languageCode);
     final themeLabel = _themeName(context, settings.themeMode);
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isLandscape ? 16 : 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [

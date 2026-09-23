@@ -66,8 +66,16 @@ class _RoadwaysPageState extends State<RoadwaysPage>
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
+        // Solo layout: in landscape centra il foglio e affianca le opzioni.
+        final isLandscape =
+            MediaQuery.of(context).orientation == Orientation.landscape;
         return SafeArea(
-          child: Padding(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isLandscape ? 700 : double.infinity,
+              ),
+              child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -101,6 +109,32 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                   ),
                 ),
                 const SizedBox(height: 20),
+                if (isLandscape)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildCountryOption(
+                          code: 'it',
+                          name: 'Italia',
+                          subtitle: 'Autostrade / Servizi autostradali',
+                          flag: '🇮🇹',
+                          theme: theme,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildCountryOption(
+                          code: 'de',
+                          name: 'Germania',
+                          subtitle: 'Autobahn / Rastanlagen',
+                          flag: '🇩🇪',
+                          theme: theme,
+                        ),
+                      ),
+                    ],
+                  )
+                else ...[
                 _buildCountryOption(
                   code: 'it',
                   name: 'Italia',
@@ -116,8 +150,11 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                   flag: '🇩🇪',
                   theme: theme,
                 ),
+                ],
                 const SizedBox(height: 12),
               ],
+            ),
+          ),
             ),
           ),
         );
@@ -459,6 +496,24 @@ class _RoadwaysPageState extends State<RoadwaysPage>
           }
 
           final news = snapshot.data!;
+          // Solo layout: in landscape griglia a due colonne più densa.
+          final isLandscape =
+              MediaQuery.of(context).orientation == Orientation.landscape;
+          if (isLandscape) {
+            return GridView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 0,
+                childAspectRatio: 1.15,
+              ),
+              itemCount: news.length,
+              itemBuilder: (context, index) {
+                return _buildNewsCard(news[index], theme);
+              },
+            );
+          }
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
             itemCount: news.length,
@@ -738,6 +793,25 @@ class _RoadwaysPageState extends State<RoadwaysPage>
             );
           }
 
+          // Solo layout: in landscape griglia a due colonne più densa.
+          final isLandscape =
+              MediaQuery.of(context).orientation == Orientation.landscape;
+          if (isLandscape) {
+            return GridView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 0,
+                childAspectRatio: 1.1,
+              ),
+              itemCount: tolls.length,
+              itemBuilder: (context, index) {
+                return _buildTollCard(tolls[index], theme);
+              },
+            );
+          }
+
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
             itemCount: tolls.length,
@@ -985,7 +1059,34 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                         isIt ? 'Nessuna area trovata per questo filtro.' : 'Keine Anlagen für diesen Filter.',
                         Icons.search_off_rounded,
                       )
-                    : ListView.builder(
+                    : OrientationBuilder(
+                        builder: (context, orientation) {
+                          // Solo layout: in landscape due colonne.
+                          final isLandscape =
+                              orientation == Orientation.landscape;
+                          if (isLandscape) {
+                            return GridView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 0,
+                                childAspectRatio: 2.8,
+                              ),
+                              itemCount: filteredAreas.length,
+                              itemBuilder: (context, index) {
+                                return _AreaServiceCardItem(
+                                  area: filteredAreas[index],
+                                  theme: theme,
+                                  isGerman: _country == 'de',
+                                  decoration: _m3CardDecoration(theme),
+                                );
+                              },
+                            );
+                          }
+                          return ListView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                         itemCount: filteredAreas.length,
                         itemBuilder: (context, index) {
@@ -995,6 +1096,8 @@ class _RoadwaysPageState extends State<RoadwaysPage>
                             isGerman: _country == 'de',
                             decoration: _m3CardDecoration(theme),
                           );
+                        },
+                      );
                         },
                       ),
               ),

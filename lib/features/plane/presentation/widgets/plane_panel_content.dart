@@ -57,9 +57,15 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   // --- UI COMPONENTS ---
 
+  bool _isLandscape(BuildContext context) =>
+      MediaQuery.of(context).orientation == Orientation.landscape;
+
   Widget _buildHeader(ThemeProvider theme, PlaneProvider provider) {
+    // Solo layout: in landscape header più compatto ed evita overflow
+    // su larghezze ridotte in altezza.
+    final isLandscape = _isLandscape(context);
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: EdgeInsets.all(isLandscape ? AppSpacing.sm : AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppTokens.radius3Xl)),
@@ -70,17 +76,22 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(AppLocalizations.of(context)?.flightRadar ?? "Radar Voli",
-                  style: TextStyle(
-                      color: theme.textColor,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1)),
-              _buildModernToggle(theme),
+              Flexible(
+                child: Text(AppLocalizations.of(context)?.flightRadar ?? "Radar Voli",
+                    style: TextStyle(
+                        color: theme.textColor,
+                        fontSize: isLandscape ? 20 : 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: 12),
+              Flexible(child: _buildModernToggle(theme)),
             ],
           ),
           if (_showSkyscanner) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: isLandscape ? 10 : 16),
             _buildSearchField(theme, provider),
           ]
         ],
@@ -173,8 +184,7 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildRealtimeFlights(
       ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
-    if (provider.flights.isEmpty) {
-      return Center(
+    if (provider.flights.isEmpty) {      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -187,6 +197,25 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
                 style: TextStyle(color: theme.secondaryTextColor)),
           ],
         ),
+      );
+    }
+
+    // Solo layout: in landscape due colonne per sfruttare la larghezza.
+    final isLandscape = _isLandscape(context);
+    if (isLandscape) {
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 0,
+          childAspectRatio: 1.6,
+        ),
+        itemCount: provider.flights.length,
+        itemBuilder: (context, index) {
+          final f = provider.flights[index];
+          return _buildFlightCard(f, theme, provider, mapState);
+        },
       );
     }
 
@@ -323,10 +352,31 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildAirportSearch(
       ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    // Solo layout: in landscape affianca card aeroporto e toggle partenze/arrivi.
+    final isLandscape = _isLandscape(context);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      padding: EdgeInsets.fromLTRB(16, isLandscape ? 12 : 16, 16, 100),
       children: [
-        if (provider.selectedAirport != null) ...[
+        if (provider.selectedAirport != null && isLandscape) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: _buildSelectedAirportCard(theme, provider, mapState),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildArrivalDepartureToggle(theme, provider),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Flights section
+          _buildAirportFlightsSection(theme, provider, mapState),
+          const SizedBox(height: 24),
+        ],
+        if (provider.selectedAirport != null && !isLandscape) ...[
           // Selected airport card
           _buildSelectedAirportCard(theme, provider, mapState),
           const SizedBox(height: 16),
@@ -413,6 +463,11 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
 
   Widget _buildNearbyAirportsSection(
       ThemeProvider theme, PlaneProvider provider, MapStateProvider mapState) {
+    // Solo layout: in landscape griglia a due colonne più densa.
+    final isLandscape = _isLandscape(context);
+    final cards = provider.airportSuggestions
+        .map((a) => _buildAirportCard(a, theme, mapState))
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -432,7 +487,18 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
           ],
         ),
         const SizedBox(height: 12),
-        ...provider.airportSuggestions.map((a) => _buildAirportCard(a, theme, mapState)),
+        if (isLandscape)
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 0,
+            childAspectRatio: 3.2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: cards,
+          )
+        else
+          ...cards,
       ],
     );
   }
@@ -678,8 +744,23 @@ class _PlanePanelContentState extends State<PlanePanelContent> {
           ],
         ),
         const SizedBox(height: 12),
-        ...provider.scheduledFlights.map(
-            (f) => _buildScheduledFlightCard(f, theme, provider, mapState)),
+        // Solo layout: in landscape due colonne per sfruttare la larghezza.
+        if (_isLandscape(context))
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 0,
+            childAspectRatio: 2.6,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: provider.scheduledFlights
+                .map((f) =>
+                    _buildScheduledFlightCard(f, theme, provider, mapState))
+                .toList(),
+          )
+        else
+          ...provider.scheduledFlights.map(
+              (f) => _buildScheduledFlightCard(f, theme, provider, mapState)),
       ],
     );
   }

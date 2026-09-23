@@ -29,61 +29,92 @@ class LanguageSettingsScreen extends StatelessWidget {
               color: theme.textColor, fontWeight: FontWeight.bold),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          _languageOption(
-            context,
-            settings,
-            theme,
-            label: RuntimeLocalizations.t(context, 'automatic',
-                fallback: 'Automatica'),
-            langCode: null,
-            leading: Icon(
-              Icons.auto_awesome_rounded,
-              size: 18,
-              color: settings.isLocaleAutomatic
-                  ? theme.primaryColor
-                  : theme.secondaryTextColor,
-            ),
-          ),
-          _languageOption(
-            context,
-            settings,
-            theme,
-            label: RuntimeLocalizations.t(context, 'language_italian',
-                fallback: 'Italiano'),
-            langCode: 'it',
-            leading: const Text('🇮🇹', style: TextStyle(fontSize: 18)),
-          ),
-          _languageOption(
-            context,
-            settings,
-            theme,
-            label: RuntimeLocalizations.t(context, 'language_english',
-                fallback: 'English'),
-            langCode: 'en',
-            leading: const Text('🇬🇧', style: TextStyle(fontSize: 18)),
-          ),
-          _languageOption(
-            context,
-            settings,
-            theme,
-            label: RuntimeLocalizations.t(context, 'language_german',
-                fallback: 'Deutsch'),
-            langCode: 'de',
-            leading: const Text('🇩🇪', style: TextStyle(fontSize: 18)),
-          ),
-          _languageOption(
-            context,
-            settings,
-            theme,
-            label: RuntimeLocalizations.t(context, 'language_french',
-                fallback: 'Français'),
-            langCode: 'fr',
-            leading: const Text('🇫🇷', style: TextStyle(fontSize: 18)),
-          ),
-        ],
+      body: SafeArea(
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape =
+                orientation == Orientation.landscape;
+            final options = <Widget>[
+              _languageOption(
+                context,
+                settings,
+                theme,
+                label: RuntimeLocalizations.t(context, 'automatic',
+                    fallback: 'Automatica'),
+                langCode: null,
+                leading: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 18,
+                  color: settings.isLocaleAutomatic
+                      ? theme.primaryColor
+                      : theme.secondaryTextColor,
+                ),
+              ),
+              _languageOption(
+                context,
+                settings,
+                theme,
+                label: RuntimeLocalizations.t(context, 'language_italian',
+                    fallback: 'Italiano'),
+                langCode: 'it',
+                leading: const Text('🇮🇹', style: TextStyle(fontSize: 18)),
+              ),
+              _languageOption(
+                context,
+                settings,
+                theme,
+                label: RuntimeLocalizations.t(context, 'language_english',
+                    fallback: 'English'),
+                langCode: 'en',
+                leading: const Text('🇬🇧', style: TextStyle(fontSize: 18)),
+              ),
+              _languageOption(
+                context,
+                settings,
+                theme,
+                label: RuntimeLocalizations.t(context, 'language_german',
+                    fallback: 'Deutsch'),
+                langCode: 'de',
+                leading: const Text('🇩🇪', style: TextStyle(fontSize: 18)),
+              ),
+              _languageOption(
+                context,
+                settings,
+                theme,
+                label: RuntimeLocalizations.t(context, 'language_french',
+                    fallback: 'Français'),
+                langCode: 'fr',
+                leading: const Text('🇫🇷', style: TextStyle(fontSize: 18)),
+              ),
+            ];
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 700 : 600,
+                ),
+                child: isLandscape
+                    ? GridView.count(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 0,
+                        childAspectRatio: 3.4,
+                        padding: EdgeInsets.fromLTRB(
+                          24 + MediaQuery.of(context).padding.left,
+                          12,
+                          24 + MediaQuery.of(context).padding.right,
+                          24,
+                        ),
+                        children: options,
+                      )
+                    : ListView(
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                        children: options,
+                      ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

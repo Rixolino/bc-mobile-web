@@ -139,6 +139,9 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
     
     // Estrazione rating dal livello radice (Default a 0 se non presente)
     final double stationRating = (_currentStats['stationRating'] ?? 0).toDouble();
+    // Landscape: layout a larghezza vincolata, KPI su 4 colonne.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -161,10 +164,14 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        padding: EdgeInsets.all(isLandscape ? 20 : 16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints:
+                BoxConstraints(maxWidth: isLandscape ? 1000 : 640),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             // RATING E FILTRI
             Center(
               child: Column(
@@ -213,21 +220,35 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
                 ),
               ),
 
-            Row(
-              children: [
-                Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_punctuality'), "${general['onTimePercentage'] ?? 0}%", Colors.green)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_avg_delay'), "${general['averageDelay'] ?? 0} min", Colors.orange)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_total_trains'), "${general['totalTrains'] ?? 0}", Colors.blue)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_cancelled_trains'), "${general['cancelledTrains'] ?? 0}", Colors.red)),
-              ],
-            ),
+            if (isLandscape)
+              Row(
+                children: [
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_punctuality'), "${general['onTimePercentage'] ?? 0}%", Colors.green)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_avg_delay'), "${general['averageDelay'] ?? 0} min", Colors.orange)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_total_trains'), "${general['totalTrains'] ?? 0}", Colors.blue)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_cancelled_trains'), "${general['cancelledTrains'] ?? 0}", Colors.red)),
+                ],
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_punctuality'), "${general['onTimePercentage'] ?? 0}%", Colors.green)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_avg_delay'), "${general['averageDelay'] ?? 0} min", Colors.orange)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_total_trains'), "${general['totalTrains'] ?? 0}", Colors.blue)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildKPI(RuntimeLocalizations.t(context, 'stats_cancelled_trains'), "${general['cancelledTrains'] ?? 0}", Colors.red)),
+                ],
+              ),
+            ],
             
             const SizedBox(height: 32),
             _buildSectionTitle(RuntimeLocalizations.t(context, 'stats_movements_analysis')),
@@ -266,7 +287,9 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
             _buildSectionTitle(RuntimeLocalizations.t(context, 'stats_worst_routes')),
             const SizedBox(height: 12),
             if (topWorstRoutes.isEmpty) _buildEmptyNotice() else ...topWorstRoutes.map((route) => _buildWorstRouteTile(route)),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -348,7 +371,9 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
 Widget _buildChart(List<dynamic> data) {
     if (data.isEmpty) {
       return Container(
-        height: 220,
+        height: MediaQuery.of(context).orientation == Orientation.landscape
+            ? 260
+            : 220,
         alignment: Alignment.center,
         decoration: BoxDecoration(color: Theme.of(context).textTheme.bodyMedium!.color!.withOpacity(0.02), borderRadius: BorderRadius.circular(16)),
         child: Text(RuntimeLocalizations.t(context, 'stats_no_chart_data'), style: TextStyle(color: Theme.of(context).textTheme.bodyMedium!.color!.withOpacity(0.4))),
@@ -445,7 +470,9 @@ Widget _buildChart(List<dynamic> data) {
     if (leftInterval <= 0) leftInterval = 5;
 
     return Container(
-      height: 220,
+      height: MediaQuery.of(context).orientation == Orientation.landscape
+          ? 260
+          : 220,
       padding: const EdgeInsets.only(top: 20, right: 24, left: 4, bottom: 8),
       decoration: BoxDecoration(color: Theme.of(context).textTheme.bodyMedium!.color!.withOpacity(0.02), borderRadius: BorderRadius.circular(16)),
       child: LineChart(

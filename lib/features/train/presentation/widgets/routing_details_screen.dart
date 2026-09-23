@@ -434,7 +434,13 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
         opacity: _fadeAnimation,
         child: Column(
           children: [
-            _buildSolutionSummary(theme, currentSolution),
+            // Landscape: riepilogo centrato a larghezza vincolata.
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1000),
+                child: _buildSolutionSummary(theme, currentSolution),
+              ),
+            ),
             Container(
               color: theme.surfaceColor,
               child: TabBar(
@@ -519,7 +525,10 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final isDirect = cambi == 0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(
+          MediaQuery.of(context).orientation == Orientation.landscape
+              ? 12
+              : 16),
       decoration: BoxDecoration(
         color: theme.surfaceColor,
         boxShadow: [
@@ -530,6 +539,7 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
           ),
         ],
       ),
+      // Landscape: contenuto avvolto per evitare overflow orizzontali.
       child: Row(
         children: [
           Container(
@@ -603,7 +613,10 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                   ],
                 ),
                 const SizedBox(height: 6),
-                Row(
+                // Wrap: in landscape sfrutta la larghezza senza overflow.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -626,7 +639,6 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
@@ -649,7 +661,6 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
                       ),
                     ),
                     if (prezzo > 0) ...[
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -705,8 +716,14 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     final categories = percorso.map((leg) => leg['categoria'] as String).toSet().toList();
     final trains = percorso.map((leg) => '${leg['categoria']} ${leg['numeroTreno']}').toSet().toList();
 
+    // Landscape: margini laterali più ampi, contenuto centrato.
+    final isLandscapeOverview =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscapeOverview ? 32 : 16,
+        vertical: 16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -967,7 +984,13 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal:
+            MediaQuery.of(context).orientation == Orientation.landscape
+                ? 32
+                : 16,
+        vertical: 16,
+      ),
       itemCount: percorso.length,
       itemBuilder: (ctx, idx) {
         final leg = percorso[idx];
@@ -1313,7 +1336,13 @@ class _RoutingDetailsScreenState extends State<RoutingDetailsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal:
+            MediaQuery.of(context).orientation == Orientation.landscape
+                ? 32
+                : 16,
+        vertical: 16,
+      ),
       itemCount: allStops.length,
       itemBuilder: (ctx, idx) {
         final stop = allStops[idx];

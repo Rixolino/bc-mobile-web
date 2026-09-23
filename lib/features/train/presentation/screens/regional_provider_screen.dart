@@ -7,7 +7,9 @@ import '../../../../presentation/providers/settings_provider.dart';
 import '../../../../core/design_system.dart';
 import '../../../../core/services/tts_service.dart';
 import '../../data/models/regional_provider_model.dart';
+import '../providers/train_provider.dart';
 import '../widgets/regional_train_details_sheet.dart';
+import '../widgets/train_board_row.dart';
 import 'news_browser_screen.dart';
 
 class RegionalProviderScreen extends StatefulWidget {
@@ -334,11 +336,24 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Landscape: campo ricerca vincolato in larghezza.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: TextField(
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isLandscape ? 700 : double.infinity,
+            ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                isLandscape ? 32 : 12,
+                12,
+                isLandscape ? 32 : 12,
+                4,
+              ),
+              child: TextField(
             controller: _stationSearchController,
             decoration: InputDecoration(
               hintText: 'Cerca stazione...',
@@ -367,6 +382,8 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
             onChanged: _onStationSearchChanged,
+              ),
+            ),
           ),
         ),
         if (_stations.isEmpty)
@@ -381,50 +398,78 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
           )
         else
           Expanded(
-            child: ListView.builder(
-              itemCount: _stations.length,
-              itemBuilder: (context, index) {
-                final station = _stations[index];
-                final id = station['id']?.toString() ?? '';
-                final name = station['name']?.toString() ?? '';
-                final isSelected = id == _selectedStationId;
-
-                return ListTile(
-                  // Icona treno come nel details sheet (_TrainIcon):
-                  // cerchio pieno trainColor con icona bianca.
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppTokens.trainColor
-                          : AppTokens.trainColor.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.train_rounded,
-                      color: isSelected
-                          ? Colors.white
-                          : AppTokens.trainColor,
-                      size: 20,
-                    ),
-                  ),
-                  title: Text(
-                    name,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? theme.colorScheme.primary : null,
+            child: OrientationBuilder(
+              builder: (context, orientation) {
+                // Landscape: stazioni su 2 colonne, con larghezza vincolata.
+                if (orientation != Orientation.landscape) {
+                  return ListView.builder(
+                    itemCount: _stations.length,
+                    itemBuilder: (context, index) =>
+                        _buildStationTile(theme, _stations[index]),
+                  );
+                }
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(32, 4, 32, 120),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 0,
+                        mainAxisExtent: 76,
+                      ),
+                      itemCount: _stations.length,
+                      itemBuilder: (context, index) =>
+                          _buildStationTile(theme, _stations[index]),
                     ),
                   ),
-                  trailing: isSelected
-                      ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
-                      : const Icon(Icons.chevron_right),
-                  onTap: () => _onStationSelected(id, name),
                 );
               },
             ),
           ),
       ],
+    );
+  }
+
+  /// Riga stazione (stessa grafica in portrait e landscape, solo layout).
+  Widget _buildStationTile(ThemeData theme, Map<String, dynamic> station) {
+    final id = station['id']?.toString() ?? '';
+    final name = station['name']?.toString() ?? '';
+    final isSelected = id == _selectedStationId;
+
+    return ListTile(
+      // Icona treno come nel details sheet (_TrainIcon):
+      // cerchio pieno trainColor con icona bianca.
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTokens.trainColor
+              : AppTokens.trainColor.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.train_rounded,
+          color: isSelected ? Colors.white : AppTokens.trainColor,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        name,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? theme.colorScheme.primary : null,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
+          : const Icon(Icons.chevron_right),
+      onTap: () => _onStationSelected(id, name),
     );
   }
 
@@ -455,10 +500,25 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
 
     return RefreshIndicator(
       onRefresh: () => _loadDepartures(_selectedStationId!),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: _departures.length,
-        itemBuilder: (context, index) => _buildDepartureCard(theme, _departures[index], isArrivals: false),
+      child: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: card partenze su 2 colonne, larghezza vincolata.
+          // Righe sempre uguali, anche in landscape: solo larghezza vincolata.
+          final list = ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: _departures.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: theme.dividerColor),
+              itemBuilder: (context, index) => _buildDepartureCard(context, theme, _departures[index], isArrivals: false),
+          );
+          if (orientation != Orientation.landscape) return list;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: list,
+            ),
+          );
+        },
       ),
     );
   }
@@ -490,10 +550,25 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
 
     return RefreshIndicator(
       onRefresh: () => _loadArrivals(_selectedStationId!),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: _arrivals.length,
-        itemBuilder: (context, index) => _buildDepartureCard(theme, _arrivals[index], isArrivals: true),
+      child: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: card arrivi su 2 colonne, larghezza vincolata.
+          // Righe sempre uguali, anche in landscape: solo larghezza vincolata.
+          final list = ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: _arrivals.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: theme.dividerColor),
+              itemBuilder: (context, index) => _buildDepartureCard(context, theme, _arrivals[index], isArrivals: true),
+          );
+          if (orientation != Orientation.landscape) return list;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: list,
+            ),
+          );
+        },
       ),
     );
   }
@@ -509,10 +584,27 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
 
     return RefreshIndicator(
       onRefresh: _loadNews,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: _news.length,
-        itemBuilder: (context, index) => _buildNewsCard(theme, _news[index]),
+      child: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: news vincolate in larghezza (altezza variabile).
+          if (orientation != Orientation.landscape) {
+            return ListView.builder(
+              padding: const EdgeInsets.all(8),
+              itemCount: _news.length,
+              itemBuilder: (context, index) => _buildNewsCard(theme, _news[index]),
+            );
+          }
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+                itemCount: _news.length,
+                itemBuilder: (context, index) => _buildNewsCard(theme, _news[index]),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -644,7 +736,7 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
     }
   }
 
-  Widget _buildDepartureCard(ThemeData theme, Map<String, dynamic> item, {required bool isArrivals}) {
+  Widget _buildDepartureCard(BuildContext context, ThemeData theme, Map<String, dynamic> item, {required bool isArrivals}) {
     final tripNumber = item['tripNumber']?.toString() ?? '';
     final category = item['category']?.toString() ?? '';
     final destination = item['destination']?.toString() ?? '';
@@ -670,140 +762,57 @@ class _RegionalProviderScreenState extends State<RegionalProviderScreen>
     final platformStr = platform.trim();
     final hasPlatform = platformStr.isNotEmpty && platformStr != '-' && platformStr.toLowerCase() != 'null';
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.1)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 4))],
+    final cat = category.trim();
+    final isHighSpeed = cat.toLowerCase().contains('fr') ||
+        cat.toLowerCase().contains('freccia') ||
+        cat.toLowerCase().contains('ec') ||
+        cat.toLowerCase().contains('ice') ||
+        cat.toLowerCase().contains('tgv');
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Logo treno come nella lista treni (se abilitati nelle impostazioni).
+    String? logoUrl;
+    try {
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      if (settings.vectorLogosEnabled) {
+        final tp = Provider.of<TrainProvider>(context, listen: false);
+        final key = cat.toUpperCase().replaceAll(' ', '_');
+        final logo = tp.trainLogos[key];
+        logoUrl = logo != null ? (logo['png'] ?? logo['svg']) : null;
+      }
+    } catch (_) {}
+
+    // Stesso componente della lista treni del pannello.
+    return TrainBoardRow(
+      category: cat,
+      number: tripNumber,
+      delay: delayInt,
+      logoUrl: logoUrl,
+      title: mainStation,
+      titleStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: theme.colorScheme.onSurface,
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _onDepartureTap(item),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Orario + ritardo
-                Column(
-                  children: [
-                    Text(
-                      time,
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface, letterSpacing: -1),
-                    ),
-                    if (cancelled)
-                      _buildBadge('CANC', Colors.red)
-                    else if (delayInt > 0)
-                      _buildBadge('+$delayInt\'', Colors.orange)
-                    else
-                      const Text(
-                        'In orario',
-                        style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Badge categoria + numero treno
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '${category.isNotEmpty ? '$category ' : ''}$tripNumber'.trim(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      // Stazione "altra" rispetto a quella corrente:
-                      // destinazione in Partenze, provenienza in Arrivi.
-                      // La stazione corrente non si scrive mai.
-                      if (showSub)
-                        Text(
-                          subStation,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      Text(
-                        mainStation.isNotEmpty ? mainStation : '--',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // Box binario (solo se il backend lo fornisce)
-                if (hasPlatform)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Bin',
-                          style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
-                        ),
-                        Text(
-                          platformStr,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                const SizedBox.shrink(),
-                Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outline),
-              ],
-            ),
-          ),
-        ),
+      subtitle: showSub ? subStation : null,
+      subtitleStyle: TextStyle(
+        fontSize: 13,
+        color: theme.colorScheme.onSurfaceVariant,
       ),
+      platform: hasPlatform ? platformStr : null,
+      timeStr: time,
+      estStr: null,
+      barColor: isHighSpeed ? Colors.redAccent : AppTokens.trainColor,
+      isDark: isDark,
+      textColor: theme.colorScheme.onSurface,
+      secondaryTextColor: theme.colorScheme.onSurfaceVariant,
+      notchColor: theme.colorScheme.surface,
+      cancelled: cancelled,
+      showOnTimeLabel: true,
+      trailing: Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outline),
+      onTap: () => _onDepartureTap(item),
     );
   }
-
-  Widget _buildBadge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
-      ),
-    );
-  }
-
-
 
   String _formatTime(String isoTime) {
     if (isoTime.isEmpty) return '--:--';

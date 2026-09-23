@@ -114,17 +114,32 @@ class _DashboardFeedState extends State<DashboardFeed>
         ? user!.nickname!
         : (user?.email != null ? user!.email.split('@')[0] : RuntimeLocalizations.t(context, 'guest', fallback: 'Ospite'));
     final isDark = theme.resolvedThemeMode == ThemeMode.dark;
+    // Solo layout/responsive: densità e colonne adattate al landscape.
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    final double maxContentWidth = isLandscape ? 980.0 : double.infinity;
+    final double topPad = isLandscape ? 64.0 : 120.0;
+    final double sectionGap = isLandscape ? 20.0 : 32.0;
+    final double bottomPad = isLandscape ? 80.0 : 120.0;
 
     return Container(
       color: theme.backgroundColor,
-      child: CustomScrollView(
+      child: SafeArea(
+        left: isLandscape,
+        right: isLandscape,
+        top: false,
+        bottom: false,
+        child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          SliverToBoxAdapter(child: SizedBox(height: topPad)),
 
           // ── 1. HEADER ────────────────────────────────────────
           SliverToBoxAdapter(
-            child: Padding(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContentWidth),
+                child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -137,6 +152,8 @@ class _DashboardFeedState extends State<DashboardFeed>
                         Text(
                           _greeting(context),
                           style: AppTextStyle.bodyMedium(color: theme.secondaryTextColor).copyWith(letterSpacing: 0.2),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: AppTokens.space2),
                         ShaderMask(
@@ -148,13 +165,15 @@ class _DashboardFeedState extends State<DashboardFeed>
                           child: Text(
                             authProvider.isAuthenticated ? userName : RuntimeLocalizations.t(context, 'guest'),
                             style: AppTextStyle.displayMedium(color: Colors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    width: 48, height: 48,
+                    width: isLandscape ? 44 : 48, height: isLandscape ? 44 : 48,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: theme.primaryGradient,
@@ -169,28 +188,85 @@ class _DashboardFeedState extends State<DashboardFeed>
                   ),
                 ],
               ),
+                ),
+              ),
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          SliverToBoxAdapter(child: SizedBox(height: isLandscape ? 16 : 24)),
 
-          // ── 2. WEATHER CARD ──────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22.0),
-              child: _weatherLoading
-                  ? _buildWeatherSkeleton(theme)
-                  : _weather == null
-                      ? _buildWeatherError(theme)
-                      : _buildWeatherCard(theme),
+          // ── 2+4. WEATHER + HERO ─────────────────────────────
+          // In landscape: due card affiancate per sfruttare la larghezza e
+          // ridurre lo scroll verticale; in portrait layout originale.
+          if (isLandscape)
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxContentWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 22.0),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final bool narrow = constraints.maxWidth < 600;
+                        if (narrow) {
+                          return Column(
+                            children: [
+                              _weatherLoading
+                                  ? _buildWeatherSkeleton(theme, compact: true)
+                                  : _weather == null
+                                      ? _buildWeatherError(theme)
+                                      : _buildWeatherCard(theme, compact: true),
+                              const SizedBox(height: 14),
+                              _buildHeroCard(theme, compact: true),
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _weatherLoading
+                                  ? _buildWeatherSkeleton(theme, compact: true)
+                                  : _weather == null
+                                      ? _buildWeatherError(theme)
+                                      : _buildWeatherCard(theme, compact: true),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              flex: 6,
+                              child: _buildHeroCard(theme, compact: true),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22.0),
+                child: _weatherLoading
+                    ? _buildWeatherSkeleton(theme)
+                    : _weather == null
+                        ? _buildWeatherError(theme)
+                        : _buildWeatherCard(theme),
+              ),
             ),
-          ),
+            const SliverToBoxAdapter(child: SizedBox(height: 28)),
+          ],
 
-          const SliverToBoxAdapter(child: SizedBox(height: 28)),
+          SliverToBoxAdapter(child: SizedBox(height: sectionGap)),
 
           // ── 3. QUICK ACTIONS ─────────────────────────────────
           SliverToBoxAdapter(
-            child: Padding(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContentWidth),
+                child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,128 +276,66 @@ class _DashboardFeedState extends State<DashboardFeed>
                     style: AppTextStyle.labelMedium(color: theme.secondaryTextColor),
                   ),
                   const SizedBox(height: AppTokens.space12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildQuickAction(Icons.map_rounded, RuntimeLocalizations.t(context, 'action_map', fallback: 'Mappa'), theme, widget.onOpenMap, color: AppTokens.brandBlue),
-                      _buildQuickAction(Icons.confirmation_num_rounded, RuntimeLocalizations.t(context, 'action_ticket', fallback: 'Ticket'), theme, () {}, color: AppTokens.brandPurple),
-                      _buildQuickAction(Icons.alt_route_rounded, RuntimeLocalizations.t(context, 'action_routes', fallback: 'Percorsi'), theme, () {}, color: AppTokens.brandIndigo),
-                      _buildQuickAction(Icons.campaign_rounded, RuntimeLocalizations.t(context, 'action_alerts', fallback: 'Avvisi'), theme, () {}, color: AppTokens.brandPink),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // In landscape icone più dense per non andare in overflow verticale.
+                      final bool compact = isLandscape;
+                      final actions = [
+                        _buildQuickAction(Icons.map_rounded, RuntimeLocalizations.t(context, 'action_map', fallback: 'Mappa'), theme, widget.onOpenMap, color: AppTokens.brandBlue, compact: compact),
+                        _buildQuickAction(Icons.confirmation_num_rounded, RuntimeLocalizations.t(context, 'action_ticket', fallback: 'Ticket'), theme, () {}, color: AppTokens.brandPurple, compact: compact),
+                        _buildQuickAction(Icons.alt_route_rounded, RuntimeLocalizations.t(context, 'action_routes', fallback: 'Percorsi'), theme, () {}, color: AppTokens.brandIndigo, compact: compact),
+                        _buildQuickAction(Icons.campaign_rounded, RuntimeLocalizations.t(context, 'action_alerts', fallback: 'Avvisi'), theme, () {}, color: AppTokens.brandPink, compact: compact),
+                      ];
+                      if (!isLandscape) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: actions,
+                        );
+                      }
+                      // Landscape: griglia a 4 colonne che va a capo senza overflow.
+                      return GridView.count(
+                        crossAxisCount: 4,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.1,
+                        children: actions,
+                      );
+                    },
                   ),
                 ],
               ),
-            ),
-          ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
-
-          // ── 4. HERO MAP CARD ─────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22.0),
-              child: GestureDetector(
-                onTap: widget.onOpenMap,
-                child: Container(
-                  height: 185,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 14))],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Stack(
-                      children: [
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF4361EE), Color(0xFF3A0CA3)],
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: -60, left: -40,
-                          child: Container(width: 220, height: 220, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08))),
-                        ),
-                        Positioned(
-                          bottom: -70, right: -30,
-                          child: Container(width: 240, height: 240, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7209B7).withValues(alpha: 0.5))),
-                        ),
-                        BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
-                        Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  AnimatedBuilder(
-                                    animation: _pulseAnim,
-                                    builder: (_, __) => Container(
-                                      width: 8, height: 8,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Colors.greenAccent,
-                                        boxShadow: [BoxShadow(color: Colors.greenAccent.withValues(alpha: _pulseAnim.value), blurRadius: 8, spreadRadius: 2)],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                                    ),
-                                    child: const Text('LIVE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.5)),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(RuntimeLocalizations.t(context, 'explore_map'), style: TextStyle(fontFamily: 'Syne', fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1)),
-                                        const SizedBox(height: 4),
-                                        Text(RuntimeLocalizations.t(context, 'explore_map_desc'), style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 13)),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    width: 50, height: 50,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4))],
-                                    ),
-                                    child: Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 22),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          SliverToBoxAdapter(child: SizedBox(height: sectionGap)),
+
+          // ── 4. HERO MAP CARD (solo portrait: in landscape è già affiancata sopra) ──
+          if (!isLandscape)
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxContentWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 22.0),
+                    child: _buildHeroCard(theme),
+                  ),
+                ),
+              ),
+            ),
+
+          if (!isLandscape) const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          if (isLandscape) SliverToBoxAdapter(child: SizedBox(height: sectionGap)),
 
           // ── 5. PREFERITI ─────────────────────────────────────
           SliverToBoxAdapter(
-            child: Column(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContentWidth),
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
@@ -329,7 +343,9 @@ class _DashboardFeedState extends State<DashboardFeed>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(RuntimeLocalizations.t(context, 'your_favorites'), style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
+                      Flexible(
+                        child: Text(RuntimeLocalizations.t(context, 'your_favorites'), style: TextStyle(fontFamily: 'Syne', fontSize: isLandscape ? 18 : 20, fontWeight: FontWeight.w700, color: theme.textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
                       if (authProvider.isAuthenticated)
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesPage())),
@@ -342,22 +358,27 @@ class _DashboardFeedState extends State<DashboardFeed>
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                _buildFavoritesSection(context, authProvider, theme),
+                SizedBox(height: isLandscape ? 10 : 16),
+                _buildFavoritesSection(context, authProvider, theme, isLandscape: isLandscape),
               ],
+                ),
+              ),
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          SliverToBoxAdapter(child: SizedBox(height: sectionGap)),
 
           // ── 6. STATO SERVIZI ─────────────────────────────────
           SliverToBoxAdapter(
-            child: Padding(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContentWidth),
+                child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(RuntimeLocalizations.t(context, 'service_status'), style: TextStyle(fontFamily: 'Syne', fontSize: 20, fontWeight: FontWeight.w700, color: theme.textColor)),
+                  Text(RuntimeLocalizations.t(context, 'service_status'), style: TextStyle(fontFamily: 'Syne', fontSize: isLandscape ? 18 : 20, fontWeight: FontWeight.w700, color: theme.textColor)),
                   const SizedBox(height: 14),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -374,11 +395,112 @@ class _DashboardFeedState extends State<DashboardFeed>
                   ),
                 ],
               ),
+                ),
+              ),
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          SliverToBoxAdapter(child: SizedBox(height: bottomPad)),
         ],
+        ),
+      ),
+    );
+  }
+
+  // ── HERO MAP CARD estratta (solo layout): riusabile in portrait e in landscape ──
+  Widget _buildHeroCard(ThemeProvider theme, {bool compact = false}) {
+    return GestureDetector(
+      onTap: widget.onOpenMap,
+      child: Container(
+        height: compact ? 190 : 185,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 14))],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            children: [
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF4361EE), Color(0xFF3A0CA3)],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: -60, left: -40,
+                child: Container(width: 220, height: 220, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08))),
+              ),
+              Positioned(
+                bottom: -70, right: -30,
+                child: Container(width: 240, height: 240, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7209B7).withValues(alpha: 0.5))),
+              ),
+              BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
+              Padding(
+                padding: EdgeInsets.all(compact ? 18.0 : 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        AnimatedBuilder(
+                          animation: _pulseAnim,
+                          builder: (_, __) => Container(
+                            width: 8, height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.greenAccent,
+                              boxShadow: [BoxShadow(color: Colors.greenAccent.withValues(alpha: _pulseAnim.value), blurRadius: 8, spreadRadius: 2)],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                          ),
+                          child: const Text('LIVE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1.5)),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(RuntimeLocalizations.t(context, 'explore_map'), style: TextStyle(fontFamily: 'Syne', fontSize: compact ? 22 : 26, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 4),
+                              Text(RuntimeLocalizations.t(context, 'explore_map_desc'), style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: compact ? 12 : 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: compact ? 44 : 50, height: compact ? 44 : 50,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4))],
+                          ),
+                          child: Icon(Icons.arrow_forward_rounded, color: theme.primaryColor, size: 22),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -387,14 +509,14 @@ class _DashboardFeedState extends State<DashboardFeed>
   //  WEATHER CARD
   // ─────────────────────────────────────────────────────────
 
-  Widget _buildWeatherCard(ThemeProvider theme) {
+  Widget _buildWeatherCard(ThemeProvider theme, {bool compact = false}) {
     final w = _weather!;
     final gradColors = w.gradientColors.map((c) => Color(c)).toList();
 
     return GestureDetector(
       onTap: _openCityPicker,
       child: Container(
-        height: 180,
+        height: compact ? 190 : 180,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),
           gradient: LinearGradient(
@@ -551,9 +673,9 @@ class _DashboardFeedState extends State<DashboardFeed>
     );
   }
 
-  Widget _buildWeatherSkeleton(ThemeProvider theme) {
+  Widget _buildWeatherSkeleton(ThemeProvider theme, {bool compact = false}) {
     return Container(
-      height: 180,
+      height: compact ? 190 : 180,
       decoration: BoxDecoration(color: theme.surfaceColor, borderRadius: BorderRadius.circular(28)),
       child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
@@ -583,22 +705,26 @@ class _DashboardFeedState extends State<DashboardFeed>
   //  QUICK ACTIONS
   // ─────────────────────────────────────────────────────────
 
-  Widget _buildQuickAction(IconData icon, String label, ThemeProvider theme, VoidCallback onTap, {required Color color}) {
+  Widget _buildQuickAction(IconData icon, String label, ThemeProvider theme, VoidCallback onTap, {required Color color, bool compact = false}) {
+    // Solo layout: in landscape icone più piccole e label su una riga.
+    final double box = compact ? 52 : 64;
+    final double iconSize = compact ? 22 : 26;
     return _TapScaleButton(
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 64, height: 64,
+            width: box, height: box,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppTokens.radiusXl),
               border: Border.all(color: color.withValues(alpha: 0.15)),
             ),
-            child: Icon(icon, color: color, size: 26),
+            child: Icon(icon, color: color, size: iconSize),
           ),
           const SizedBox(height: AppTokens.space8),
-          Text(label, style: AppTextStyle.labelMedium(color: theme.secondaryTextColor)),
+          Text(label, style: AppTextStyle.labelMedium(color: theme.secondaryTextColor), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -608,7 +734,7 @@ class _DashboardFeedState extends State<DashboardFeed>
   //  PREFERITI
   // ─────────────────────────────────────────────────────────
 
-  Widget _buildFavoritesSection(BuildContext context, AuthProvider auth, ThemeProvider theme) {
+  Widget _buildFavoritesSection(BuildContext context, AuthProvider auth, ThemeProvider theme, {bool isLandscape = false}) {
     if (!auth.isAuthenticated) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22.0),
@@ -636,7 +762,7 @@ class _DashboardFeedState extends State<DashboardFeed>
     }
 
     return SizedBox(
-      height: 120,
+      height: isLandscape ? 108 : 120,
       child: Consumer<FavoritesProvider>(
         builder: (context, favorites, _) {
           final items = favorites.favoriteStops.take(5).toList();
@@ -833,19 +959,27 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = theme.resolvedThemeMode == ThemeMode.dark;
+    // Solo layout: in landscape sheet più basso e contenuto centrato con max-width.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return DraggableScrollableSheet(
-      initialChildSize: 0.72,
+      initialChildSize: isLandscape ? 0.85 : 0.72,
       minChildSize: 0.4,
-      maxChildSize: 0.92,
+      maxChildSize: 0.95,
       snap: true,
-      builder: (_, scrollController) => Container(
+      builder: (_, scrollController) => Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: isLandscape ? 640 : double.infinity),
+          child: Container(
         decoration: BoxDecoration(
           color: theme.backgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 40, offset: const Offset(0, -8))],
         ),
-        child: Column(
+        child: SafeArea(
+          top: false,
+          left: isLandscape,
+          right: isLandscape,
+          child: Column(
           children: [
             // ── Handle ──
             const SizedBox(height: 12),
@@ -1012,12 +1146,15 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                   ? _buildEmptyState()
                   : ListView.builder(
                       controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isLandscape ? 8 : 0),
                       itemCount: _results.length,
                       itemBuilder: (_, i) => _buildCityTile(_results[i]),
                     ),
             ),
           ],
+          ),
+          ),
+        ),
         ),
       ),
     );

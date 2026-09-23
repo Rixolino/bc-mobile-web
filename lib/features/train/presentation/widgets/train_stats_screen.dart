@@ -153,22 +153,55 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
   }
 
   Widget _buildDashboard(TrainBehavioralReport report) {
+    // Landscape: hero e metriche affiancati, larghezza contenuto vincolata.
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    final sidePadding =
+        isLandscape ? (media.size.width - 1000) / 2 : 20.0;
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
+      padding: EdgeInsets.symmetric(
+        horizontal: sidePadding > 32
+            ? sidePadding
+            : (isLandscape ? 32.0 : 20.0),
+        vertical: 24.0,
+      ),
       physics: const BouncingScrollPhysics(),
       children: [
-        _buildHeroScore(report.metrics),
-        const SizedBox(height: 16),
-        
-        // SEZIONE: Metriche Globali (Tasso cancellazioni e Variazione ritardo)
-        _buildGlobalMetrics(report.metrics),
-        const SizedBox(height: 16),
-        
-        // SEZIONE: Record Storico Negativo
-        if (report.metrics.maxAbsoluteDelayMinutes > 0) ...[
-          _buildHistoricalRecord(report.metrics),
-          const SizedBox(height: 32),
+        if (isLandscape)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _buildHeroScore(report.metrics)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildGlobalMetrics(report.metrics),
+                    if (report.metrics.maxAbsoluteDelayMinutes > 0) ...[
+                      const SizedBox(height: 16),
+                      _buildHistoricalRecord(report.metrics),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          )
+        else ...[
+          _buildHeroScore(report.metrics),
+          const SizedBox(height: 16),
+
+          // SEZIONE: Metriche Globali (Tasso cancellazioni e Variazione ritardo)
+          _buildGlobalMetrics(report.metrics),
+          const SizedBox(height: 16),
+
+          // SEZIONE: Record Storico Negativo
+          if (report.metrics.maxAbsoluteDelayMinutes > 0) ...[
+            _buildHistoricalRecord(report.metrics),
+            const SizedBox(height: 32),
+          ],
         ],
+        if (isLandscape) const SizedBox(height: 32),
 
         _sectionTitle(RuntimeLocalizations.t(context, 'train_stats_insights')),
         const SizedBox(height: 16),
@@ -428,13 +461,16 @@ class _TrainStatsScreenState extends State<TrainStatsScreen> {
   }
 
   Widget _buildInsightsGrid(OperationalInsights insights) {
+    // Landscape: 4 colonne invece di 2 per sfruttare la larghezza.
+    final isLandscapeGrid =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return GridView.count(
-      crossAxisCount: 2,
+      crossAxisCount: isLandscapeGrid ? 4 : 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.1,
+      childAspectRatio: isLandscapeGrid ? 0.9 : 1.1,
       children: [
         _insightCard(
             Icons.warning_amber_rounded, RuntimeLocalizations.t(context, 'train_stats_bottleneck'), insights.criticalBottleneckStation, Colors.orangeAccent),

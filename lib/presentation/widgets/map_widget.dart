@@ -27,14 +27,31 @@ class _MapWidgetState extends State<MapWidget> {
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
     final mapState = Provider.of<MapStateProvider>(context);
+    // Solo layout: adatta densità e safe-area in landscape.
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    final safeRight = media.padding.right;
+    final safeBottom = media.padding.bottom;
+    final buttonSize = isLandscape ? 40.0 : 44.0;
+    final controlsOffsetRight = isLandscape ? 8.0 + safeRight : 16.0;
+    final controlsOffsetBottom = isLandscape ? 8.0 + safeBottom : 16.0;
 
     Widget mapContent = MapBackground();
 
     // Se non è fullscreen, wrappa in un container con altezza specifica
+    // In landscape vincola l'altezza alla viewport per evitare overflow.
     if (widget.height != null) {
-      mapContent = SizedBox(
-        height: widget.height,
-        child: mapContent,
+      mapContent = LayoutBuilder(
+        builder: (context, constraints) {
+          final maxH = MediaQuery.of(context).size.height;
+          final targetH = isLandscape
+              ? widget.height!.clamp(0.0, (maxH * 0.85).clamp(200.0, 600.0))
+              : widget.height!;
+          return SizedBox(
+            height: targetH,
+            child: mapContent,
+          );
+        },
       );
     }
 
@@ -44,10 +61,43 @@ class _MapWidgetState extends State<MapWidget> {
         children: [
           mapContent,
           // Controlli mappa (zoom, location, etc.)
+          // In landscape: compatti, con safe-area e layout orizzontale salvaspazio.
           Positioned(
-            right: 16,
-            bottom: 16,
-            child: Column(
+            right: controlsOffsetRight,
+            bottom: controlsOffsetBottom,
+            child: isLandscape
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _mapControlButton(
+                        theme: theme,
+                        size: buttonSize,
+                        icon: Icons.add,
+                        onPressed: () {
+                          final newZoom = (mapState.zoom + 1).clamp(1.0, 20.0);
+                          mapState.flyTo(mapState.lat, mapState.lng, zoom: newZoom);
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      _mapControlButton(
+                        theme: theme,
+                        size: buttonSize,
+                        icon: Icons.remove,
+                        onPressed: () {
+                          final newZoom = (mapState.zoom - 1).clamp(1.0, 20.0);
+                          mapState.flyTo(mapState.lat, mapState.lng, zoom: newZoom);
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      _mapControlButton(
+                        theme: theme,
+                        size: buttonSize,
+                        icon: Icons.my_location,
+                        onPressed: () {},
+                      ),
+                    ],
+                  )
+                : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Pulsante zoom in
@@ -123,6 +173,35 @@ class _MapWidgetState extends State<MapWidget> {
       );
     }
 
-    return mapContent;
+    return SafeArea(
+      left: isLandscape,
+      right: isLandscape,
+      top: false,
+      bottom: false,
+      child: mapContent,
+    );
+  }
+
+  // Solo layout: bottone compatto riusabile per i controlli in landscape.
+  Widget _mapControlButton({
+    required ThemeProvider theme,
+    required double size,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: theme.surfaceColor.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.secondaryTextColor.withOpacity(0.1)),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 18, color: theme.textColor),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+      ),
+    );
   }
 }

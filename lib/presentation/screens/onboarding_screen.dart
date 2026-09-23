@@ -1856,6 +1856,122 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ===== PAGINA 1: Hero animato + benvenuto =====
   Widget _buildWelcomePage(ThemeProvider theme) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    if (isLandscape) {
+      // Landscape: hero a sinistra e testi a destra, tutto scrollabile e
+      // centrato con larghezza massima per evitare bottom overflow.
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      borderRadius:
+                          BorderRadius.circular(AppTokens.radius2Xl),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.primaryColor.withOpacity(0.30),
+                          blurRadius: 36,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(AppTokens.radius2Xl),
+                      child: _HeroNetworkMap(active: _currentPage == 0),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (b) =>
+                            AppGradients.brandGradient.createShader(b),
+                        child: const Text(
+                          'BC.TRANSPORTER',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Syne',
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        RuntimeLocalizations.t(context, 'onboarding_welcome',
+                            fallback: 'Benvenuto in BC.TRANSPORTER'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Syne',
+                          fontSize: 19,
+                          fontWeight: FontWeight.bold,
+                          color: theme.textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        RuntimeLocalizations.t(context, 'onboarding_subtitle',
+                            fallback: 'Tutti i tuoi viaggi in un\u2019unica app.'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: theme.secondaryTextColor,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (final m in [
+                            Icons.train_rounded,
+                            Icons.directions_bus_rounded,
+                            Icons.flight_rounded,
+                          ])
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: Container(
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: theme.primaryColor.withOpacity(0.18),
+                                  ),
+                                ),
+                                child: Icon(m,
+                                    size: 18, color: theme.primaryColor),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
       child: Column(
@@ -1952,6 +2068,140 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ===== PAGINE FUNZIONALITÀ =====
   Widget _buildFeaturePage(ThemeProvider theme, _OnboardingFeature feature,
       {required int index}) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    if (isLandscape) {
+      // Landscape: scena a sinistra e testo a destra su due colonne,
+      // altezza scena ridotta e spaziature compatte anti-overflow.
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.primaryColor.withOpacity(0.28),
+                          blurRadius: 30,
+                          offset: const Offset(0, 14),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: _AnimatedScene(
+                        index: index,
+                        active: (_currentPage - (index + 1)).abs() <= 1,
+                        theme: theme,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  flex: 6,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              gradient: AppGradients.brandGradient,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(feature.icon,
+                                color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              RuntimeLocalizations.t(context, feature.titleKey,
+                                  fallback: feature.titleFallback),
+                              style: TextStyle(
+                                fontFamily: 'Syne',
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
+                                color: theme.textColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        RuntimeLocalizations.t(context, feature.descKey,
+                            fallback: feature.descFallback),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.55,
+                          color: theme.secondaryTextColor,
+                        ),
+                      ),
+                      if (feature.tags.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: feature.tags
+                              .map((tag) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: theme.primaryColor
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: theme.primaryColor
+                                            .withOpacity(0.25),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(tag.icon,
+                                            size: 14,
+                                            color: theme.primaryColor),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          RuntimeLocalizations.t(
+                                              context, tag.key,
+                                              fallback: tag.fallback),
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.primaryColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0),
       child: Center(
@@ -2106,11 +2356,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         RuntimeLocalizations.t(context, 'onboarding_terms_text', fallback: '');
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: Column(
+      padding: EdgeInsets.symmetric(
+        horizontal: 24.0,
+        vertical:
+            MediaQuery.of(context).orientation == Orientation.landscape
+                ? 12.0
+                : 0.0,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 32),
+          SizedBox(
+              height: MediaQuery.of(context).orientation ==
+                      Orientation.landscape
+                  ? 12
+                  : 32),
           _buildSectionHeader(
             theme,
             icon: Icons.shield_rounded,
@@ -2231,14 +2494,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-        ],
+          ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildBottomNav(ThemeProvider theme, {required bool isLast}) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: EdgeInsets.fromLTRB(24, 8, 24, isLandscape ? 12 : 24),
       child: Row(
         children: [
           SizedBox(

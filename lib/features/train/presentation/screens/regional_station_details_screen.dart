@@ -173,28 +173,64 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildModeToggle(theme),
-          Expanded(
-            child: _isLoading
-                ? _buildLoading(theme)
-                : _error != null
-                    ? _buildError(theme)
-                    : items.isEmpty
-                        ? _buildEmpty(theme)
-                        : _buildDepartureList(items, theme),
-          ),
-        ],
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          // Landscape: vincola la larghezza, padding ariosi e safe area laterali.
+          final isLandscape = orientation == Orientation.landscape;
+          final sidePadding = MediaQuery.of(context).padding;
+          return SafeArea(
+            top: false,
+            bottom: false,
+            left: isLandscape,
+            right: isLandscape,
+            minimum: isLandscape
+                ? EdgeInsets.only(
+                    left: sidePadding.left > 0 ? 0 : 24,
+                    right: sidePadding.right > 0 ? 0 : 24,
+                  )
+                : EdgeInsets.zero,
+            child: Column(
+              children: [
+                _buildModeToggle(theme),
+                Expanded(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 900 : double.infinity,
+                      ),
+                      child: _isLoading
+                          ? _buildLoading(theme)
+                          : _error != null
+                              ? _buildError(theme)
+                              : items.isEmpty
+                                  ? _buildEmpty(theme)
+                                  : _buildDepartureList(items, theme),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildModeToggle(ThemeProvider theme) {
-    return Container(
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final toggle = Container(
       color: theme.surfaceColor,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 32 : 16,
+        vertical: 8,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isLandscape ? 600 : double.infinity,
+          ),
+          child: Row(
         children: [
           Expanded(
             child: GestureDetector(
@@ -242,8 +278,11 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
+    return toggle;
   }
 
   Widget _buildLoading(ThemeProvider theme) {
@@ -358,7 +397,10 @@ class _RegionalStationDetailsScreenState extends State<RegionalStationDetailsScr
     return InkWell(
       onTap: () => _onTripTap(dep),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: MediaQuery.of(context).orientation == Orientation.landscape ? 24 : 16,
+          vertical: MediaQuery.of(context).orientation == Orientation.landscape ? 12 : 10,
+        ),
         child: Row(
           children: [
             Container(

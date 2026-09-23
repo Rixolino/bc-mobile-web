@@ -183,22 +183,62 @@ class _FlixbusTripDetailsSheetState extends State<FlixbusTripDetailsSheet> {
             });
           }
 
+          // Landscape: header+mappa a sinistra (larghezza vincolata),
+          // fermate a destra.
+          final isLandscapeFlix =
+              MediaQuery.of(context).orientation == Orientation.landscape;
+          final flixHero = _buildHeroHeader(theme, trip);
+          final flixMap = _buildMapCard(theme, trip);
+          final flixStops = ListView.builder(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(16,
+                isLandscapeFlix ? MediaQuery.of(context).padding.top + 12 : 12,
+                16, isLandscapeFlix ? 24 : 120),
+            physics: const BouncingScrollPhysics(),
+            itemCount: trip.stops.length,
+            itemBuilder: (context, index) {
+              final stop = trip.stops[index];
+              return _buildStopRow(theme, trip, stop, index);
+            },
+          );
+
+          if (isLandscapeFlix) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.38 < 400
+                        ? MediaQuery.of(context).size.width * 0.38
+                        : 400,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          flixHero,
+                          flixMap,
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  color: theme.secondaryTextColor.withValues(alpha: 0.1),
+                ),
+                Expanded(child: flixStops),
+              ],
+            );
+          }
           return Column(
             children: [
-              _buildHeroHeader(theme, trip),
-              _buildMapCard(theme, trip),
-              Expanded(
-                child: ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: trip.stops.length,
-                  itemBuilder: (context, index) {
-                    final stop = trip.stops[index];
-                    return _buildStopRow(theme, trip, stop, index);
-                  },
-                ),
-              ),
+              flixHero,
+              flixMap,
+              Expanded(child: flixStops),
             ],
           );
         },

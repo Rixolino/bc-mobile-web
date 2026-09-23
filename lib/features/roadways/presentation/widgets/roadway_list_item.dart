@@ -14,9 +14,34 @@ class RoadwayListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(name),
-      subtitle: Text(description),
+    // Solo layout responsive: in landscape rende la riga più densa
+    // per sfruttare la larghezza senza alterare logica o navigazione.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: isLandscape ? 900 : double.infinity,
+        ),
+        child: ListTile(
+          dense: isLandscape,
+          visualDensity: isLandscape
+              ? VisualDensity.compact
+              : VisualDensity.standard,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 12 : 16,
+            vertical: isLandscape ? 2 : 4,
+          ),
+          title: Text(
+            name,
+            maxLines: isLandscape ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            description,
+            maxLines: isLandscape ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+          ),
       trailing: Icon(
         isOpen ? Icons.check_circle : Icons.error,
         color: isOpen ? Colors.green : Colors.red,
@@ -24,6 +49,8 @@ class RoadwayListItem extends StatelessWidget {
       onTap: () {
         // Azione al click
       },
+        ),
+      ),
     );
   }
 }

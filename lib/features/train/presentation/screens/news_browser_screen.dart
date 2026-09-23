@@ -117,6 +117,9 @@ class _NewsBrowserScreenState extends State<NewsBrowserScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Landscape: safe area laterali e barra inferiore compatta/centrata.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       appBar: AppBar(
@@ -191,9 +194,21 @@ class _NewsBrowserScreenState extends State<NewsBrowserScreen> {
               )
             : null,
       ),
-      body: WebViewWidget(controller: _controller),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        left: isLandscape,
+        right: isLandscape,
+        child: WebViewWidget(controller: _controller),
+      ),
       bottomNavigationBar: BottomAppBar(
-        child: Row(
+        padding: EdgeInsets.symmetric(horizontal: isLandscape ? 32 : 0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isLandscape ? 600 : double.infinity,
+            ),
+            child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             IconButton(
@@ -227,6 +242,8 @@ class _NewsBrowserScreenState extends State<NewsBrowserScreen> {
               onPressed: _openExternal,
             ),
           ],
+            ),
+          ),
         ),
       ),
     );

@@ -155,12 +155,11 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     final tripStopsData = provider.selectedTripStops;
     final hasTripStopsData = tripStopsData != null && tripStopsData.stops.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: theme.backgroundColor,
-      body: Column(
-        children: [
-          // ── HERO HEADER ──
-          Container(
+    // Landscape: header e azioni a sinistra, timeline a destra.
+    final isLandscapeDetails =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    // ── HERO HEADER ──
+    final heroHeader = Container(
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -228,54 +227,135 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
                 ),
               ),
             ),
-          ),
+          );
 
           // ── ACTION ROW ──
-          Padding(
+          final actionRow = Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: _buildActionRow(theme, bus),
-          ),
+          );
 
           // ── CONTENT ──
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: Column(
+          final stopsTitle = Text(
+            RuntimeLocalizations.t(context, 'trip_stops_title') ?? 'Fermate',
+            style: AppTextStyle.titleMedium(color: theme.textColor),
+          );
+          final vehicleCard = _buildVehicleInfoCard(theme, bus);
+          final Widget timelineFixed;
+          final Widget timelineGrown;
+          if (provider.selectedProvider?.endpoints['trip_stops'] == true) {
+            timelineFixed = _buildTimelineSection(
+                provider, theme, tripStopsData, hasTripStopsData);
+            timelineGrown = _buildTimelineSection(
+                provider, theme, tripStopsData, hasTripStopsData,
+                expanded: true);
+          } else {
+            timelineFixed = _buildUnavailableState(theme, provider);
+            timelineGrown = _buildUnavailableState(theme, provider);
+          }
+
+          if (isLandscapeDetails) {
+            // Landscape: info a sinistra (larghezza vincolata),
+            // timeline a destra.
+            return Scaffold(
+              backgroundColor: theme.backgroundColor,
+              body: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildVehicleInfoCard(theme, bus),
-                  const SizedBox(height: 20),
-                  Text(
-                    RuntimeLocalizations.t(context, 'trip_stops_title') ?? 'Fermate',
-                    style: AppTextStyle.titleMedium(color: theme.textColor),
-                  ),
-                  const SizedBox(height: 12),
-                  if (provider.selectedProvider?.endpoints['trip_stops'] == true) ...[
-                    SizedBox(
-                      height: 400,
-                      child: (provider.isLoadingTripStops || provider.isLoadingRoutePath)
-                          ? const Center(child: CircularProgressIndicator())
-                          : (provider.apiTripUpdates.isNotEmpty
-                              ? _buildBusTimeline(provider.apiTripUpdates, theme)
-                              : (hasTripStopsData
-                                  ? _buildTripStopsTimeline(tripStopsData!.stops, theme)
-                                  : (_isLoadingUpdates
-                                      ? const Center(child: CircularProgressIndicator())
-                                      : _tripUpdates.isEmpty
-                                          ? _buildEmptyState(theme)
-                                          : _buildBusTimeline(_tripUpdates, theme)))),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.36 < 380
+                          ? MediaQuery.of(context).size.width * 0.36
+                          : 380,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            heroHeader,
+                            actionRow,
+                            const SizedBox(height: 8),
+                            vehicleCard,
+                          ],
+                        ),
+                      ),
                     ),
-                  ] else ...[
-                    _buildUnavailableState(theme, provider),
-                  ],
-                  const SizedBox(height: 24),
+                  ),
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    color:
+                        theme.secondaryTextColor.withValues(alpha: 0.1),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                          16, MediaQuery.of(context).padding.top + 8, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          stopsTitle,
+                          const SizedBox(height: 12),
+                          timelineGrown,
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
+            );
+          }
+          return Scaffold(
+            backgroundColor: theme.backgroundColor,
+            body: Column(
+              children: [
+                heroHeader,
+                actionRow,
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        vehicleCard,
+                        const SizedBox(height: 20),
+                        stopsTitle,
+                        const SizedBox(height: 12),
+                        timelineFixed,
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
-    );
+          );
+  }
+
+  /// Timeline fermate con altezza adattiva (fissa in portrait, espansa in landscape).
+  Widget _buildTimelineSection(
+    BusProvider provider,
+    ThemeProvider theme,
+    dynamic tripStopsData,
+    bool hasTripStopsData, {
+    bool expanded = false,
+  }) {
+    final child = (provider.isLoadingTripStops || provider.isLoadingRoutePath)
+        ? const Center(child: CircularProgressIndicator())
+        : (provider.apiTripUpdates.isNotEmpty
+            ? _buildBusTimeline(provider.apiTripUpdates, theme)
+            : (hasTripStopsData
+                ? _buildTripStopsTimeline(tripStopsData!.stops, theme)
+                : (_isLoadingUpdates
+                    ? const Center(child: CircularProgressIndicator())
+                    : _tripUpdates.isEmpty
+                        ? _buildEmptyState(theme)
+                        : _buildBusTimeline(_tripUpdates, theme))));
+    if (expanded) return Expanded(child: child);
+    return SizedBox(height: 400, child: child);
   }
 
   Widget _buildEmptyState(ThemeProvider theme) {
@@ -411,7 +491,10 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     return ListView.builder(
       controller: _internalScrollController, // Controller interno per lo scroll della lista
       itemCount: updates.length,
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+      padding: EdgeInsets.fromLTRB(24, 8, 24,
+          MediaQuery.of(context).orientation == Orientation.landscape
+              ? 24
+              : 120),
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final update = updates[index];
@@ -467,7 +550,10 @@ class _BusDetailsSheetState extends State<BusDetailsSheet> {
     return ListView.builder(
       controller: _internalScrollController,
       itemCount: stops.length,
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+      padding: EdgeInsets.fromLTRB(24, 8, 24,
+          MediaQuery.of(context).orientation == Orientation.landscape
+              ? 24
+              : 120),
       physics: const BouncingScrollPhysics(),
       itemBuilder: (context, index) {
         final stop = stops[index];

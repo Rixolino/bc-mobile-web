@@ -31,13 +31,16 @@ class AppGlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surfaceColor = Theme.of(context).colorScheme.surface;
+    // Solo layout: in landscape blur leggermente ridotto per performance.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final double effectiveBlur = isLandscape ? (blur * 0.8).clamp(8.0, 24.0) : blur;
 
-    return GestureDetector(
+    final Widget card = GestureDetector(
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
           child: Container(
             width: width,
             height: height,
@@ -55,6 +58,7 @@ class AppGlassCard extends StatelessWidget {
         ),
       ),
     );
+    return card;
   }
 }
 
@@ -83,6 +87,8 @@ class AppCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    // Solo layout: in landscape ombra più leggera per performance (stesso token).
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
       onTap: onTap,
@@ -98,8 +104,8 @@ class AppCard extends StatelessWidget {
           ),
           boxShadow: shadows ?? [
             BoxShadow(
-              color: theme.colorScheme.shadow.withValues(alpha: isDark ? 0.3 : 0.06),
-              blurRadius: 16,
+              color: theme.colorScheme.shadow.withValues(alpha: isDark ? (isLandscape ? 0.22 : 0.3) : 0.06),
+              blurRadius: isLandscape ? 10 : 16,
               offset: const Offset(0, 4),
             ),
           ],
@@ -129,11 +135,15 @@ class ModeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Solo layout: densità compatta in landscape.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: AppTokens.animNormal,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: isLandscape
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(AppTokens.radiusMd),
@@ -215,19 +225,21 @@ class AppSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final headerColor = color ?? theme.colorScheme.primary;
+    // Solo layout: spaziature/testi compatti in landscape.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Row(
       children: [
         if (icon != null) ...[
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: isLandscape ? const EdgeInsets.all(6) : const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: headerColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppTokens.radiusSm),
             ),
-            child: Icon(icon, color: headerColor, size: 18),
+            child: Icon(icon, color: headerColor, size: isLandscape ? 16 : 18),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: isLandscape ? 8 : 12),
         ],
         Expanded(
           child: Column(
@@ -237,10 +249,12 @@ class AppSectionHeader extends StatelessWidget {
                 title.toUpperCase(),
                 style: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant,
-                  fontSize: 12,
+                  fontSize: isLandscape ? 11 : 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
@@ -287,10 +301,12 @@ class TransportListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Solo layout: padding/densità ridotti in landscape per evitare overflow.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return AppCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: isLandscape ? 8 : 10),
+      padding: EdgeInsets.all(isLandscape ? 10 : 14),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTokens.radiusXl),
@@ -298,14 +314,14 @@ class TransportListItem extends StatelessWidget {
           children: [
             leading ??
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: EdgeInsets.all(isLandscape ? 8 : 10),
                   decoration: BoxDecoration(
                     color: iconColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                   ),
-                  child: Icon(leadingIcon, color: iconColor, size: 20),
+                  child: Icon(leadingIcon, color: iconColor, size: isLandscape ? 18 : 20),
                 ),
-            const SizedBox(width: 14),
+            SizedBox(width: isLandscape ? 10 : 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -375,6 +391,9 @@ class AppIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Solo layout: target ridotto in landscape per non coprire contenuti bassi.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final double effectiveSize = isLandscape && size == 44 ? 40 : size;
 
     return Tooltip(
       message: tooltip ?? '',
@@ -384,8 +403,8 @@ class AppIconButton extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
-              width: size,
-              height: size,
+              width: effectiveSize,
+              height: effectiveSize,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
@@ -394,7 +413,7 @@ class AppIconButton extends StatelessWidget {
                   width: 1,
                 ),
               ),
-              child: Icon(icon, size: size * 0.5, color: color ?? theme.colorScheme.onSurface),
+              child: Icon(icon, size: effectiveSize * 0.5, color: color ?? theme.colorScheme.onSurface),
             ),
           ),
         ),
@@ -424,12 +443,16 @@ class AppFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = activeColor ?? theme.colorScheme.primary;
+    // Solo layout: chip più densi in landscape per righe filtro orizzontali.
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: AppTokens.animNormal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: isLandscape
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 7)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           gradient: selected ? LinearGradient(colors: [color, color.withValues(alpha: 0.8)]) : null,
           color: selected ? null : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),

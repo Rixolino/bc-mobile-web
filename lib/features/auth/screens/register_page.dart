@@ -105,6 +105,10 @@ class _RegisterPageState extends State<RegisterPage>
     final authProvider = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
     final loc = AppLocalizations.of(context);
+    // Solo layout: in landscape form centrato a larghezza vincolata,
+    // spazi ridotti e safe area laterale per evitare overflow.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       appBar: AppBar(
@@ -131,18 +135,25 @@ class _RegisterPageState extends State<RegisterPage>
           ),
         ),
         child: SafeArea(
+          left: true,
+          right: true,
           child: FadeTransition(
             opacity: _fadeAnimation,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 560 : 600,
+                ),
+                child: SingleChildScrollView(
+              padding: EdgeInsets.all(isLandscape ? 16.0 : 24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 20),
+                  SizedBox(height: isLandscape ? 8 : 20),
                   // Logo/Icon Section
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.all(isLandscape ? 12 : 20),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.9),
                         shape: BoxShape.circle,
@@ -156,12 +167,12 @@ class _RegisterPageState extends State<RegisterPage>
                       ),
                       child: Icon(
                         Icons.person_add,
-                        size: 60,
+                        size: isLandscape ? 40 : 60,
                         color: theme.colorScheme.secondary,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  SizedBox(height: isLandscape ? 16 : 32),
                   // Title Section
                   Text(
                     loc?.createAccountTitle ?? 'Crea il tuo\nAccount',
@@ -180,7 +191,7 @@ class _RegisterPageState extends State<RegisterPage>
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 48),
+                  SizedBox(height: isLandscape ? 24 : 48),
                   // Registration Form Card
                   Card(
                     elevation: 16,
@@ -451,6 +462,8 @@ class _RegisterPageState extends State<RegisterPage>
                   ),
                   const SizedBox(height: 20),
                 ],
+              ),
+                ),
               ),
             ),
           ),

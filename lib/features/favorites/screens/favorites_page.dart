@@ -153,11 +153,62 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
 
     // Ordiniamo per data di aggiunta (opzionale, o per tipo)
-    // feedItems.sort((a, b) => b.createdAt.compareTo(a.createdAt)); 
+    // feedItems.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    // Solo layout: in landscape il feed usa due colonne più dense.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    Widget feedItemBuilder(BuildContext context, int index) {
+      final item = feedItems[index];
+      // Allow swipe-to-delete for FavoriteTrain items
+      if (item is FavoriteTrain) {
+        final train = item;
+        return Dismissible(
+          key: ValueKey(train.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
+          onDismissed: (direction) async {
+            final removed = train;
+            final success = await favoritesProvider.removeTrainFavorite(removed.trainNumber, removed.departureStation, removed.arrivalStation);
+              if (success) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(RuntimeLocalizations.t(context, 'train_removed_favorites')),
+                  action: SnackBarAction(
+                    label: RuntimeLocalizations.t(context, 'undo'),
+                    onPressed: () async {
+                      await favoritesProvider.addTrainFavorite(removed);
+                    },
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'error_removing_favorite'))));
+            }
+          },
+          child: _buildFeedItem(context, item, favoritesProvider),
+        );
+      }
+
+      return _buildFeedItem(context, item, favoritesProvider);
+    }
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: CustomScrollView(
+      body: SafeArea(
+        left: isLandscape,
+        right: isLandscape,
+        bottom: false,
+        child: CustomScrollView(
         controller: _scrollController,
         slivers: [
           // 1. Modern Sliver App Bar con Saluto
@@ -173,57 +224,37 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
               : feedItems.isEmpty
                   ? SliverFillRemaining(child: _buildEmptyFeedState(theme))
-                  : SliverPadding(
+                  : isLandscape
+                      ? SliverPadding(
+                          padding: const EdgeInsets.only(
+                              bottom: 100, top: 10, left: 8, right: 8),
+                          sliver: SliverGrid(
+                            delegate: SliverChildBuilderDelegate(
+                              feedItemBuilder,
+                              childCount: feedItems.length,
+                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 0,
+                              mainAxisSpacing: 0,
+                              // Altezza fissa ampia per evitare overflow con
+                              // card di altezza variabile (solo layout).
+                              mainAxisExtent: 340,
+                            ),
+                          ),
+                        )
+                      : SliverPadding(
                       padding: const EdgeInsets.only(bottom: 100, top: 10),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final item = feedItems[index];
-                            // Allow swipe-to-delete for FavoriteTrain items
-                            if (item is FavoriteTrain) {
-                              final train = item;
-                              return Dismissible(
-                                key: ValueKey(train.id),
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.95),
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  child: const Icon(Icons.delete, color: Colors.white),
-                                ),
-                                onDismissed: (direction) async {
-                                  final removed = train;
-                                  final success = await favoritesProvider.removeTrainFavorite(removed.trainNumber, removed.departureStation, removed.arrivalStation);
-                                    if (success) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(RuntimeLocalizations.t(context, 'train_removed_favorites')),
-                                        action: SnackBarAction(
-                                          label: RuntimeLocalizations.t(context, 'undo'),
-                                          onPressed: () async {
-                                            await favoritesProvider.addTrainFavorite(removed);
-                                          },
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(RuntimeLocalizations.t(context, 'error_removing_favorite'))));
-                                  }
-                                },
-                                child: _buildFeedItem(context, item, favoritesProvider),
-                              );
-                            }
-
-                            return _buildFeedItem(context, item, favoritesProvider);
-                          },
+                          feedItemBuilder,
                           childCount: feedItems.length,
                         ),
                       ),
                     ),
         ],
+      ),
       ),
       // Floating Action Button per aggiungere rapidamente (opzionale)
       floatingActionButton: FloatingActionButton.extended(
@@ -241,9 +272,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final theme = Theme.of(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userName = authProvider.currentUser?.nickname ?? 'Viaggiatore';
-    
+    // Solo layout: in landscape header più basso per lasciare spazio al feed.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return SliverAppBar(
-      expandedHeight: 200.0,
+      expandedHeight: isLandscape ? 140.0 : 200.0,
       floating: false,
       pinned: true,
       centerTitle: false,
@@ -274,11 +308,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: EdgeInsets.all(isLandscape ? 12.0 : 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 50), // Spazio tra titolo (toolbar) e saluto (min 30px)
+                  SizedBox(height: isLandscape ? 24 : 50), // Spazio tra titolo (toolbar) e saluto
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -389,11 +423,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final theme = Theme.of(context);
     final realTimeData = _realTimeData[train.id];
     final isFav = provider.isTrainFavorite(train.trainNumber, train.departureStation, train.arrivalStation);
+    // Solo layout: in landscape card più compatta per la griglia a 2 colonne.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
       onTap: () => _showDetailSheet(context, train),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 4 : 16,
+            vertical: isLandscape ? 4 : 8),
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(24),
@@ -416,7 +455,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 child: Icon(Icons.train, size: 150, color: theme.primaryColor.withOpacity(0.05)),
               ),
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(isLandscape ? 12 : 20),
                 child: Column(
                   children: [
                     // Header Card
@@ -643,12 +682,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Widget _buildLiveStopCard(BuildContext context, FavoriteStop stop, FavoritesProvider provider) {
     final theme = Theme.of(context);
     final realTimeData = _realTimeData[stop.id];
+    // Solo layout: in landscape card più compatta per la griglia a 2 colonne.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
       onTap: () => _showDetailSheet(context, stop),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        padding: const EdgeInsets.all(20),
+        margin: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 4 : 16,
+            vertical: isLandscape ? 4 : 8),
+        padding: EdgeInsets.all(isLandscape ? 12 : 20),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [theme.cardColor, theme.cardColor.withOpacity(0.95)],
@@ -809,12 +853,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Widget _buildLiveBusCard(BuildContext context, FavoriteBusLine bus, FavoritesProvider provider) {
     final theme = Theme.of(context);
     final realTimeData = _realTimeData[bus.id];
+    // Solo layout: margini ridotti in landscape per la griglia.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return GestureDetector(
       onTap: () => _showDetailSheet(context, bus),
       child: Container(
         height: 100, // Compatto
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 4 : 16,
+            vertical: isLandscape ? 4 : 8),
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(20),

@@ -262,6 +262,10 @@ class _DashboardPageState extends State<DashboardPage>
     final user = authProvider.currentUser;
     final theme = Theme.of(context);
     final loc = AppLocalizations.of(context);
+    // Solo layout: in landscape sfrutta la larghezza (griglia 4 colonne,
+    // pannelli affiancati, larghezza vincolata) senza toccare la logica.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       body: Container(
@@ -277,11 +281,18 @@ class _DashboardPageState extends State<DashboardPage>
           ),
         ),
         child: SafeArea(
+          left: isLandscape,
+          right: isLandscape,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
-              child: CustomScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isLandscape ? 1000 : double.infinity,
+                  ),
+                  child: CustomScrollView(
                 slivers: [
                   // App Bar
                   SliverAppBar(
@@ -355,12 +366,12 @@ class _DashboardPageState extends State<DashboardPage>
 
                   // Content
                   SliverPadding(
-                    padding: const EdgeInsets.all(24.0),
+                    padding: EdgeInsets.all(isLandscape ? 16.0 : 24.0),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         // Welcome Section
                         Container(
-                          padding: const EdgeInsets.all(24),
+                          padding: EdgeInsets.all(isLandscape ? 16 : 24),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -448,13 +459,14 @@ class _DashboardPageState extends State<DashboardPage>
                         ),
                         const SizedBox(height: 16),
 
-                        // Action Cards Grid
+                        // Action Cards Grid (solo layout: 4 colonne in landscape)
                         GridView.count(
-                          crossAxisCount: 2,
+                          crossAxisCount: isLandscape ? 4 : 2,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
+                          childAspectRatio: isLandscape ? 0.85 : 1.0,
                           children: [
                             _buildActionCard(
                               context,
@@ -714,6 +726,8 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 ],
               ),
+                ),
+              ),
             ),
           ),
         ),
@@ -754,7 +768,10 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: EdgeInsets.all(
+                MediaQuery.of(context).orientation == Orientation.landscape
+                    ? 12.0
+                    : 20.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

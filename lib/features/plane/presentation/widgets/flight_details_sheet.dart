@@ -68,9 +68,138 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
       return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     }
 
+    // Solo layout responsive: in landscape sfrutta la larghezza con
+    // pannelli affiancati e contenuti vincolati, senza toccare la logica.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    final statusPill = Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: theme.isDark ? 0.2 : 0.1),
+          borderRadius: BorderRadius.circular(AppTokens.radiusFull),
+          border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(width: 12),
+            Text('${(progress * 100).toInt()}%', style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+
+    final detailsCard = Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor,
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        border: Border.all(color: theme.borderColor.withValues(alpha: theme.isDark ? 0.15 : 0.1)),
+      ),
+      child: isLandscape
+          ? Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: _DetailRow(label: 'Status', value: f.statusLocalized ?? f.status ?? 'N/A', theme: theme)),
+                    const SizedBox(width: 16),
+                    Expanded(child: _DetailRow(label: 'Callsign', value: f.callsign ?? 'N/A', theme: theme)),
+                  ],
+                ),
+                const Divider(height: 20),
+                Row(
+                  children: [
+                    Expanded(child: _DetailRow(label: 'Terminal', value: f.terminal ?? 'N/A', theme: theme)),
+                    const SizedBox(width: 16),
+                    Expanded(child: _DetailRow(label: 'Gate', value: f.gate ?? 'N/A', theme: theme)),
+                  ],
+                ),
+              ],
+            )
+          : Column(
+              children: [
+                _DetailRow(label: 'Status', value: f.statusLocalized ?? f.status ?? 'N/A', theme: theme),
+                const Divider(height: 20),
+                _DetailRow(label: 'Callsign', value: f.callsign ?? 'N/A', theme: theme),
+                const Divider(height: 20),
+                _DetailRow(label: 'Terminal', value: f.terminal ?? 'N/A', theme: theme),
+                const Divider(height: 20),
+                _DetailRow(label: 'Gate', value: f.gate ?? 'N/A', theme: theme),
+              ],
+            ),
+    );
+
+    Widget bodyContent;
+    if (isLandscape) {
+      bodyContent = SingleChildScrollView(
+        padding: const EdgeInsets.all(12),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: statusPill),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        RuntimeLocalizations.t(context, 'flight_details') ?? 'Dettagli Volo',
+                        style: AppTextStyle.titleMedium(color: theme.textColor),
+                      ),
+                      const SizedBox(height: 12),
+                      detailsCard,
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      bodyContent = SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status pill
+            statusPill,
+            const SizedBox(height: 24),
+
+            // Details card
+            Text(
+              RuntimeLocalizations.t(context, 'flight_details') ?? 'Dettagli Volo',
+              style: AppTextStyle.titleMedium(color: theme.textColor),
+            ),
+            const SizedBox(height: 12),
+            detailsCard,
+            const SizedBox(height: 24),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: theme.backgroundColor,
-      body: Column(
+      body: SafeArea(
+        left: isLandscape,
+        right: isLandscape,
+        bottom: true,
+        top: false,
+        child: Column(
         children: [
           // ── HERO HEADER ──
           Container(
@@ -88,7 +217,7 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                padding: EdgeInsets.fromLTRB(16, 8, 16, isLandscape ? 12 : 24),
                 child: Column(
                   children: [
                     // AppBar row
@@ -114,7 +243,7 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
                         const SizedBox(width: 48),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    SizedBox(height: isLandscape ? 12 : 24),
                     // Route
                     Row(
                       children: [
@@ -192,71 +321,12 @@ class _FlightDetailsSheetState extends State<FlightDetailsSheet> {
             ),
           ),
 
-          // ── BODY ──
+          // ── BODY ── (solo layout: portrait/landscape riusano statusPill/detailsCard)
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Status pill
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: theme.isDark ? 0.2 : 0.1),
-                        borderRadius: BorderRadius.circular(AppTokens.radiusFull),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.w700, fontSize: 14)),
-                          const SizedBox(width: 12),
-                          Text('${(progress * 100).toInt()}%', style: TextStyle(color: theme.secondaryTextColor, fontSize: 14, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Details card
-                  Text(
-                    RuntimeLocalizations.t(context, 'flight_details') ?? 'Dettagli Volo',
-                    style: AppTextStyle.titleMedium(color: theme.textColor),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: theme.surfaceColor,
-                      borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-                      border: Border.all(color: theme.borderColor.withValues(alpha: theme.isDark ? 0.15 : 0.1)),
-                    ),
-                    child: Column(
-                      children: [
-                        _DetailRow(label: 'Status', value: f.statusLocalized ?? f.status ?? 'N/A', theme: theme),
-                        const Divider(height: 20),
-                        _DetailRow(label: 'Callsign', value: f.callsign ?? 'N/A', theme: theme),
-                        const Divider(height: 20),
-                        _DetailRow(label: 'Terminal', value: f.terminal ?? 'N/A', theme: theme),
-                        const Divider(height: 20),
-                        _DetailRow(label: 'Gate', value: f.gate ?? 'N/A', theme: theme),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+            child: bodyContent,
           ),
         ],
+        ),
       ),
     );
   }

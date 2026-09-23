@@ -11,8 +11,38 @@ class TrainSearchScreen extends StatelessWidget {
     final theme = Provider.of<ThemeProvider>(context);
     return Scaffold(
       backgroundColor: theme.backgroundColor,
-      body: const SafeArea(
-        child: TrainTabsScreen(),
+      body: SafeArea(
+        left: false,
+        right: false,
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            // Landscape: vincola la larghezza e sfrutta le safe area laterali.
+            if (orientation != Orientation.landscape) {
+              return const SafeArea(
+                top: false,
+                child: TrainTabsScreen(),
+              );
+            }
+            final sidePadding = MediaQuery.of(context).padding;
+            return Padding(
+              padding: EdgeInsets.only(
+                left: sidePadding.left > 0 ? sidePadding.left : 24,
+                right: sidePadding.right > 0 ? sidePadding.right : 24,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: const SafeArea(
+                    top: false,
+                    left: false,
+                    right: false,
+                    child: TrainTabsScreen(),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

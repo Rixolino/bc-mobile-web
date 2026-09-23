@@ -64,6 +64,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final authProvider = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
     final loc = AppLocalizations.of(context);
+    // Solo layout: in landscape sfrutta la larghezza con form centrato
+    // a larghezza vincolata, spazi ridotti e safe area laterale.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       appBar: AppBar(
@@ -90,18 +94,26 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           ),
         ),
         child: SafeArea(
+          left: true,
+          right: true,
           child: FadeTransition(
             opacity: _fadeAnimation,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 520 : 600,
+                ),
+                child: SingleChildScrollView(
+              padding: EdgeInsets.all(isLandscape ? AppSpacing.md : AppSpacing.xl),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: AppSpacing.lg),
+                  SizedBox(height: isLandscape ? AppSpacing.sm : AppSpacing.lg),
                   // Logo/Icon Section
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.all(AppSpacing.xl),
+                      padding: EdgeInsets.all(
+                          isLandscape ? AppSpacing.md : AppSpacing.xl),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.9),
                         shape: BoxShape.circle,
@@ -115,15 +127,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       ),
                       child: ShaderMask(
                         shaderCallback: (bounds) => AppGradients.brandGradient.createShader(bounds),
-                        child: const Icon(
+                        child: Icon(
                           Icons.directions_bus_rounded,
-                          size: 56,
+                          size: isLandscape ? 40 : 56,
                           color: Colors.white,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xxl),
+                  SizedBox(height: isLandscape ? AppSpacing.md : AppSpacing.xxl),
                   // Title Section
                   Text(
                     loc?.welcomeTitle ?? 'Benvenuto su\nBC Transporter',
@@ -142,7 +154,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 48),
+                  SizedBox(height: isLandscape ? 24 : 48),
                   // Login Form Card
                   Card(
                     elevation: 16,
@@ -343,6 +355,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 20),
                 ],
+              ),
+                ),
               ),
             ),
           ),
