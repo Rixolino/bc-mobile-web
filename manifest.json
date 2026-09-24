@@ -1,6 +1,6 @@
 {
-    "name": "bc_transporter_mobile",
-    "short_name": "bc_transporter_mobile",
+    "name": "BC.Transporter (web)",
+    "short_name": "BC.Transporter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
